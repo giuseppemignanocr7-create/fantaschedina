@@ -6,37 +6,25 @@ import {
   Trophy, 
   FileText, 
   Home, 
-  LogIn, 
-  LogOut,
   User,
   ClipboardList,
   Play,
   Clock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAppStore } from '@/store';
 
-const publicNavLinks = [
-  { to: '/', label: 'Home', icon: Home },
-  { to: '/schedina', label: 'Schedina', icon: ClipboardList },
-  { to: '/classifica', label: 'Classifica', icon: Trophy },
-  { to: '/regolamento', label: 'Regolamento', icon: FileText },
-];
-
-const authNavLinks = [
+const navLinks = [
   { to: '/', label: 'Dashboard', icon: Home },
   { to: '/schedina', label: 'Schedina', icon: ClipboardList },
   { to: '/live', label: 'Live', icon: Play },
   { to: '/classifica', label: 'Classifica', icon: Trophy },
   { to: '/storico', label: 'Storico', icon: Clock },
+  { to: '/regolamento', label: 'Regolamento', icon: FileText },
 ];
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
-  const { isAuthenticated, currentUser, logout } = useAppStore();
-  
-  const navLinks = isAuthenticated ? authNavLinks : publicNavLinks;
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-white/5">
@@ -77,31 +65,15 @@ export function Navbar() {
             })}
           </div>
 
-          {/* Auth Section */}
+          {/* Profile Link */}
           <div className="hidden md:flex items-center gap-3">
-            {isAuthenticated && currentUser ? (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-lg border border-white/10">
-                  <User size={16} className="text-primary-400" />
-                  <span className="text-sm font-medium">{currentUser.username}</span>
-                  <span className="text-xs text-primary-400 font-bold">
-                    {currentUser.totalPoints} pt
-                  </span>
-                </div>
-                <button
-                  onClick={logout}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-white/70 hover:text-white transition-colors"
-                >
-                  <LogOut size={16} />
-                  Esci
-                </button>
-              </div>
-            ) : (
-              <Link to="/login" className="btn-primary flex items-center gap-2 text-sm py-2">
-                <LogIn size={16} />
-                Accedi
-              </Link>
-            )}
+            <Link 
+              to="/profilo" 
+              className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors"
+            >
+              <User size={16} className="text-primary-400" />
+              <span className="text-sm font-medium">Profilo</span>
+            </Link>
           </div>
 
           {/* Mobile menu button */}
@@ -144,40 +116,14 @@ export function Navbar() {
           })}
           
           <div className="pt-2 border-t border-white/10">
-            {isAuthenticated && currentUser ? (
-              <>
-                <Link
-                  to="/profilo"
-                  onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-2 px-4 py-3 text-white/70 hover:bg-white/5 rounded-xl"
-                >
-                  <User size={20} className="text-primary-400" />
-                  <span>{currentUser.username}</span>
-                  <span className="ml-auto text-primary-400 font-bold">
-                    {currentUser.totalPoints} pt
-                  </span>
-                </Link>
-                <button
-                  onClick={() => {
-                    logout();
-                    setIsOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition-colors"
-                >
-                  <LogOut size={20} />
-                  Esci
-                </button>
-              </>
-            ) : (
-              <Link
-                to="/login"
-                onClick={() => setIsOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-primary-500 to-accent-500 text-white font-semibold"
-              >
-                <LogIn size={20} />
-                Accedi
-              </Link>
-            )}
+            <Link
+              to="/profilo"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-2 px-4 py-3 text-white/70 hover:bg-white/5 rounded-xl"
+            >
+              <User size={20} className="text-primary-400" />
+              <span>Profilo</span>
+            </Link>
           </div>
         </div>
       </div>
