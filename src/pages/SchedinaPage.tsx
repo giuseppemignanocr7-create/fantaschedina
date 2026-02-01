@@ -16,7 +16,7 @@ import { useAppStore } from '@/store';
 import { MOCK_ODDS } from '@/data/mockData';
 import type { BetType, BetOutcome, Prediction } from '@/types';
 import { isValidOdds, isInPenaltyRange, calculateSchedinaScore } from '@/lib/scoring';
-import { CountdownTimer, QuickBet, CommunityStats } from '@/components/ui';
+import { CountdownTimer, QuickBet } from '@/components/ui';
 
 const TOTAL_PREDICTIONS = 15;
 
@@ -31,7 +31,6 @@ export function SchedinaPage() {
   const { 
     currentMatchday, 
     currentSchedina, 
-    currentUser, 
     isAuthenticated,
     updatePrediction,
     submitSchedina,
