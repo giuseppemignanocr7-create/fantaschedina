@@ -49,97 +49,47 @@ export const MOCK_MATCHES: Match[] = [
   { id: 'm15', matchday: 18, homeTeam: getTeam('tor'), awayTeam: getTeam('bol'), scheduledAt: new Date('2026-02-04T20:45:00'), status: 'scheduled' },
 ];
 
-// Partecipanti di esempio
-export const MOCK_PARTICIPANTS: Participant[] = [
-  {
-    id: 'p1',
-    username: 'MarioRossi',
-    email: 'mario@example.com',
-    createdAt: '2025-08-15T00:00:00.000Z',
-    isActive: true,
-    totalPoints: 42.5,
-    weeklyPoints: 5.2,
-    rank: 1,
-    paidWeeks: 17,
-  },
-  {
-    id: 'p2',
-    username: 'LucaBianchi',
-    email: 'luca@example.com',
-    createdAt: '2025-08-15T00:00:00.000Z',
-    isActive: true,
-    totalPoints: 38.2,
-    weeklyPoints: 4.8,
-    rank: 2,
-    paidWeeks: 17,
-  },
-  {
-    id: 'p3',
-    username: 'GiuseppeVerdi',
-    email: 'giuseppe@example.com',
-    createdAt: '2025-09-01T00:00:00.000Z',
-    isActive: true,
-    totalPoints: 35.8,
-    weeklyPoints: 3.9,
-    rank: 3,
-    paidWeeks: 15,
-  },
-  {
-    id: 'p4',
-    username: 'AntonioNeri',
-    email: 'antonio@example.com',
-    createdAt: '2025-08-15T00:00:00.000Z',
-    isActive: true,
-    totalPoints: 34.1,
-    weeklyPoints: 4.1,
-    rank: 4,
-    paidWeeks: 17,
-  },
-  {
-    id: 'p5',
-    username: 'FrancescoGialli',
-    email: 'francesco@example.com',
-    createdAt: '2025-08-15T00:00:00.000Z',
-    isActive: true,
-    totalPoints: 31.9,
-    weeklyPoints: 3.5,
-    rank: 5,
-    paidWeeks: 17,
-  },
-  {
-    id: 'p6',
-    username: 'AlessandroBlù',
-    email: 'alessandro@example.com',
-    createdAt: '2025-08-20T00:00:00.000Z',
-    isActive: true,
-    totalPoints: 29.7,
-    weeklyPoints: 3.2,
-    rank: 6,
-    paidWeeks: 16,
-  },
-  {
-    id: 'p7',
-    username: 'MarcoViola',
-    email: 'marco@example.com',
-    createdAt: '2025-08-15T00:00:00.000Z',
-    isActive: true,
-    totalPoints: 28.4,
-    weeklyPoints: 2.9,
-    rank: 7,
-    paidWeeks: 17,
-  },
-  {
-    id: 'p8',
-    username: 'DavideArancio',
-    email: 'davide@example.com',
-    createdAt: '2025-08-15T00:00:00.000Z',
-    isActive: true,
-    totalPoints: 26.2,
-    weeklyPoints: 2.5,
-    rank: 8,
-    paidWeeks: 17,
-  },
-];
+// Generatore di nomi italiani per 50+ partecipanti
+const NOMI = ['Mario', 'Luca', 'Giuseppe', 'Antonio', 'Francesco', 'Alessandro', 'Marco', 'Davide', 'Andrea', 'Simone', 'Matteo', 'Lorenzo', 'Gabriele', 'Riccardo', 'Federico', 'Stefano', 'Nicola', 'Fabio', 'Daniele', 'Cristian', 'Emanuele', 'Paolo', 'Giovanni', 'Vincenzo', 'Salvatore', 'Roberto', 'Michele', 'Tommaso', 'Enrico', 'Pietro'];
+const COGNOMI = ['Rossi', 'Bianchi', 'Verdi', 'Neri', 'Gialli', 'Blu', 'Viola', 'Arancio', 'Esposito', 'Russo', 'Ferrari', 'Romano', 'Colombo', 'Ricci', 'Marino', 'Greco', 'Bruno', 'Gallo', 'Conti', 'DeLuca', 'Mancini', 'Costa', 'Giordano', 'Rizzo', 'Lombardi', 'Moretti', 'Barbieri', 'Fontana', 'Santoro', 'Mariani'];
+
+// Genera 55 partecipanti con dati realistici
+function generateParticipants(): Participant[] {
+  const participants: Participant[] = [];
+  
+  for (let i = 1; i <= 55; i++) {
+    const nome = NOMI[(i - 1) % NOMI.length];
+    const cognome = COGNOMI[(i - 1) % COGNOMI.length];
+    const username = `${nome}${cognome}${i > 30 ? i : ''}`;
+    
+    // Punti basati su performance realistica (media 2-3 punti a settimana)
+    const weeksPlayed = Math.floor(Math.random() * 5) + 13; // 13-17 settimane
+    const avgPoints = 1.8 + Math.random() * 2.5; // Media 1.8-4.3 punti/settimana
+    const totalPoints = Math.round((avgPoints * weeksPlayed) * 100) / 100;
+    const weeklyPoints = Math.round((1.5 + Math.random() * 4) * 100) / 100;
+    
+    participants.push({
+      id: `p${i}`,
+      username,
+      email: `${nome.toLowerCase()}.${cognome.toLowerCase()}${i}@example.com`,
+      createdAt: new Date(2025, 7 + Math.floor(Math.random() * 3), 1 + Math.floor(Math.random() * 28)).toISOString(),
+      isActive: Math.random() > 0.05, // 95% attivi
+      totalPoints,
+      weeklyPoints,
+      rank: i,
+      paidWeeks: weeksPlayed,
+    });
+  }
+  
+  // Ordina per punti totali
+  return participants.sort((a, b) => b.totalPoints - a.totalPoints).map((p, idx) => ({
+    ...p,
+    rank: idx + 1,
+  }));
+}
+
+// Partecipanti di esempio (55 utenti)
+export const MOCK_PARTICIPANTS: Participant[] = generateParticipants();
 
 // Classifica di esempio
 export const MOCK_RANKINGS: RankingEntry[] = MOCK_PARTICIPANTS
