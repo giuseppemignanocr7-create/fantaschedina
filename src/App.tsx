@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from '@/components/layout';
-import { useAppStore } from '@/store';
+import { AuthProvider, useAuthContext } from '@/contexts/AuthContext';
 import { 
   HomePage, 
   DashboardPage,
@@ -14,15 +14,32 @@ import {
 } from '@/pages';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAppStore();
+  const { isAuthenticated, loading } = useAuthContext();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+  
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
   return <>{children}</>;
 }
 
-function App() {
-  const { isAuthenticated } = useAppStore();
+function AppRoutes() {
+  const { isAuthenticated, loading } = useAuthContext();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <Routes>
@@ -45,6 +62,14 @@ function App() {
         <Route path="/live" element={<LivePage />} />
       </Route>
     </Routes>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   );
 }
 

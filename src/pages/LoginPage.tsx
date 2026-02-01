@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Trophy, Users, Target, AlertCircle } from 'lucide-react';
-import { useAppStore } from '@/store';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 type AuthMode = 'login' | 'register';
 
 export function LoginPage() {
   const navigate = useNavigate();
-  const { login, register, isAuthenticated, authError, clearAuthError } = useAppStore();
+  const { signIn, signUp, isAuthenticated } = useAuthContext();
+  const [authError, setAuthError] = useState<string | null>(null);
   
   const [mode, setMode] = useState<AuthMode>('login');
   const [showPassword, setShowPassword] = useState(false);
@@ -32,10 +33,10 @@ export function LoginPage() {
 
   // Pulisci errori auth quando cambia modalità
   useEffect(() => {
-    clearAuthError();
+    setAuthError(null);
     setErrors({});
     setSuccessMessage(null);
-  }, [mode, clearAuthError]);
+  }, [mode]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -72,29 +73,41 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    clearAuthError();
+    setAuthError(null);
     
     if (!validateForm()) return;
     
     setIsLoading(true);
     
-    // Piccolo delay per UX
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    let result;
-    if (mode === 'login') {
-      result = login(formData.email, formData.password);
-    } else {
-      result = register(formData.email, formData.username, formData.password);
-    }
-    
-    setIsLoading(false);
-    
-    if (result.success) {
-      setSuccessMessage(mode === 'login' ? 'Accesso effettuato!' : 'Registrazione completata!');
+    try {
+      if (mode === 'login') {
+        const { error } = await signIn(formData.email, formData.password);
+        if (error) {
+          setAuthError(error.message === 'Invalid login credentials' 
+            ? 'Credenziali non valide' 
+            : error.message);
+          setIsLoading(false);
+          return;
+        }
+      } else {
+        const { error } = await signUp(formData.email, formData.password, formData.username);
+        if (error) {
+          setAuthError(error.message === 'User already registered'
+            ? 'Email già registrata'
+            : error.message);
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      setSuccessMessage(mode === 'login' ? 'Accesso effettuato!' : 'Registrazione completata! Controlla la tua email.');
       setTimeout(() => {
         navigate('/');
-      }, 500);
+      }, 1000);
+    } catch (err) {
+      setAuthError('Errore di connessione. Riprova.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
