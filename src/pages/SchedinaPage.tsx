@@ -6,7 +6,8 @@ import {
   Info,
   Trophy,
   Zap,
-  Clock
+  Clock,
+  RotateCcw
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -30,6 +31,7 @@ export function SchedinaPage() {
     currentSchedina, 
     updatePrediction,
     submitSchedina,
+    resetSchedina,
     error,
     clearError
   } = useAppStore();
@@ -273,10 +275,22 @@ export function SchedinaPage() {
             <div className="lg:sticky lg:top-4 space-y-4">
               {/* Riepilogo Schedina */}
               <div className="glass-card p-4">
-                <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
-                  <Zap size={18} className="text-primary-400" />
-                  Riepilogo Schedina
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-lg flex items-center gap-2">
+                    <Zap size={18} className="text-primary-400" />
+                    Riepilogo Schedina
+                  </h3>
+                  {predictions.length > 0 && !currentSchedina?.isLocked && (
+                    <button
+                      onClick={resetSchedina}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all"
+                      title="Azzera schedina"
+                    >
+                      <RotateCcw size={14} />
+                      Azzera
+                    </button>
+                  )}
+                </div>
                 
                 {/* Progress */}
                 <div className="mb-4">

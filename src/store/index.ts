@@ -54,6 +54,7 @@ interface AppStore {
   setCurrentMatchday: (matchday: Matchday) => void;
   updatePrediction: (matchId: string, prediction: Prediction) => void;
   submitSchedina: () => void;
+  resetSchedina: () => void;
   loadRankings: () => void;
   clearError: () => void;
 }
@@ -213,6 +214,18 @@ export const useAppStore = create<AppStore>()(
         });
 
         console.log('Schedina inviata:', submittedSchedina);
+      },
+
+      resetSchedina: () => {
+        set({
+          currentSchedina: {
+            participantId: 'demo-user',
+            matchday: get().currentMatchday?.number || 18,
+            predictions: [],
+            isLocked: false,
+          },
+          error: null,
+        });
       },
 
       loadRankings: () => {
