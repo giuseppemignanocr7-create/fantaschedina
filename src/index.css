@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-white/5;
+  }
+  
+  body {
+    @apply bg-background text-slate-100 antialiased selection:bg-primary-500/30;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background-image: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+                      radial-gradient(circle at 80% 10%, rgba(245, 158, 11, 0.05) 0%, transparent 30%);
+    background-attachment: fixed;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-surface/60 backdrop-blur-md border border-white/5 rounded-xl shadow-xl shadow-black/20;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent font-bold;
+  }
+
+  .gradient-border {
+    @apply relative;
+  }
+
+  .gradient-border::before {
+    content: '';
+    @apply absolute inset-0 rounded-xl p-[1px] bg-gradient-to-r from-primary-500/50 to-accent-500/50;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
+  .btn-primary {
+    @apply px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 rounded-lg font-bold text-white uppercase tracking-wider text-sm
+           hover:from-primary-500 hover:to-primary-400 transition-all duration-300 
+           shadow-lg shadow-primary-900/50 hover:shadow-primary-500/30 
+           hover:-translate-y-0.5 active:translate-y-0;
+  }
+
+  .btn-secondary {
+    @apply px-6 py-3 bg-surface border border-white/10 rounded-lg font-bold text-slate-300 uppercase tracking-wider text-sm
+           hover:bg-white/5 hover:text-white hover:border-white/20 transition-all duration-300
+           hover:-translate-y-0.5 active:translate-y-0;
+  }
+
+  .btn-odds {
+    @apply flex flex-col items-center justify-center p-3 rounded-lg border border-white/5 bg-surface/50 transition-all duration-200
+           hover:bg-white/10 hover:border-primary-500/50 cursor-pointer select-none relative overflow-hidden;
+  }
+
+  .btn-odds.selected {
+    @apply bg-primary-600/20 border-primary-500 text-primary-400 shadow-[0_0_15px_rgba(16,185,129,0.2)];
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 bg-background border border-white/10 rounded-lg text-white 
+           placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 
+           focus:border-primary-500/50 transition-all duration-300;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-black/40 hover:bg-surface/80;
+  }
+  
+  .badge {
+    @apply px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-background;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-white/10 rounded-full hover:bg-primary-500/50 transition-colors;
+}
