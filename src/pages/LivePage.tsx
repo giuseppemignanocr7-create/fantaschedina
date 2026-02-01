@@ -13,15 +13,19 @@ export function LivePage() {
   const { 
     currentMatchday, 
     currentSchedina, 
-    currentUser,
-    isAuthenticated,
     rankings,
     prizePool
   } = useAppStore();
 
+  // Mock user for demo
+  const demoUser = {
+    id: 'demo',
+    username: 'Giocatore',
+    totalPoints: 42.5
+  };
+
   const predictions = currentSchedina?.predictions || [];
-  const userRanking = rankings.find(r => r.participantId === currentUser?.id);
-  const userPosition = userRanking?.rank || rankings.length + 1;
+  const userPosition = 5;
 
   if (!currentMatchday) {
     return (
@@ -83,7 +87,7 @@ export function LivePage() {
             )}
 
             {/* Live Tracker */}
-            {isAuthenticated && predictions.length > 0 ? (
+            {predictions.length > 0 ? (
               <LiveTracker 
                 matches={currentMatchday.matches}
                 predictions={predictions}
@@ -96,21 +100,12 @@ export function LivePage() {
                 </div>
                 <h3 className="font-display font-bold text-xl mb-2">Nessun pronostico attivo</h3>
                 <p className="text-slate-400 mb-6 max-w-md mx-auto">
-                  Non hai compilato la schedina per questa giornata.
-                  {isAuthenticated 
-                    ? ' Compilala ora per seguire i tuoi risultati live!'
-                    : ' Accedi per partecipare al gioco.'
-                  }
+                  Non hai ancora compilato la schedina per questa giornata.
+                  Compilala ora per seguire i tuoi risultati live!
                 </p>
-                {isAuthenticated ? (
-                   <a href="/schedina" className="btn-primary inline-flex items-center gap-2">
-                     Vai alla Schedina
-                   </a>
-                ) : (
-                  <a href="/login" className="btn-primary inline-flex items-center gap-2">
-                    Accedi Ora
-                  </a>
-                )}
+                <a href="/schedina" className="btn-primary inline-flex items-center gap-2">
+                  Vai alla Schedina
+                </a>
               </div>
             )}
 
@@ -193,8 +188,7 @@ export function LivePage() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* User Stats */}
-            {isAuthenticated && currentUser && (
-              <div className="glass-card p-4">
+            <div className="glass-card p-4">
                 <h3 className="font-semibold mb-4 flex items-center gap-2">
                   <Target size={18} className="text-primary-400" />
                   La tua schedina
@@ -228,18 +222,15 @@ export function LivePage() {
                   </p>
                 )}
               </div>
-            )}
 
             {/* Win Simulator */}
-            {isAuthenticated && currentUser && (
-              <WinSimulator
-                totalPoints={currentUser.totalPoints}
+            <WinSimulator
+              totalPoints={demoUser.totalPoints}
                 weeklyPool={prizePool.weeklyPool}
                 finalPool={prizePool.finalPool}
-                currentRank={userPosition}
-                participantCount={rankings.length}
-              />
-            )}
+              currentRank={userPosition}
+              participantCount={rankings.length}
+            />
 
             {/* Leaderboard Mini */}
             <div className="glass-card overflow-hidden">
@@ -255,7 +246,7 @@ export function LivePage() {
                     key={r.participantId}
                     className={cn(
                       'px-4 py-2 flex items-center gap-3',
-                      r.participantId === currentUser?.id && 'bg-primary-500/10'
+                      r.participantId === demoUser.id && 'bg-primary-500/10'
                     )}
                   >
                     <span className={cn(

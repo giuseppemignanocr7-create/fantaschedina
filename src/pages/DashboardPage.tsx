@@ -17,24 +17,27 @@ import { useAppStore } from '@/store';
 import { formatCurrency } from '@/lib/utils';
 
 export function DashboardPage() {
-  const { currentUser, currentMatchday, rankings, prizePool, currentSchedina } = useAppStore();
+  const { currentMatchday, rankings, prizePool, currentSchedina } = useAppStore();
 
-  if (!currentUser) {
-    return null;
-  }
+  // Mock user for demo (no auth required)
+  const demoUser = {
+    id: 'demo',
+    username: 'Giocatore',
+    totalPoints: 42.5,
+    weeklyPoints: 4.8
+  };
 
-  const userRanking = rankings.find(r => r.participantId === currentUser.id);
-  const userPosition = userRanking?.rank || rankings.length + 1;
+  const userPosition = 5;
 
   const stats = {
     totalSchedine: 17,
     correctPredictions: 112,
     totalPredictions: 170,
     winRate: 65.9,
-    weeklyWins: userRanking?.weeklyWins || 0,
-    bestMatchday: userRanking?.bestMatchdayPoints || 0,
+    weeklyWins: 2,
+    bestMatchday: 8.5,
     currentStreak: 3,
-    perfectSchedine: userRanking?.perfectSchedine || 0,
+    perfectSchedine: 1,
   };
 
   const badges = [
@@ -57,7 +60,7 @@ export function DashboardPage() {
         {/* Welcome */}
         <div className="mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-3xl font-display font-bold mb-1">
-            Ciao, <span className="gradient-text">{currentUser.username}</span>! 👋
+            Ciao, <span className="gradient-text">{demoUser.username}</span>! 👋
           </h1>
           <p className="text-white/60">Ecco il riepilogo della tua attività</p>
         </div>
@@ -88,8 +91,8 @@ export function DashboardPage() {
               </div>
               <span className="text-slate-400 text-sm font-medium uppercase tracking-wide">Punti Totali</span>
             </div>
-            <p className="text-3xl sm:text-4xl font-mono font-bold text-accent-400">{currentUser.totalPoints}</p>
-            <p className="text-xs text-slate-500 font-medium mt-1">+{currentUser.weeklyPoints} questa settimana</p>
+            <p className="text-3xl sm:text-4xl font-mono font-bold text-accent-400">{demoUser.totalPoints}</p>
+            <p className="text-xs text-slate-500 font-medium mt-1">+{demoUser.weeklyPoints} questa settimana</p>
           </div>
 
           <div className="glass-card p-4 relative overflow-hidden group">

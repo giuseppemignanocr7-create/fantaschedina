@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { 
   Check, 
   AlertCircle, 
@@ -31,7 +30,6 @@ export function SchedinaPage() {
   const { 
     currentMatchday, 
     currentSchedina, 
-    isAuthenticated,
     updatePrediction,
     submitSchedina,
     error,
@@ -118,14 +116,12 @@ export function SchedinaPage() {
               <Trophy size={16} />
               Stagione 2025-2026
             </div>
-            {isAuthenticated && (
-              <QuickBet 
-                matches={currentMatchday.matches}
-                odds={MOCK_ODDS}
-                onApply={handleQuickBet}
-                disabled={currentSchedina?.isLocked}
-              />
-            )}
+            <QuickBet 
+              matches={currentMatchday.matches}
+              odds={MOCK_ODDS}
+              onApply={handleQuickBet}
+              disabled={currentSchedina?.isLocked}
+            />
           </div>
           <h1 className="text-2xl sm:text-3xl font-display font-bold mb-3">
             Giornata {currentMatchday.number}
@@ -148,23 +144,6 @@ export function SchedinaPage() {
           </div>
         </div>
 
-        {/* Auth Warning */}
-        {!isAuthenticated && (
-          <div className="glass-card p-4 mb-6 border-yellow-500/30 bg-yellow-500/5">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="text-yellow-400 shrink-0 mt-0.5" size={20} />
-              <div>
-                <h4 className="font-medium text-yellow-400">Accedi per giocare</h4>
-                <p className="text-sm text-white/60 mt-1">
-                  Devi effettuare l'accesso per compilare e inviare la tua schedina.
-                </p>
-                <Link to="/login" className="btn-primary text-sm mt-3 inline-block py-2 px-4">
-                  Accedi ora
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Error Message */}
         {error && (
@@ -312,11 +291,11 @@ export function SchedinaPage() {
                               e.stopPropagation();
                               handleOutcomeSelect(match.id, selectedBetType, opt.value as BetOutcome);
                             }}
-                            disabled={!isAuthenticated || currentSchedina?.isLocked}
+                            disabled={currentSchedina?.isLocked}
                             className={cn(
                               'btn-odds group',
                               isSelected && 'selected',
-                              (!isAuthenticated || currentSchedina?.isLocked) && 'opacity-50 cursor-not-allowed'
+                              currentSchedina?.isLocked && 'opacity-50 cursor-not-allowed'
                             )}
                           >
                             <span className={cn(
@@ -370,7 +349,7 @@ export function SchedinaPage() {
         </div>
 
         {/* Submit Button */}
-        {isAuthenticated && !currentSchedina?.isLocked && (
+        {!currentSchedina?.isLocked && (
           <div className="sticky bottom-4 px-2 sm:px-0">
             <button
               onClick={handleSubmit}
