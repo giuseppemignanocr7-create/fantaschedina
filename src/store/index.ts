@@ -77,7 +77,7 @@ export const useAppStore = create<AppStore>()(
         number: 18,
         season: '2025-2026',
         matches: MOCK_MATCHES,
-        deadline: new Date('2026-02-01T13:45:00'),
+        deadline: new Date('2026-12-31T23:59:00'),
         status: 'open',
       },
       rankings: MOCK_RANKINGS,
