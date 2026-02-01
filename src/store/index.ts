@@ -83,7 +83,12 @@ export const useAppStore = create<AppStore>()(
       rankings: MOCK_RANKINGS,
       weeklyRankings: [],
       prizePool: initialPrizePool,
-      currentSchedina: null,
+      currentSchedina: {
+        participantId: 'demo-user',
+        matchday: 18,
+        predictions: [],
+        isLocked: false,
+      },
       schedinaHistory: [],
       isLoading: false,
       error: null,
