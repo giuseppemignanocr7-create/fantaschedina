@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  Check, AlertCircle, Send, Info, Trophy, Zap, Clock, RotateCcw, RefreshCw, Pencil,
+  Check, AlertCircle, Send, Info, Trophy, Zap, Clock, RotateCcw, RefreshCw, Pencil, Trash2,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -69,6 +69,7 @@ export function SchedinaPage() {
     submitSchedina,
     resetSchedina,
     unlockSchedina,
+    cancelSchedina,
     selectedPowerups,
     setPowerups,
     isLoadingOdds,
@@ -144,6 +145,16 @@ export function SchedinaPage() {
     unlockSchedina();
     resetSchedina();
     toast.info('Schedina azzerata. Ricompila e re-invia.');
+  };
+
+  const handleCancel = async () => {
+    await cancelSchedina();
+    if (!useAppStore.getState().error) {
+      vibrate([40, 20, 40]);
+      toast.success('Schedina annullata con successo. Gettoni power-up rimborsati.');
+    } else {
+      toast.error(useAppStore.getState().error || 'Errore nell\'annullamento della schedina');
+    }
   };
 
   const handleQuickBet = (newPredictions: Prediction[]) => {
@@ -507,7 +518,7 @@ export function SchedinaPage() {
                         </button>
                         <button
                           onClick={handleReset}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold hover:bg-red-500/30 transition-all"
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-yellow-500/20 border border-yellow-500/30 text-yellow-300 text-xs font-bold hover:bg-yellow-500/30 transition-all"
                         >
                           <RotateCcw size={14} />
                           Azzera
@@ -515,8 +526,27 @@ export function SchedinaPage() {
                       </div>
                     )}
                     {canEdit && (
+                      <button
+                        onClick={handleCancel}
+                        disabled={isSubmitting}
+                        className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold hover:bg-red-500/30 transition-all disabled:opacity-50"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-red-300/30 border-t-red-300 rounded-full animate-spin" />
+                            Annullamento...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 size={14} />
+                            Annulla Schedina
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {canEdit && (
                       <p className="text-[10px] text-white/40">
-                        Puoi modificare o azzerare fino a 2 ore dall'inizio della prima partita
+                        Puoi modificare, azzerare o annullare fino a 2 ore dall'inizio della prima partita
                       </p>
                     )}
                     {currentSchedina.powerups &&

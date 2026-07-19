@@ -40,6 +40,15 @@ export async function changePredictionFn(
   return res.data;
 }
 
+export async function cancelSchedinaFn(): Promise<{ ok: boolean; refund: boolean }> {
+  const fn = httpsCallable<Record<string, never>, { ok: boolean; refund: boolean }>(
+    functions,
+    'cancelSchedina'
+  );
+  const res = await fn({});
+  return res.data;
+}
+
 // --- MINIGIOCHI ---
 
 export interface QuizQuestionPublic {

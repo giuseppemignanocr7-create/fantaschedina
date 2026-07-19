@@ -765,6 +765,47 @@ export const changePrediction = onCall({ region: REGION, enforceAppCheck: false 
   return { ok: true, coinsSpent: 0 };
 });
 
+// ---------- 4b. ANNULLA SCHEDINA (callable) ----------
+
+export const cancelSchedina = onCall({ region: REGION, enforceAppCheck: false }, async request => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+
+  const md = await getCurrentMatchday();
+  if (!md) throw new HttpsError('unavailable', 'Nessuna giornata disponibile');
+  if (Timestamp.now().toMillis() >= md.deadline.toMillis()) {
+    throw new HttpsError('failed-precondition', 'Deadline superata, non puoi annullare la schedina');
+  }
+
+  const schedinaRef = db.collection('schedine').doc(`${uid}_${md.number}`);
+
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(schedinaRef);
+    if (!snap.exists) {
+      throw new HttpsError('not-found', 'Nessuna schedina da annullare');
+    }
+    const s = snap.data() as SchedinaDoc;
+    if (s.settled) {
+      throw new HttpsError('failed-precondition', 'Schedina già valutata, non può essere annullata');
+    }
+
+    // Rimborsa i power-up
+    let refund = 0;
+    const pu = s.powerups ?? {};
+    if (pu.jolly) refund += POWERUPS.jolly.cost;
+    if (pu.shield) refund += POWERUPS.shield.cost;
+    if (pu.insurance) refund += POWERUPS.insurance.cost;
+
+    if (refund > 0) {
+      await adjustCoins(uid, refund, `powerups_refund_cancel_g${md.number}`, tx);
+    }
+
+    tx.delete(schedinaRef);
+  });
+
+  return { ok: true, refund: true };
+});
+
 // ---------- 5. MINIGIOCHI (callable) ----------
 
 // --- Seed quiz questions into Firestore (admin callable, one-time) ---

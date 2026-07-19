@@ -33,7 +33,7 @@ import {
   getArcadeRankings,
   type ProfileDoc,
 } from '@/lib/db';
-import { submitSchedinaFn, callableErrorMessage } from '@/lib/gameApi';
+import { submitSchedinaFn, cancelSchedinaFn, callableErrorMessage } from '@/lib/gameApi';
 import { MAX_PICKS_PER_SCHEDINA, type PowerUpSelection } from '@/lib/economy';
 import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
 import { getCached, setCached, invalidate, invalidatePrefix, CACHE_TTL } from '@/lib/cache';
@@ -83,6 +83,7 @@ interface AppStore {
   submitSchedina: () => Promise<void>;
   resetSchedina: () => void;
   unlockSchedina: () => void;
+  cancelSchedina: () => Promise<void>;
   loadUserSchedina: () => Promise<void>;
   loadSchedinaHistory: () => Promise<void>;
 
@@ -234,6 +235,24 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       currentSchedina: { ...currentSchedina, isLocked: false },
       error: null,
     });
+  },
+
+  cancelSchedina: async () => {
+    const { currentUser, currentMatchday } = get();
+    if (!currentUser || !currentMatchday) return;
+    set({ isSubmitting: true, error: null });
+    try {
+      await cancelSchedinaFn();
+      invalidatePrefix('schedinaHistory_');
+      invalidate('rankings');
+      set({
+        currentSchedina: emptyDraft(currentMatchday.number, currentUser.id),
+        selectedPowerups: {},
+        isSubmitting: false,
+      });
+    } catch (e) {
+      set({ error: callableErrorMessage(e), isSubmitting: false });
+    }
   },
 
   loadUserSchedina: async () => {
