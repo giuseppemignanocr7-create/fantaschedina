@@ -9,27 +9,31 @@ import {
   callableErrorMessage,
   type PublicProfileData,
   type SfidaPlayResponse,
+  type PenaltyShotInput,
+  type RigoriShot,
 } from '@/lib/gameApi';
 import { COINS } from '@/lib/economy';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { CountUp } from '@/components/ui/CountUp';
 import { burstConfetti, sideCannons, coinRain, vibrate } from '@/lib/juice';
+import { playPenaltySound } from '@/lib/penaltySound';
+import { PenaltyStadium } from '@/components/games/PenaltyStadium';
+import { PenaltyZoneGrid, PenaltyPowerMeter } from '@/components/games/PenaltyAimer';
+import type { PenaltyZone } from '@/lib/penalty';
 
-const DIRECTIONS = [
-  { id: 'L', label: 'SINISTRA', emoji: '↖️' },
-  { id: 'C', label: 'CENTRO', emoji: '⬆️' },
-  { id: 'R', label: 'DESTRA', emoji: '↗️' },
-] as const;
-
-type Phase = 'select' | 'aiming' | 'loading' | 'result';
+type Phase = 'select' | 'aiming' | 'loading' | 'reveal' | 'result';
+interface RevealEntry { who: 'me' | 'opp'; shot: RigoriShot }
 
 export function Sfide1v1Page() {
   const { profile, refreshProfile } = useAuthContext();
   const [phase, setPhase] = useState<Phase>('select');
   const [opponents, setOpponents] = useState<PublicProfileData[]>([]);
   const [selectedOpp, setSelectedOpp] = useState<PublicProfileData | null>(null);
-  const [shots, setShots] = useState<string[]>([]);
+  const [shots, setShots] = useState<PenaltyShotInput[]>([]);
+  const [aimZone, setAimZone] = useState<PenaltyZone | null>(null);
   const [result, setResult] = useState<SfidaPlayResponse | null>(null);
+  const [revealSeq, setRevealSeq] = useState<RevealEntry[]>([]);
+  const [revealed, setRevealed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
 
@@ -55,33 +59,68 @@ export function Sfide1v1Page() {
       await startSfida(opp.id);
       setSelectedOpp(opp);
       setShots([]);
+      setAimZone(null);
       setPhase('aiming');
     } catch (e) {
       setError(callableErrorMessage(e));
     }
   };
 
-  const takeShot = async (dir: string) => {
+  const kick = async (zone: PenaltyZone, power: number) => {
     if (phase !== 'aiming') return;
+    playPenaltySound('kick');
     vibrate(25);
-    const updated = [...shots, dir];
+    setAimZone(null);
+    const updated = [...shots, { zone, power }];
     setShots(updated);
     if (updated.length < COINS.rigoriMaxShots) return;
     setPhase('loading');
     try {
       const r = await playSfida(selectedOpp!.id, updated);
       setResult(r);
-      setPhase('result');
-      refreshProfile();
-      if (r.won) { sideCannons(); coinRain(1500); vibrate([60, 40, 60]); }
-      else if (r.draw) { burstConfetti(); vibrate(40); }
-      else vibrate(80);
+      const interleaved: RevealEntry[] = [];
+      for (let i = 0; i < r.myResults.length; i++) {
+        interleaved.push({ who: 'me', shot: r.myResults[i] });
+        if (r.oppResults[i]) interleaved.push({ who: 'opp', shot: r.oppResults[i] });
+      }
+      setRevealSeq(interleaved);
+      setRevealed(0);
+      setPhase('reveal');
     } catch (e) {
       setError(callableErrorMessage(e));
       setPhase('select');
       setShots([]);
     }
   };
+
+  useEffect(() => {
+    if (phase !== 'reveal') return;
+    if (revealed >= revealSeq.length) {
+      const t = setTimeout(() => {
+        setPhase('result');
+        refreshProfile();
+        if (result?.won) { sideCannons(); coinRain(1500); vibrate([60, 40, 60]); }
+        else if (result?.draw) { burstConfetti(); vibrate(40); }
+        else vibrate(80);
+      }, 700);
+      return () => clearTimeout(t);
+    }
+    const t = setTimeout(() => {
+      setRevealed(n => {
+        const entry = revealSeq[n];
+        if (entry.shot.goal) {
+          playPenaltySound('goal');
+          vibrate(entry.who === 'me' ? [40, 30, 60] : 30);
+          if (entry.who === 'me') burstConfetti({ x: 0.5, y: 0.35 });
+        } else {
+          playPenaltySound('save');
+          if (entry.who === 'me') vibrate(80);
+        }
+        return n + 1;
+      });
+    }, 1300);
+    return () => clearTimeout(t);
+  }, [phase, revealed, revealSeq, refreshProfile, result]);
 
   if (phase === 'result' && result) {
     return (
@@ -171,6 +210,47 @@ export function Sfide1v1Page() {
     );
   }
 
+  if (phase === 'reveal' && selectedOpp) {
+    const lastEntry = revealed > 0 ? revealSeq[revealed - 1] : null;
+    const myScoreSoFar = revealSeq.slice(0, revealed).filter(e => e.who === 'me' && e.shot.goal).length;
+    const oppScoreSoFar = revealSeq.slice(0, revealed).filter(e => e.who === 'opp' && e.shot.goal).length;
+    return (
+      <div className="min-h-screen px-4 py-6">
+        <div className="max-w-sm mx-auto space-y-4">
+          {/* Live score */}
+          <div className="flex items-center justify-center gap-6">
+            <div className="text-center">
+              <p className="text-xs text-primary-400 font-bold uppercase truncate max-w-[100px]">Tu</p>
+              <p className="font-black text-3xl text-primary-400">{myScoreSoFar}</p>
+            </div>
+            <span className="text-xl text-white/30 font-black">-</span>
+            <div className="text-center">
+              <p className="text-xs text-red-400 font-bold uppercase truncate max-w-[100px]">{selectedOpp.username}</p>
+              <p className="font-black text-3xl text-red-400">{oppScoreSoFar}</p>
+            </div>
+          </div>
+
+          {lastEntry && (
+            <p className={cn('text-xs font-black uppercase tracking-widest text-center animate-pop-in',
+              lastEntry.who === 'me' ? 'text-primary-400' : 'text-red-400')}>
+              {lastEntry.who === 'me' ? '⚡ IL TUO TIRO' : `🛡️ TIRO DI ${selectedOpp.username.toUpperCase()}`}
+            </p>
+          )}
+
+          <div className="glass-card p-4 text-center">
+            <PenaltyStadium
+              revealShot={lastEntry ? { shot: lastEntry.shot.shot, keeper: lastEntry.shot.keeper, goal: lastEntry.shot.goal } : null}
+              revealKey={revealed}
+            />
+            <p className="text-xs text-white/40 font-bold uppercase tracking-widest animate-pulse mt-3">
+              {revealed >= revealSeq.length ? 'Fischio finale…' : 'Momento della verità…'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (phase === 'aiming' && selectedOpp) {
     return (
       <div className="min-h-screen px-4 py-6">
@@ -223,20 +303,24 @@ export function Sfide1v1Page() {
             </div>
           </div>
 
-          {/* Direction buttons */}
-          <div className="glass-card p-4 space-y-2">
-            <p className="text-sm font-bold text-white/80 animate-pulse text-center">Dove tiri? 🎯</p>
-            <div className="grid grid-cols-3 gap-2">
-              {DIRECTIONS.map(dir => (
-                <button
-                  key={dir.id}
-                  onClick={() => takeShot(dir.id)}
-                  className="py-3.5 rounded-xl bg-primary-500/15 border border-primary-500/40 text-primary-300 font-black text-xs uppercase transition-all hover:bg-primary-500/30 hover:scale-[1.03] active:scale-95"
-                >
-                  <span className="block text-xl mb-0.5">{dir.emoji}</span>
-                  {dir.label}
-                </button>
-              ))}
+          {/* Stadium + mira */}
+          <div className="glass-card p-4 text-center">
+            <PenaltyStadium revealShot={null} revealKey="aiming">
+              {!aimZone && (
+                <PenaltyZoneGrid onPick={z => { vibrate(15); setAimZone(z); }} />
+              )}
+            </PenaltyStadium>
+            <div className="mt-3">
+              {!aimZone && (
+                <p className="text-sm font-bold text-white/80 animate-pulse">Tocca la porta: dove tiri? 🎯</p>
+              )}
+              {aimZone && (
+                <PenaltyPowerMeter
+                  zone={aimZone}
+                  onCancel={() => setAimZone(null)}
+                  onConfirm={power => kick(aimZone, power)}
+                />
+              )}
             </div>
           </div>
         </div>

@@ -34,6 +34,7 @@ import {
 import { generateMatchdayOdds, MatchOdds } from './odds';
 import { fetchRealMatchdayOdds } from './realOdds';
 import { fetchActiveMatchdayPool, fetchResults } from './espn';
+import { resolveShot, simulateOpponentShot, estimateSkillFromProfile, isValidZone } from './penalty';
 
 initializeApp();
 const db = getFirestore();
@@ -1040,19 +1041,15 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: true }, as
 
     // --- RIGORI (no daily limit, daily coin cap) ---
     case 'rigori_play': {
-      const shots = (request.data?.shots ?? []) as string[];
+      const shots = (request.data?.shots ?? []) as { zone: unknown; power: unknown }[];
       if (
         !Array.isArray(shots) ||
         shots.length !== COINS.rigoriMaxShots ||
-        shots.some(s => !['L', 'C', 'R'].includes(s))
+        shots.some(s => !isValidZone(s?.zone) || typeof s?.power !== 'number')
       ) {
-        throw new HttpsError('invalid-argument', 'Tiri non validi (5 tiri: L, C o R)');
+        throw new HttpsError('invalid-argument', `Tiri non validi (${COINS.rigoriMaxShots} tiri con zona e potenza)`);
       }
-      const dirs = ['L', 'C', 'R'];
-      const results = shots.map(shot => {
-        const keeper = dirs[Math.floor(Math.random() * 3)];
-        return { shot, keeper, goal: keeper !== shot };
-      });
+      const results = shots.map(s => resolveShot(s.zone as Parameters<typeof resolveShot>[0], s.power as number));
       const goals = results.filter(r => r.goal).length;
       const reward = goals * COINS.rigoriPerGoal;
       await awardRigoriCoins(reward, 'minigame_rigori');
@@ -1090,7 +1087,7 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: true }, as
       return {
         opponent: {
           uid: opponentId,
-          displayName: oppProfile.data()?.displayName ?? 'Avversario',
+          displayName: oppProfile.data()?.username ?? 'Avversario',
           coins: oppProfile.data()?.coins ?? 0,
         },
         myCoins: myProfile.data()?.coins ?? 0,
@@ -1098,28 +1095,29 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: true }, as
     }
     case 'sfida_play': {
       const opponentId = request.data?.opponentId as string;
-      const myShots = (request.data?.shots ?? []) as string[];
+      const myShots = (request.data?.shots ?? []) as { zone: unknown; power: unknown }[];
       if (
         !opponentId ||
         opponentId === uid ||
         !Array.isArray(myShots) ||
         myShots.length !== COINS.rigoriMaxShots ||
-        myShots.some(s => !['L', 'C', 'R'].includes(s))
+        myShots.some(s => !isValidZone(s?.zone) || typeof s?.power !== 'number')
       ) {
         throw new HttpsError('invalid-argument', 'Dati sfida non validi');
       }
       const pairKey = [uid, opponentId].sort().join('_');
       const cooldownRef = db.collection('sfide_cooldowns').doc(pairKey);
-      // Simulate: user takes 5 penalties, opponent (AI) takes 5 penalties
-      const dirs = ['L', 'C', 'R'];
-      const myResults = myShots.map(shot => {
-        const keeper = dirs[Math.floor(Math.random() * 3)];
-        return { shot, keeper, goal: keeper !== shot };
-      });
-      const oppShots = Array.from({ length: COINS.rigoriMaxShots }, () => dirs[Math.floor(Math.random() * 3)]);
-      const oppResults = oppShots.map(shot => {
-        const keeper = dirs[Math.floor(Math.random() * 3)];
-        return { shot, keeper, goal: keeper !== shot };
+      // L'avversario "CPU" tira con una qualità legata alle sue statistiche reali
+      // (pronostici corretti / giornate giocate), non più a puro random.
+      const oppProfileSnap = await db.collection('profiles').doc(opponentId).get();
+      const oppSkill = estimateSkillFromProfile(
+        (oppProfileSnap.data()?.correctPredictions as number) ?? 0,
+        (oppProfileSnap.data()?.matchdaysPlayed as number) ?? 0
+      );
+      const myResults = myShots.map(s => resolveShot(s.zone as Parameters<typeof resolveShot>[0], s.power as number));
+      const oppResults = Array.from({ length: COINS.rigoriMaxShots }, () => {
+        const shot = simulateOpponentShot(oppSkill);
+        return resolveShot(shot.zone, shot.power);
       });
       const myGoals = myResults.filter(r => r.goal).length;
       const oppGoals = oppResults.filter(r => r.goal).length;

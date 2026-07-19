@@ -2,107 +2,25 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Flame } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { playRigori, callableErrorMessage, type RigoriShot } from '@/lib/gameApi';
+import { playRigori, callableErrorMessage, type RigoriShot, type PenaltyShotInput } from '@/lib/gameApi';
 import { COINS } from '@/lib/economy';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { CountUp } from '@/components/ui/CountUp';
 import { burstConfetti, sideCannons, jackpotCelebration, coinRain, vibrate } from '@/lib/juice';
+import { playPenaltySound } from '@/lib/penaltySound';
+import { PenaltyStadium } from '@/components/games/PenaltyStadium';
+import { PenaltyZoneGrid, PenaltyPowerMeter } from '@/components/games/PenaltyAimer';
+import type { PenaltyZone } from '@/lib/penalty';
 
 const TOTAL_KICKS = COINS.rigoriMaxShots;
-const DIRECTIONS = [
-  { id: 'L', label: 'SINISTRA', emoji: '↖️' },
-  { id: 'C', label: 'CENTRO', emoji: '⬆️' },
-  { id: 'R', label: 'DESTRA', emoji: '↗️' },
-] as const;
-
-const FLY: Record<string, { x: string; y: string }> = {
-  L: { x: '-80px', y: '-72px' },
-  C: { x: '0px', y: '-78px' },
-  R: { x: '80px', y: '-72px' },
-};
-const DIVE: Record<string, { x: string; r: string }> = {
-  L: { x: '-72px', r: '-28deg' },
-  C: { x: '0px', r: '0deg' },
-  R: { x: '72px', r: '28deg' },
-};
 
 type Phase = 'intro' | 'aiming' | 'loading' | 'reveal' | 'done';
-
-// --- Sound effects via Web Audio API ---
-let audioCtx: AudioContext | null = null;
-function getAudioCtx(): AudioContext | null {
-  if (typeof window === 'undefined') return null;
-  if (!audioCtx) {
-    try { audioCtx = new AudioContext(); } catch { return null; }
-  }
-  return audioCtx;
-}
-
-function playSound(type: 'kick' | 'goal' | 'save' | 'whistle' | 'miss') {
-  const ctx = getAudioCtx();
-  if (!ctx) return;
-  if (ctx.state === 'suspended') ctx.resume();
-
-  const now = ctx.currentTime;
-
-  if (type === 'kick') {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.frequency.setValueAtTime(180, now);
-    osc.frequency.exponentialRampToValueAtTime(60, now + 0.1);
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-    osc.start(now); osc.stop(now + 0.15);
-  } else if (type === 'goal') {
-    // Cheer + horn
-    for (let i = 0; i < 3; i++) {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(440 + i * 220, now + i * 0.05);
-      osc.frequency.exponentialRampToValueAtTime(880 + i * 220, now + 0.3 + i * 0.05);
-      gain.gain.setValueAtTime(0.15, now + i * 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4 + i * 0.05);
-      osc.start(now + i * 0.05); osc.stop(now + 0.4 + i * 0.05);
-    }
-  } else if (type === 'save') {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(200, now);
-    osc.frequency.exponentialRampToValueAtTime(80, now + 0.2);
-    gain.gain.setValueAtTime(0.2, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-    osc.start(now); osc.stop(now + 0.2);
-  } else if (type === 'whistle') {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1200, now);
-    gain.gain.setValueAtTime(0.15, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-    osc.start(now); osc.stop(now + 0.3);
-  } else if (type === 'miss') {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(300, now);
-    osc.frequency.exponentialRampToValueAtTime(100, now + 0.4);
-    gain.gain.setValueAtTime(0.15, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
-    osc.start(now); osc.stop(now + 0.4);
-  }
-}
 
 export function RigoriPage() {
   const { refreshProfile } = useAuthContext();
   const [phase, setPhase] = useState<Phase>('intro');
-  const [shots, setShots] = useState<string[]>([]);
+  const [shots, setShots] = useState<PenaltyShotInput[]>([]);
+  const [aimZone, setAimZone] = useState<PenaltyZone | null>(null);
   const [results, setResults] = useState<RigoriShot[]>([]);
   const [revealed, setRevealed] = useState(0);
   const [reward, setReward] = useState(0);
@@ -112,11 +30,12 @@ export function RigoriPage() {
   const [gamesPlayed, setGamesPlayed] = useState(0);
   const [totalEarned, setTotalEarned] = useState(0);
 
-  const kick = async (dir: string) => {
+  const kick = async (zone: PenaltyZone, power: number) => {
     if (phase !== 'aiming') return;
-    playSound('kick');
+    playPenaltySound('kick');
     vibrate(30);
-    const updated = [...shots, dir];
+    setAimZone(null);
+    const updated = [...shots, { zone, power }];
     setShots(updated);
     if (updated.length < TOTAL_KICKS) return;
     setPhase('loading');
@@ -142,10 +61,10 @@ export function RigoriPage() {
       const t = setTimeout(() => {
         setPhase('done');
         const goals = results.filter(r => r.goal).length;
-        if (goals >= TOTAL_KICKS) { playSound('whistle'); jackpotCelebration(); }
-        else if (goals >= 3) { playSound('whistle'); sideCannons(); coinRain(1200); }
-        else if (goals >= 1) { playSound('whistle'); coinRain(800); }
-        else playSound('miss');
+        if (goals >= TOTAL_KICKS) { playPenaltySound('whistle'); jackpotCelebration(); }
+        else if (goals >= 3) { playPenaltySound('whistle'); sideCannons(); coinRain(1200); }
+        else if (goals >= 1) { playPenaltySound('whistle'); coinRain(800); }
+        else playPenaltySound('miss');
       }, 900);
       return () => clearTimeout(t);
     }
@@ -153,7 +72,7 @@ export function RigoriPage() {
       setRevealed(n => {
         const shot = results[n];
         if (shot?.goal) {
-          playSound('goal');
+          playPenaltySound('goal');
           vibrate([40, 30, 60]);
           burstConfetti({ x: 0.5, y: 0.35 });
           setStreak(s => {
@@ -162,7 +81,7 @@ export function RigoriPage() {
             return ns;
           });
         } else {
-          playSound('save');
+          playPenaltySound('save');
           vibrate(80);
           setStreak(0);
         }
@@ -175,7 +94,6 @@ export function RigoriPage() {
   const score = results.slice(0, revealed).filter(r => r.goal).length;
   const finalScore = results.filter(r => r.goal).length;
   const lastKick = revealed > 0 ? results[revealed - 1] : null;
-  const isGoal = lastKick?.goal ?? false;
 
   if (phase === 'done') {
     return (
@@ -242,12 +160,12 @@ export function RigoriPage() {
         <div className="glass-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in">
           <div className="text-7xl animate-float">⚽</div>
           <h1 className="font-display font-black text-3xl text-white uppercase">Rigori</h1>
-          <p className="text-white/50 text-sm">{TOTAL_KICKS} rigori · Scegli dove tirare<br />Il portiere (server) si muove a caso!</p>
+          <p className="text-white/50 text-sm">{TOTAL_KICKS} rigori · Mira l'angolo e dosa la potenza<br />Gli angoli sono quasi imparabili, il centro è più sicuro ma facile da bloccare</p>
           <div className="bg-white/5 rounded-xl p-4 text-left space-y-2">
             {[
-              'Scegli sinistra, centro o destra',
-              'Il portiere para una direzione a caso',
-              'GOAL se non coincidono!',
+              'Tocca una delle 6 zone della porta',
+              'Blocca la barra al momento giusto: più precisione, più gol',
+              'Angoli = rischio alto ma quasi imparabili, centro = più sicuro',
               `+${COINS.rigoriPerGoal} gettoni per gol (max ${COINS.rigoriDailyCap}/giorno)`,
               'Gioca quante volte vuoi!',
             ].map(r => (
@@ -257,7 +175,7 @@ export function RigoriPage() {
             ))}
           </div>
           {error && <p className="text-sm text-red-400 animate-shake">{error}</p>}
-          <button onClick={() => { setError(null); setShots([]); setPhase('aiming'); playSound('whistle'); }} className="btn-green w-full text-sm font-black animate-pulse-glow active:scale-95 transition-transform">
+          <button onClick={() => { setError(null); setShots([]); setAimZone(null); setPhase('aiming'); playPenaltySound('whistle'); }} className="btn-green w-full text-sm font-black animate-pulse-glow active:scale-95 transition-transform">
             ⚡ CALCIO DI RIGORE!
           </button>
           <Link to="/minigiochi" className="block text-xs text-white/30 hover:text-white/60 transition-colors">← Torna ai minigiochi</Link>
@@ -311,56 +229,15 @@ export function RigoriPage() {
         </div>
 
         {/* Stadium scene */}
-        <div className={cn('glass-card p-4 text-center overflow-hidden', phase === 'reveal' && lastKick && !isGoal && 'animate-shake')}>
-          {/* Sky + goal */}
-          <div className="relative mx-auto w-full max-w-[300px] h-[190px] rounded-xl overflow-hidden mb-3"
-            style={{ background: 'linear-gradient(180deg, #0a1530 0%, #10254d 55%, #14532d 55%, #166534 100%)' }}>
-
-            {/* Crowd dots */}
-            <div className="absolute top-0 left-0 right-0 h-[38px] opacity-40"
-              style={{ background: 'repeating-radial-gradient(circle at 8px 8px, rgba(255,255,255,0.25) 0 1.5px, transparent 2px 12px)' }} />
-
-            {/* Goal frame */}
-            <div className="absolute left-1/2 -translate-x-1/2 top-[36px] w-[240px] h-[86px] border-[3px] border-white/80 border-b-0 rounded-t-sm"
-              style={{ background: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.07) 0 1px, transparent 1px 10px), repeating-linear-gradient(90deg, rgba(255,255,255,0.07) 0 1px, transparent 1px 10px)' }}>
-              {/* Keeper */}
-              <div
-                key={phase === 'reveal' ? `k-${revealed}` : 'k-idle'}
-                className={cn('absolute left-1/2 bottom-0 -ml-[18px] text-4xl select-none', phase === 'reveal' && lastKick ? 'animate-keeper-dive' : 'animate-wiggle')}
-                style={phase === 'reveal' && lastKick ? {
-                  ['--dive-x' as string]: DIVE[lastKick.keeper]?.x ?? '0px',
-                  ['--dive-r' as string]: DIVE[lastKick.keeper]?.r ?? '0deg',
-                } : undefined}
-              >
-                🧤
-              </div>
-            </div>
-
-            {/* Ball */}
-            <div
-              key={phase === 'reveal' ? `b-${revealed}` : 'b-idle'}
-              className={cn('absolute left-1/2 -ml-[15px] bottom-[10px] text-3xl select-none', phase === 'reveal' && lastKick && 'animate-ball-fly')}
-              style={phase === 'reveal' && lastKick ? {
-                ['--fly-x' as string]: FLY[lastKick.shot]?.x ?? '0px',
-                ['--fly-y' as string]: FLY[lastKick.shot]?.y ?? '-70px',
-              } : undefined}
-            >
-              ⚽
-            </div>
-
-            {/* Penalty spot */}
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-[8px] w-8 h-1.5 rounded-full bg-black/30" />
-
-            {/* Reveal flash */}
-            {phase === 'reveal' && lastKick && (
-              <div className={cn('absolute inset-0 flex items-center justify-center pointer-events-none')}>
-                <p className={cn('font-display font-black text-3xl uppercase drop-shadow-lg animate-pop-in', isGoal ? 'text-primary-300' : 'text-red-400')}
-                  style={{ animationDelay: '450ms', opacity: 0, animationFillMode: 'forwards' }}>
-                  {isGoal ? 'GOOOOL! ⚽' : 'PARATO! 🧤'}
-                </p>
-              </div>
+        <div className="glass-card p-4 text-center relative">
+          <PenaltyStadium
+            revealShot={phase === 'reveal' && lastKick ? { shot: lastKick.shot, keeper: lastKick.keeper, goal: lastKick.goal } : null}
+            revealKey={revealed}
+          >
+            {phase === 'aiming' && !aimZone && (
+              <PenaltyZoneGrid onPick={z => { vibrate(15); setAimZone(z); }} />
             )}
-          </div>
+          </PenaltyStadium>
 
           {/* Streak indicator */}
           {phase === 'reveal' && streak >= 2 && (
@@ -370,26 +247,22 @@ export function RigoriPage() {
             </div>
           )}
 
-          {/* Direction buttons */}
-          {phase === 'aiming' ? (
-            <div className="space-y-2">
-              <p className="text-sm font-bold text-white/80 animate-pulse">Dove tiri? 🎯</p>
-              <div className="grid grid-cols-3 gap-2">
-                {DIRECTIONS.map(dir => (
-                  <button
-                    key={dir.id}
-                    onClick={() => { vibrate(25); kick(dir.id); }}
-                    className="py-3.5 rounded-xl bg-primary-500/15 border border-primary-500/40 text-primary-300 font-black text-xs uppercase transition-all hover:bg-primary-500/30 hover:scale-[1.03] active:scale-95"
-                  >
-                    <span className="block text-xl mb-0.5">{dir.emoji}</span>
-                    {dir.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-white/40 font-bold uppercase tracking-widest animate-pulse">Momento della verità…</p>
-          )}
+          {/* Mira / potenza / reveal */}
+          <div className="mt-3">
+            {phase === 'aiming' && !aimZone && (
+              <p className="text-sm font-bold text-white/80 animate-pulse">Tocca la porta: dove tiri? 🎯</p>
+            )}
+            {phase === 'aiming' && aimZone && (
+              <PenaltyPowerMeter
+                zone={aimZone}
+                onCancel={() => setAimZone(null)}
+                onConfirm={power => kick(aimZone, power)}
+              />
+            )}
+            {phase === 'reveal' && (
+              <p className="text-xs text-white/40 font-bold uppercase tracking-widest animate-pulse">Momento della verità…</p>
+            )}
+          </div>
         </div>
 
         {/* Score */}

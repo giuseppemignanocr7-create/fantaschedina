@@ -7,6 +7,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from './firebase';
 import type { Prediction } from '@/types';
 import type { PowerUpSelection } from './economy';
+import type { PenaltyZone } from './penalty';
 
 export interface SubmitSchedinaResponse {
   ok: boolean;
@@ -80,19 +81,25 @@ export async function spinWheel(): Promise<{ segmentIndex: number; reward: numbe
   return res.data;
 }
 
-export interface RigoriShot {
-  shot: string;
-  keeper: string;
-  goal: boolean;
+export interface PenaltyShotInput {
+  zone: PenaltyZone;
+  power: number;
 }
 
-export async function playRigori(shots: string[]): Promise<{
+export interface RigoriShot {
+  shot: PenaltyZone;
+  keeper: PenaltyZone;
+  goal: boolean;
+  power: number;
+}
+
+export async function playRigori(shots: PenaltyShotInput[]): Promise<{
   results: RigoriShot[];
   goals: number;
   reward: number;
 }> {
   const fn = httpsCallable<
-    { action: string; shots: string[] },
+    { action: string; shots: PenaltyShotInput[] },
     { results: RigoriShot[]; goals: number; reward: number }
   >(functions, 'playMinigame');
   const res = await fn({ action: 'rigori_play', shots });
@@ -148,9 +155,9 @@ export async function startSfida(opponentId: string): Promise<SfidaStartResponse
   return res.data;
 }
 
-export async function playSfida(opponentId: string, shots: string[]): Promise<SfidaPlayResponse> {
+export async function playSfida(opponentId: string, shots: PenaltyShotInput[]): Promise<SfidaPlayResponse> {
   const fn = httpsCallable<
-    { action: string; opponentId: string; shots: string[] },
+    { action: string; opponentId: string; shots: PenaltyShotInput[] },
     SfidaPlayResponse
   >(functions, 'playMinigame');
   const res = await fn({ action: 'sfida_play', opponentId, shots });

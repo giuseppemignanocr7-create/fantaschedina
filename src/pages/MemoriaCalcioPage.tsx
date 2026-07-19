@@ -7,7 +7,7 @@ import { COINS } from '@/lib/economy';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { burstConfetti, sideCannons, coinRain, vibrate } from '@/lib/juice';
 
-const EMOJIS = ['⚽', '�', '🧤', '🚩', '👁️', '🏟️', '🏆', '�', '🥈', '�', '🏅', '🎖️', '�', '🟥', '👟', '🧽'];
+const EMOJIS = ['⚽', '🥅', '🧤', '🚩', '🏟️', '🏆', '🎯', '🥈', '🥉', '🏅', '🎖️', '👟', '🧦', '�', '�', '🟥'];
 
 interface Level {
   pairs: number;
@@ -355,32 +355,52 @@ export function MemoriaCalcioPage() {
           <span>Mosse: <span className="text-white/70 font-bold">{moves}</span></span>
         </div>
 
-        {/* Card grid */}
+        {/* Card grid 3D flip */}
         <div
           className="grid gap-2.5"
           style={{ gridTemplateColumns: `repeat(${level.cols}, 1fr)` }}
         >
           {deck.map((card, i) => (
-            <button
+            <div
               key={card.id}
-              onClick={() => flipCard(i)}
-              disabled={card.state !== 'hidden'}
+              onClick={() => card.state === 'hidden' && flipCard(i)}
               className={cn(
-                'aspect-square rounded-2xl flex items-center justify-center text-3xl transition-all duration-300 select-none',
-                card.state === 'hidden' && 'bg-gradient-to-br from-primary-600/30 to-primary-800/40 border border-primary-500/20 hover:from-primary-500/40 hover:to-primary-700/50 active:scale-95',
-                card.state === 'flipped' && 'bg-white/15 border border-white/40 scale-[1.05] animate-pop-in',
-                card.state === 'matched' && 'bg-green-500/20 border border-green-500/40 opacity-60'
+                'group aspect-square rounded-2xl cursor-pointer select-none',
+                card.state === 'matched' && 'opacity-60'
               )}
+              style={{ perspective: '800px' }}
             >
-              {card.state === 'hidden' ? (
-                <span className="text-white/20 text-2xl">⚽</span>
-              ) : (
-                <span className={cn(
-                  'animate-pop-in',
-                  card.state === 'matched' && 'opacity-80'
-                )}>{card.emoji}</span>
-              )}
-            </button>
+              <div
+                className={cn(
+                  'relative w-full h-full transition-transform duration-500 ease-out',
+                  card.state !== 'hidden' && '[transform:rotateY(180deg)]'
+                )}
+                style={{ transformStyle: 'preserve-3d' }}
+              >
+                {/* Back face */}
+                <div
+                  className="absolute inset-0 rounded-2xl flex items-center justify-center bg-gradient-to-br from-primary-600/40 to-primary-800/60 border border-primary-500/30 shadow-inner active:scale-95 transition-transform [backface-visibility:hidden]"
+                  style={{ transform: 'rotateY(0deg)' }}
+                >
+                  <span className="text-3xl drop-shadow-md">⚽</span>
+                </div>
+                {/* Front face */}
+                <div
+                  className={cn(
+                    'absolute inset-0 rounded-2xl flex items-center justify-center text-4xl bg-gradient-to-br from-white/15 to-white/5 border shadow-lg [backface-visibility:hidden]',
+                    card.state === 'matched' ? 'border-green-500/40 shadow-green-500/15' : 'border-white/30'
+                  )}
+                  style={{ transform: 'rotateY(180deg)' }}
+                >
+                  <span className={cn(
+                    'drop-shadow-md animate-pop-in',
+                    card.state === 'matched' && 'opacity-80'
+                  )}>
+                    {card.emoji}
+                  </span>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       </div>

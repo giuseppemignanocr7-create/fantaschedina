@@ -106,8 +106,8 @@ export default {
           '100%': { transform: 'translate(var(--fly-x, 0), var(--fly-y, -70px)) scale(0.55)' },
         },
         keeperDive: {
-          '0%': { transform: 'translateX(0) rotate(0deg)' },
-          '100%': { transform: 'translateX(var(--dive-x, 0)) rotate(var(--dive-r, 0deg))' },
+          '0%': { transform: 'translate(0, 0) rotate(0deg)' },
+          '100%': { transform: 'translate(var(--dive-x, 0), var(--dive-y, 0)) rotate(var(--dive-r, 0deg))' },
         },
         coinPop: {
           '0%': { opacity: '0', transform: 'translateY(10px) scale(0.3)' },
