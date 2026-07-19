@@ -82,6 +82,7 @@ interface AppStore {
   setPowerups: (powerups: PowerUpSelection) => void;
   submitSchedina: () => Promise<void>;
   resetSchedina: () => void;
+  unlockSchedina: () => void;
   loadUserSchedina: () => Promise<void>;
   loadSchedinaHistory: () => Promise<void>;
 
@@ -222,6 +223,15 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     if (currentSchedina?.isLocked) return;
     set({
       currentSchedina: emptyDraft(currentMatchday?.number ?? 1, currentUser?.id),
+      error: null,
+    });
+  },
+
+  unlockSchedina: () => {
+    const { currentSchedina } = get();
+    if (!currentSchedina?.isLocked) return;
+    set({
+      currentSchedina: { ...currentSchedina, isLocked: false },
       error: null,
     });
   },

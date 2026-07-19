@@ -246,7 +246,7 @@ export async function fetchNextMatchday(): Promise<ApiMatchday | null> {
       number: matchdayNum,
       season: `${seasonStart.getUTCFullYear()}-${seasonStart.getUTCFullYear() + 1}`,
       matches: allMatches.slice(0, 10),
-      deadline: new Date(earliest - 60 * 60 * 1000),
+      deadline: new Date(earliest - 2 * 60 * 60 * 1000),
     };
   } catch (err) {
     console.warn('[ESPN] Unavailable, using mock data:', err);

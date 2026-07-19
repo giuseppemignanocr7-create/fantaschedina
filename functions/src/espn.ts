@@ -171,7 +171,7 @@ export async function fetchActiveMatchdayPool(
 
   return {
     matches: matches.slice(0, 80),
-    deadline: new Date(earliest - 60 * 60 * 1000),
+    deadline: new Date(earliest - 2 * 60 * 60 * 1000),
     seasonStart: seasonStart ?? new Date(),
     season,
   };

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  Check, AlertCircle, Send, Info, Trophy, Zap, Clock, RotateCcw, RefreshCw,
+  Check, AlertCircle, Send, Info, Trophy, Zap, Clock, RotateCcw, RefreshCw, Pencil,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -68,6 +68,7 @@ export function SchedinaPage() {
     updatePrediction,
     submitSchedina,
     resetSchedina,
+    unlockSchedina,
     selectedPowerups,
     setPowerups,
     isLoadingOdds,
@@ -90,6 +91,13 @@ export function SchedinaPage() {
   const predictions = useMemo(() => currentSchedina?.predictions || [], [currentSchedina?.predictions]);
   const completedCount = predictions.length;
   const isComplete = completedCount === TOTAL_PREDICTIONS;
+
+  const isDeadlinePassed = useMemo(() => {
+    if (!currentMatchday?.deadline) return false;
+    return new Date().getTime() >= new Date(currentMatchday.deadline).getTime();
+  }, [currentMatchday?.deadline]);
+
+  const canEdit = currentSchedina?.isLocked && !isDeadlinePassed;
 
   const scorePreview = useMemo(() => {
     if (predictions.length === 0) return null;
@@ -116,14 +124,26 @@ export function SchedinaPage() {
 
   const handleSubmit = async () => {
     if (!isComplete) return;
+    const isUpdate = !!currentSchedina?.submittedAt;
     await submitSchedina();
     if (!useAppStore.getState().error) {
       vibrate([50, 30, 80]);
       sideCannons();
-      toast.success('Schedina inviata con successo!');
+      toast.success(isUpdate ? 'Schedina aggiornata con successo!' : 'Schedina inviata con successo!');
     } else {
       toast.error(useAppStore.getState().error || 'Errore nell\'invio della schedina');
     }
+  };
+
+  const handleEdit = () => {
+    unlockSchedina();
+    toast.info('Puoi modificare la schedina. Re-invia per confermare le modifiche.');
+  };
+
+  const handleReset = () => {
+    unlockSchedina();
+    resetSchedina();
+    toast.info('Schedina azzerata. Ricompila e re-invia.');
   };
 
   const handleQuickBet = (newPredictions: Prediction[]) => {
@@ -466,16 +486,39 @@ export function SchedinaPage() {
                     ) : (
                       <>
                         <Send size={18} />
-                        Invia Schedina
+                        {currentSchedina?.submittedAt ? 'Aggiorna Schedina' : 'Invia Schedina'}
                       </>
                     )}
                   </button>
                 )}
 
                 {currentSchedina?.isLocked && (
-                  <div className="mt-4 p-3 bg-green-500/20 rounded-lg text-center">
+                  <div className="mt-4 p-3 bg-green-500/20 rounded-lg text-center space-y-2">
                     <Check size={24} className="text-green-400 mx-auto mb-1" />
                     <p className="text-green-400 font-bold text-sm">Schedina Inviata!</p>
+                    {canEdit && (
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={handleEdit}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-300 text-xs font-bold hover:bg-primary-500/30 transition-all"
+                        >
+                          <Pencil size={14} />
+                          Modifica
+                        </button>
+                        <button
+                          onClick={handleReset}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold hover:bg-red-500/30 transition-all"
+                        >
+                          <RotateCcw size={14} />
+                          Azzera
+                        </button>
+                      </div>
+                    )}
+                    {canEdit && (
+                      <p className="text-[10px] text-white/40">
+                        Puoi modificare o azzerare fino a 2 ore dall'inizio della prima partita
+                      </p>
+                    )}
                     {currentSchedina.powerups &&
                       (currentSchedina.powerups.jolly ||
                         currentSchedina.powerups.shield ||

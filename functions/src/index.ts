@@ -669,21 +669,29 @@ export const submitSchedina = onCall({ region: REGION, enforceAppCheck: true }, 
     if (existing.exists && (existing.data() as SchedinaDoc).settled) {
       throw new HttpsError('failed-precondition', 'Schedina già valutata');
     }
+
+    // Ricalcola costo power-up precedenti da rimborsare
+    let refund = 0;
     if (existing.exists) {
-      throw new HttpsError(
-        'failed-precondition',
-        'Schedina già inviata per questa giornata'
-      );
+      const prev = (existing.data() as SchedinaDoc).powerups ?? {};
+      if (prev.jolly) refund += POWERUPS.jolly.cost;
+      if (prev.shield) refund += POWERUPS.shield.cost;
+      if (prev.insurance) refund += POWERUPS.insurance.cost;
     }
+
     const profileRef = db.collection('profiles').doc(uid);
     const profile = await tx.get(profileRef);
     if (!profile.exists) throw new HttpsError('not-found', 'Profilo non trovato');
     const coins = (profile.data()?.coins ?? 0) as number;
-    if (cost > coins) {
+    const netCost = cost - refund;
+    if (netCost > coins) {
       throw new HttpsError('failed-precondition', 'Gettoni insufficienti per i power-up');
     }
-    if (cost > 0) {
-      await adjustCoins(uid, -cost, `powerups_g${md!.number}`, tx);
+    if (refund > 0) {
+      await adjustCoins(uid, refund, `powerups_refund_g${md!.number}`, tx);
+    }
+    if (netCost > 0) {
+      await adjustCoins(uid, -netCost, `powerups_g${md!.number}`, tx);
     }
     tx.set(schedinaRef, {
       id: schedinaRef.id,
@@ -747,24 +755,14 @@ export const changePrediction = onCall({ region: REGION, enforceAppCheck: true }
     if (!snap.exists) throw new HttpsError('not-found', 'Nessuna schedina inviata');
     const s = snap.data() as SchedinaDoc;
     if (s.settled) throw new HttpsError('failed-precondition', 'Schedina già valutata');
-    if (s.lastMinuteUsed) {
-      throw new HttpsError('failed-precondition', 'Cambio Last-Minute già utilizzato');
-    }
-    const profileRef = db.collection('profiles').doc(uid);
-    const profile = await tx.get(profileRef);
-    const coins = (profile.data()?.coins ?? 0) as number;
-    if (POWERUPS.lastminute.cost > coins) {
-      throw new HttpsError('failed-precondition', 'Gettoni insufficienti');
-    }
     const idx = s.predictions.findIndex(p => p.matchId === matchId);
     if (idx === -1) throw new HttpsError('invalid-argument', 'Pronostico non trovato');
     const updated = [...s.predictions];
     updated[idx] = { matchId, betType, outcome, odds: officialOdds };
-    await adjustCoins(uid, -POWERUPS.lastminute.cost, `lastminute_g${md.number}`, tx);
-    tx.update(schedinaRef, { predictions: updated, lastMinuteUsed: true });
+    tx.update(schedinaRef, { predictions: updated });
   });
 
-  return { ok: true, coinsSpent: POWERUPS.lastminute.cost };
+  return { ok: true, coinsSpent: 0 };
 });
 
 // ---------- 5. MINIGIOCHI (callable) ----------
