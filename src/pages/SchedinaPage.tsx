@@ -245,6 +245,52 @@ export function SchedinaPage() {
               </div>
             )}
 
+            {/* Schedina inviata - banner modifiche in alto */}
+            {currentSchedina?.isLocked && canEdit && (
+              <div className="glass-card p-4 mb-6 border-green-500/30 bg-green-500/5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Check size={18} className="text-green-400" />
+                  <p className="text-green-400 font-bold text-sm">Schedina inviata! Puoi ancora modificarla o annullarla.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={handleEdit}
+                    className="flex items-center justify-center gap-1.5 py-2 px-4 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-300 text-xs font-bold hover:bg-primary-500/30 transition-all"
+                  >
+                    <Pencil size={14} />
+                    Modifica
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className="flex items-center justify-center gap-1.5 py-2 px-4 rounded-lg bg-yellow-500/20 border border-yellow-500/30 text-yellow-300 text-xs font-bold hover:bg-yellow-500/30 transition-all"
+                  >
+                    <RotateCcw size={14} />
+                    Azzera
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={isSubmitting}
+                    className="flex items-center justify-center gap-1.5 py-2 px-4 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold hover:bg-red-500/30 transition-all disabled:opacity-50"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-3 h-3 border-2 border-red-300/30 border-t-red-300 rounded-full animate-spin" />
+                        Annullamento...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 size={14} />
+                        Annulla Schedina
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-[10px] text-white/40 mt-2">
+                  Disponibile fino a 2 ore dall'inizio della prima partita
+                </p>
+              </div>
+            )}
+
             {/* Bet Type Selector */}
             <div className="glass-card p-2 mb-4">
               <div className="flex gap-1">
