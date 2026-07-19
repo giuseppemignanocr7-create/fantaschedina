@@ -58,16 +58,16 @@ const getTeam = (id: string): Team => SERIE_A_TEAMS.find(t => t.id === id)!;
 
 // Partite Giornata 38 – 10 partite, date dinamiche (prossimo weekend)
 export const MOCK_MATCHES: Match[] = [
-  { id: 'm1',  matchday: 38, homeTeam: getTeam('nap'), awayTeam: getTeam('juv'), scheduledAt: md(0, 15,  0), status: 'scheduled' },
-  { id: 'm2',  matchday: 38, homeTeam: getTeam('int'), awayTeam: getTeam('mil'), scheduledAt: md(0, 18,  0), status: 'scheduled' },
-  { id: 'm3',  matchday: 38, homeTeam: getTeam('ata'), awayTeam: getTeam('laz'), scheduledAt: md(0, 20, 45), status: 'scheduled' },
-  { id: 'm4',  matchday: 38, homeTeam: getTeam('rom'), awayTeam: getTeam('fio'), scheduledAt: md(1, 12, 30), status: 'scheduled' },
-  { id: 'm5',  matchday: 38, homeTeam: getTeam('bol'), awayTeam: getTeam('tor'), scheduledAt: md(1, 15,  0), status: 'scheduled' },
-  { id: 'm6',  matchday: 38, homeTeam: getTeam('udi'), awayTeam: getTeam('emp'), scheduledAt: md(1, 15,  0), status: 'scheduled' },
-  { id: 'm7',  matchday: 38, homeTeam: getTeam('gen'), awayTeam: getTeam('cag'), scheduledAt: md(1, 15,  0), status: 'scheduled' },
-  { id: 'm8',  matchday: 38, homeTeam: getTeam('ver'), awayTeam: getTeam('lec'), scheduledAt: md(1, 18,  0), status: 'scheduled' },
-  { id: 'm9',  matchday: 38, homeTeam: getTeam('par'), awayTeam: getTeam('com'), scheduledAt: md(1, 18,  0), status: 'scheduled' },
-  { id: 'm10', matchday: 38, homeTeam: getTeam('mon'), awayTeam: getTeam('ven'), scheduledAt: md(1, 20, 45), status: 'scheduled' },
+  { id: 'm1',  matchday: 38, competition: 'ita.1', homeTeam: getTeam('nap'), awayTeam: getTeam('juv'), scheduledAt: md(0, 15,  0), status: 'scheduled' },
+  { id: 'm2',  matchday: 38, competition: 'ita.1', homeTeam: getTeam('int'), awayTeam: getTeam('mil'), scheduledAt: md(0, 18,  0), status: 'scheduled' },
+  { id: 'm3',  matchday: 38, competition: 'ita.1', homeTeam: getTeam('ata'), awayTeam: getTeam('laz'), scheduledAt: md(0, 20, 45), status: 'scheduled' },
+  { id: 'm4',  matchday: 38, competition: 'ita.1', homeTeam: getTeam('rom'), awayTeam: getTeam('fio'), scheduledAt: md(1, 12, 30), status: 'scheduled' },
+  { id: 'm5',  matchday: 38, competition: 'ita.1', homeTeam: getTeam('bol'), awayTeam: getTeam('tor'), scheduledAt: md(1, 15,  0), status: 'scheduled' },
+  { id: 'm6',  matchday: 38, competition: 'ita.1', homeTeam: getTeam('udi'), awayTeam: getTeam('emp'), scheduledAt: md(1, 15,  0), status: 'scheduled' },
+  { id: 'm7',  matchday: 38, competition: 'ita.1', homeTeam: getTeam('gen'), awayTeam: getTeam('cag'), scheduledAt: md(1, 15,  0), status: 'scheduled' },
+  { id: 'm8',  matchday: 38, competition: 'ita.1', homeTeam: getTeam('ver'), awayTeam: getTeam('lec'), scheduledAt: md(1, 18,  0), status: 'scheduled' },
+  { id: 'm9',  matchday: 38, competition: 'ita.1', homeTeam: getTeam('par'), awayTeam: getTeam('com'), scheduledAt: md(1, 18,  0), status: 'scheduled' },
+  { id: 'm10', matchday: 38, competition: 'ita.1', homeTeam: getTeam('mon'), awayTeam: getTeam('ven'), scheduledAt: md(1, 20, 45), status: 'scheduled' },
 ];
 
 // 55 Partecipanti con dati fissi e realistici

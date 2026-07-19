@@ -48,6 +48,7 @@ export interface Team {
 export interface Match {
   id: string;
   matchday: number;
+  competition: string;
   homeTeam: Team;
   awayTeam: Team;
   scheduledAt: Date;

@@ -16,6 +16,33 @@ export const TOURNAMENT = {
   minOddsForHighestOddsPrize: 2.0,
 } as const;
 
+// --- CAMPIONATI / COMPETIZIONI ---
+// Catalogo campionati disponibili (slug ESPN soccer). L'admin sceglie quali
+// sono "attivi": syncMatchday pesca le partite SOLO dai campionati attivi.
+export interface CompetitionDef {
+  code: string;
+  name: string;
+  slug: string;
+}
+
+export const COMPETITIONS: CompetitionDef[] = [
+  { code: 'ita.1', name: 'Serie A', slug: 'ita.1' },
+  { code: 'eng.1', name: 'Premier League', slug: 'eng.1' },
+  { code: 'esp.1', name: 'La Liga', slug: 'esp.1' },
+  { code: 'ger.1', name: 'Bundesliga', slug: 'ger.1' },
+  { code: 'fra.1', name: 'Ligue 1', slug: 'fra.1' },
+  { code: 'uefa.champions', name: 'Champions League', slug: 'uefa.champions' },
+  { code: 'uefa.europa', name: 'Europa League', slug: 'uefa.europa' },
+  { code: 'ita.coppa_italia', name: 'Coppa Italia', slug: 'ita.coppa_italia' },
+];
+
+export const DEFAULT_ACTIVE_COMPETITIONS: string[] = ['ita.1'];
+
+// Numero di partite che ogni utente sceglie (a scelta, dal pool dei campionati attivi)
+// per comporre la propria schedina.
+export const MAX_PICKS_PER_SCHEDINA = 10;
+
+
 // --- GETTONI ---
 export const COINS = {
   starting: 100,

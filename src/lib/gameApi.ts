@@ -293,3 +293,22 @@ export async function adminToggleBanFn(targetUid: string): Promise<{ ok: boolean
   const res = await fn({ targetUid });
   return res.data;
 }
+
+export interface CompetitionStatus {
+  code: string;
+  name: string;
+  slug: string;
+  active: boolean;
+}
+
+export async function adminManageCompetitionsFn(
+  action: 'list' | 'toggle',
+  data: { code?: string } = {}
+): Promise<{ competitions?: CompetitionStatus[]; ok?: boolean; active?: boolean }> {
+  const fn = httpsCallable<
+    { action: string } & Record<string, unknown>,
+    { competitions?: CompetitionStatus[]; ok?: boolean; active?: boolean }
+  >(functions, 'adminManageCompetitions');
+  const res = await fn({ action, ...data });
+  return res.data;
+}

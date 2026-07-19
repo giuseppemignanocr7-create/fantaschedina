@@ -34,7 +34,7 @@ import {
   type ProfileDoc,
 } from '@/lib/db';
 import { submitSchedinaFn, callableErrorMessage } from '@/lib/gameApi';
-import type { PowerUpSelection } from '@/lib/economy';
+import { MAX_PICKS_PER_SCHEDINA, type PowerUpSelection } from '@/lib/economy';
 import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
 import { getCached, setCached, invalidate, invalidatePrefix, CACHE_TTL } from '@/lib/cache';
 
@@ -163,6 +163,11 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       currentSchedina ?? emptyDraft(currentMatchday?.number ?? 1, currentUser?.id);
     if (draft.isLocked) return;
     const existing = draft.predictions ?? [];
+    const isNewMatch = !existing.some(p => p.matchId === matchId);
+    if (isNewMatch && existing.length >= MAX_PICKS_PER_SCHEDINA) {
+      set({ error: `Puoi scegliere al massimo ${MAX_PICKS_PER_SCHEDINA} partite` });
+      return;
+    }
     const updated = existing.filter(p => p.matchId !== matchId);
     updated.push(prediction);
     set({ currentSchedina: { ...draft, predictions: updated } });
@@ -182,10 +187,9 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       set({ error: 'Nessuna giornata attiva' });
       return;
     }
-    const total = currentMatchday.matches.length;
     const predictions = currentSchedina?.predictions ?? [];
-    if (predictions.length < total) {
-      set({ error: `Devi completare tutti i ${total} pronostici` });
+    if (predictions.length !== MAX_PICKS_PER_SCHEDINA) {
+      set({ error: `Devi scegliere esattamente ${MAX_PICKS_PER_SCHEDINA} partite` });
       return;
     }
 

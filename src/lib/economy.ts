@@ -4,6 +4,9 @@
 // Tenere allineata a functions/src/config.ts (fonte di verità server).
 // ============================================
 
+// Numero di partite che ogni utente sceglie (a scelta, dal pool dei campionati attivi).
+export const MAX_PICKS_PER_SCHEDINA = 10;
+
 export const COINS = {
   starting: 100,
   perCorrectPrediction: 2,

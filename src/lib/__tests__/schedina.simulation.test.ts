@@ -97,6 +97,7 @@ function buildSimulation(seed: number): Sim {
     matches.push({
       id: `m${i}`,
       matchday: 1,
+      competition: 'ita.1',
       homeTeam: { id: 'aaa', name: 'Home', shortName: 'HOM' },
       awayTeam: { id: 'bbb', name: 'Away', shortName: 'AWY' },
       scheduledAt: new Date('2026-01-01'),

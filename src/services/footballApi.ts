@@ -117,6 +117,7 @@ function toMatch(ev: ESPNEvent, matchdayNum: number): Match | null {
   return {
     id: `espn-${ev.id}`,
     matchday: matchdayNum,
+    competition: 'ita.1',
     homeTeam: {
       id: ESPN_TO_ID[home.team.abbreviation] ?? home.team.abbreviation.toLowerCase().slice(0, 3),
       name: home.team.displayName,

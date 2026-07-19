@@ -149,5 +149,14 @@ service cloud.firestore {
     match /rate_limits/{docId} {
       allow read, write: if false;
     }
+
+    // ============================================
+    // CONFIG — campionati attivi e altre config globali,
+    // gestite da admin via Cloud Functions (adminManageCompetitions).
+    // ============================================
+    match /config/{docId} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
   }
 }

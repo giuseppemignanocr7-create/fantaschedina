@@ -21,7 +21,10 @@ import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions/v2';
 import { randomInt } from 'node:crypto';
 
-import { COINS, MISSIONS, POWERUPS, PowerUpSelection, TOURNAMENT } from './config';
+import {
+  COINS, MISSIONS, POWERUPS, PowerUpSelection, TOURNAMENT,
+  COMPETITIONS, DEFAULT_ACTIVE_COMPETITIONS, MAX_PICKS_PER_SCHEDINA,
+} from './config';
 import { ALL_QUIZ_QUESTIONS } from './quizData';
 import {
   evaluateSchedina,
@@ -30,7 +33,7 @@ import {
 } from './scoring';
 import { generateMatchdayOdds, MatchOdds } from './odds';
 import { fetchRealMatchdayOdds } from './realOdds';
-import { fetchNextMatchday, fetchResults } from './espn';
+import { fetchActiveMatchdayPool, fetchResults } from './espn';
 
 initializeApp();
 const db = getFirestore();
@@ -56,6 +59,7 @@ function generateInviteCode(): string {
 interface StoredMatch {
   id: string;
   matchday: number;
+  competition: string;
   homeTeam: { id: string; name: string; shortName: string; logo?: string };
   awayTeam: { id: string; name: string; shortName: string; logo?: string };
   scheduledAt: Timestamp;
@@ -145,9 +149,21 @@ async function enforceRateLimit(
   }
 }
 
-/** Crea/aggiorna il doc della prossima giornata con quote server-side. */
+/** Legge i campionati attivi (scelti dall'admin) da Firestore, con fallback a Serie A. */
+async function getActiveCompetitions(): Promise<{ code: string; slug: string }[]> {
+  const snap = await db.collection('config').doc('competitions').get();
+  const active = (snap.exists ? (snap.data()?.active as string[]) : null) ?? DEFAULT_ACTIVE_COMPETITIONS;
+  const codes = active.length > 0 ? active : DEFAULT_ACTIVE_COMPETITIONS;
+  return codes
+    .map(code => COMPETITIONS.find(c => c.code === code))
+    .filter((c): c is typeof COMPETITIONS[number] => !!c)
+    .map(c => ({ code: c.code, slug: c.slug }));
+}
+
+/** Crea/aggiorna il doc della prossima giornata con quote server-side (pool multi-campionato). */
 async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | null> {
-  const api = await fetchNextMatchday();
+  const competitions = await getActiveCompetitions();
+  const api = await fetchActiveMatchdayPool(competitions);
   if (!api) return null;
 
   const fetchedIds = new Set(api.matches.map(m => m.id));
@@ -191,6 +207,7 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
   const matches: StoredMatch[] = api.matches.map(m => ({
     id: m.id,
     matchday: number as number,
+    competition: m.competition,
     homeTeam: m.homeTeam,
     awayTeam: m.awayTeam,
     scheduledAt: Timestamp.fromDate(m.scheduledAt),
@@ -267,7 +284,7 @@ export const settleMatchdays = onSchedule(
 
       // Aggiorna risultati da ESPN
       const results = await fetchResults(
-        md.matches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate() }))
+        md.matches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
       );
 
       const updatedMatches = md.matches.map(m => {
@@ -342,7 +359,7 @@ export const updateLiveScores = onSchedule(
     if (activeMatches.length === 0) return;
 
     const results = await fetchResults(
-      activeMatches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate() }))
+      activeMatches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
     );
     if (results.size === 0) return;
 
@@ -594,10 +611,10 @@ export const submitSchedina = onCall({ region: REGION, enforceAppCheck: true }, 
   if (Timestamp.now().toMillis() >= md.deadline.toMillis()) {
     throw new HttpsError('failed-precondition', 'Deadline superata: schedina chiusa');
   }
-  if (predictions.length !== md.matches.length) {
+  if (predictions.length !== MAX_PICKS_PER_SCHEDINA) {
     throw new HttpsError(
       'invalid-argument',
-      `Devi inviare tutti i ${md.matches.length} pronostici`
+      `Devi scegliere esattamente ${MAX_PICKS_PER_SCHEDINA} partite`
     );
   }
 
@@ -1465,6 +1482,39 @@ export const adminSyncMatchday = onCall({ region: REGION }, async request => {
   return { ok: true, matchday: md ? { number: md.number, matches: md.matches.length } : null };
 });
 
+/** Lista/attivazione campionati (admin): quali campionati alimentano il pool partite. */
+export const adminManageCompetitions = onCall({ region: REGION }, async request => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireAdmin(uid);
+
+  const action = request.data?.action as string;
+  const configRef = db.collection('config').doc('competitions');
+
+  if (action === 'list') {
+    const snap = await configRef.get();
+    const active = (snap.exists ? (snap.data()?.active as string[]) : null) ?? DEFAULT_ACTIVE_COMPETITIONS;
+    return {
+      competitions: COMPETITIONS.map(c => ({ ...c, active: active.includes(c.code) })),
+    };
+  }
+
+  if (action === 'toggle') {
+    const code = request.data?.code as string;
+    if (!code || !COMPETITIONS.some(c => c.code === code)) {
+      throw new HttpsError('invalid-argument', 'Campionato non valido');
+    }
+    const snap = await configRef.get();
+    const active = (snap.exists ? (snap.data()?.active as string[]) : null) ?? [...DEFAULT_ACTIVE_COMPETITIONS];
+    const isActive = active.includes(code);
+    const updated = isActive ? active.filter(c => c !== code) : [...active, code];
+    await configRef.set({ active: updated, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return { ok: true, active: !isActive };
+  }
+
+  throw new HttpsError('invalid-argument', `Azione sconosciuta: ${action}`);
+});
+
 /** Force settlement di una giornata specifica (admin). */
 export const adminForceSettle = onCall({ region: REGION }, async request => {
   const uid = request.auth?.uid;
@@ -1479,7 +1529,7 @@ export const adminForceSettle = onCall({ region: REGION }, async request => {
   if (md.settled) throw new HttpsError('failed-precondition', 'Giornata già settleata');
 
   const results = await fetchResults(
-    md.matches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate() }))
+    md.matches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
   );
 
   const updatedMatches = md.matches.map(m => {

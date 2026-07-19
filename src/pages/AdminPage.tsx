@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   RefreshCw, Users, Trophy, Calendar, Megaphone, Ban, Plus, Trash2,
-  ToggleLeft, ToggleRight, Zap, AlertTriangle, BarChart3,
+  ToggleLeft, ToggleRight, Zap, AlertTriangle, BarChart3, Globe,
 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import {
   adminGetStatsFn, adminSyncMatchdayFn, adminForceSettleFn,
   adminManageSponsorFn, adminToggleBanFn, seedQuizQuestionsFn,
-  type AdminStats, type SponsorData,
+  adminManageCompetitionsFn, type AdminStats, type SponsorData,
+  type CompetitionStatus,
 } from '@/lib/gameApi';
 import { callableErrorMessage } from '@/lib/gameApi';
 import { getPublicProfilesFn, type PublicProfileData } from '@/lib/gameApi';
 import { cn } from '@/lib/utils';
 
-type Tab = 'stats' | 'matchday' | 'sponsors' | 'users';
+type Tab = 'stats' | 'matchday' | 'competitions' | 'sponsors' | 'users';
 
 export function AdminPage() {
   const { profile } = useAuthContext();
@@ -60,6 +61,7 @@ export function AdminPage() {
   const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
     { id: 'stats', label: 'Statistiche', icon: BarChart3 },
     { id: 'matchday', label: 'Giornate', icon: Calendar },
+    { id: 'competitions', label: 'Campionati', icon: Globe },
     { id: 'sponsors', label: 'Sponsor', icon: Megaphone },
     { id: 'users', label: 'Utenti', icon: Users },
   ];
@@ -106,6 +108,7 @@ export function AdminPage() {
 
       {tab === 'stats' && <StatsTab stats={stats} loading={loading} onRefresh={loadStats} />}
       {tab === 'matchday' && <MatchdayTab onError={setError} onSuccess={setSuccess} />}
+      {tab === 'competitions' && <CompetitionsTab onError={setError} onSuccess={setSuccess} />}
       {tab === 'sponsors' && <SponsorsTab onError={setError} onSuccess={setSuccess} />}
       {tab === 'users' && <UsersTab onError={setError} onSuccess={setSuccess} />}
     </div>
@@ -280,6 +283,94 @@ function MatchdayTab({ onError, onSuccess }: {
           {seeding ? 'Caricamento...' : 'Seed domande quiz'}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ============================================
+// COMPETITIONS TAB
+// ============================================
+function CompetitionsTab({ onError, onSuccess }: {
+  onError: (s: string) => void;
+  onSuccess: (s: string) => void;
+}) {
+  const [competitions, setCompetitions] = useState<CompetitionStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [togglingCode, setTogglingCode] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminManageCompetitionsFn('list');
+      setCompetitions(res.competitions ?? []);
+    } catch (e) {
+      onError(callableErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [onError]);
+
+  useEffect(() => {
+    const t = setTimeout(() => load(), 0);
+    return () => clearTimeout(t);
+  }, [load]);
+
+  const activeCount = competitions.filter(c => c.active).length;
+
+  const handleToggle = async (c: CompetitionStatus) => {
+    setTogglingCode(c.code);
+    try {
+      await adminManageCompetitionsFn('toggle', { code: c.code });
+      onSuccess(`${c.name} ${c.active ? 'disattivato' : 'attivato'}`);
+      await load();
+    } catch (e) {
+      onError(callableErrorMessage(e));
+    } finally {
+      setTogglingCode(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="glass-card p-4">
+        <h2 className="text-lg font-bold text-white mb-1">Campionati Attivi</h2>
+        <p className="text-white/50 text-sm">
+          Le partite dei campionati attivi alimentano il pool da cui ogni utente sceglie
+          le sue 10 partite. Utile per tenere il gioco vivo quando la Serie A è ferma
+          (soste, fine stagione): attiva Champions League, Premier League, ecc.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="text-white/40 text-center py-8">Caricamento...</div>
+      ) : (
+        <div className="space-y-2">
+          {competitions.map(c => (
+            <div key={c.code} className="glass-card p-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-medium truncate">{c.name}</p>
+                <p className="text-white/30 text-xs">{c.code}</p>
+              </div>
+              <button
+                onClick={() => handleToggle(c)}
+                disabled={togglingCode === c.code}
+                className={cn(
+                  'p-1.5 rounded-lg disabled:opacity-40',
+                  c.active ? 'text-green-400' : 'text-white/30'
+                )}
+                title={c.active ? 'Attivo' : 'Disattivato'}
+              >
+                {c.active ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+              </button>
+            </div>
+          ))}
+          {activeCount === 0 && (
+            <div className="glass-card p-3 border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm text-center">
+              Nessun campionato attivo: il pool partite sarà vuoto al prossimo sync.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -120,6 +120,7 @@ function makeMatch(id: string, h: number, a: number): Match {
   return {
     id,
     matchday: 1,
+    competition: 'ita.1',
     homeTeam: { id: 'aaa', name: 'Home', shortName: 'HOM' },
     awayTeam: { id: 'bbb', name: 'Away', shortName: 'AWY' },
     scheduledAt: new Date(),

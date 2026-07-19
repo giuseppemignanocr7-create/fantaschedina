@@ -1,9 +1,9 @@
 // ============================================
 // FANTASCHEDINA FUNCTIONS - ESPN CLIENT (server-side)
-// Fetch giornata + risultati (incl. parziale 1° tempo dai linescores).
+// Fetch pool multi-campionato + risultati (incl. parziale 1° tempo dai linescores).
 // ============================================
 
-const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1';
+const ESPN_BASE = (slug: string) => `https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}`;
 
 const ESPN_TO_ID: Record<string, string> = {
   INT: 'int', MIL: 'mil', JUV: 'juv', NAP: 'nap', ATA: 'ata',
@@ -37,6 +37,7 @@ interface ESPNScoreboard {
 
 export interface EspnMatch {
   id: string;
+  competition: string;
   homeTeam: { id: string; name: string; shortName: string; logo?: string };
   awayTeam: { id: string; name: string; shortName: string; logo?: string };
   scheduledAt: Date;
@@ -51,11 +52,11 @@ export interface EspnResult {
   status: 'scheduled' | 'live' | 'finished';
 }
 
-async function fetchScoreboard(dateStr?: string): Promise<ESPNScoreboard | null> {
+async function fetchScoreboard(slug: string, dateStr?: string): Promise<ESPNScoreboard | null> {
   try {
     const url = dateStr
-      ? `${ESPN_BASE}/scoreboard?dates=${dateStr}&limit=20`
-      : `${ESPN_BASE}/scoreboard?limit=20`;
+      ? `${ESPN_BASE(slug)}/scoreboard?dates=${dateStr}&limit=50`
+      : `${ESPN_BASE(slug)}/scoreboard?limit=50`;
     const res = await fetch(url);
     if (!res.ok) return null;
     return (await res.json()) as ESPNScoreboard;
@@ -75,14 +76,12 @@ function teamOf(c: ESPNCompetitor) {
   };
 }
 
-/** Prossima giornata: blocco di date entro 5 giorni dalla prima futura. */
-export async function fetchNextMatchday(): Promise<{
-  matches: EspnMatch[];
-  deadline: Date;
-  seasonStart: Date;
-  season: string;
-} | null> {
-  const base = await fetchScoreboard();
+/** Prossimo blocco di partite per UN campionato: entro 5 giorni dalla prima futura. */
+async function fetchNextMatchdayForCompetition(
+  code: string,
+  slug: string
+): Promise<{ matches: EspnMatch[]; seasonStart: Date; season: string } | null> {
+  const base = await fetchScoreboard(slug);
   if (!base) return null;
 
   const todayStart = new Date();
@@ -102,7 +101,7 @@ export async function fetchNextMatchday(): Promise<{
   const days = block
     .slice(0, 5)
     .map(d => d.toISOString().slice(0, 10).replace(/-/g, ''));
-  const boards = await Promise.all(days.map(d => fetchScoreboard(d)));
+  const boards = await Promise.all(days.map(d => fetchScoreboard(slug, d)));
 
   const matches: EspnMatch[] = [];
   for (const day of boards) {
@@ -116,6 +115,7 @@ export async function fetchNextMatchday(): Promise<{
       if (!home || !away) continue;
       matches.push({
         id: `espn-${ev.id}`,
+        competition: code,
         homeTeam: teamOf(home),
         awayTeam: teamOf(away),
         scheduledAt: new Date(ev.date),
@@ -124,34 +124,78 @@ export async function fetchNextMatchday(): Promise<{
     }
   }
 
-  if (matches.length < 5) return null;
+  if (matches.length === 0) return null;
 
-  const earliest = Math.min(...matches.map(m => m.scheduledAt.getTime()));
   const seasonStart = new Date(
     base.leagues[0]?.season?.startDate ?? base.leagues[0]?.calendar?.[0] ?? Date.now()
   );
   return {
-    matches: matches.slice(0, 10),
-    deadline: new Date(earliest - 60 * 60 * 1000),
+    matches,
     seasonStart,
     season: `${seasonStart.getUTCFullYear()}-${seasonStart.getUTCFullYear() + 1}`,
   };
 }
 
-/** Risultati per un set di partite (id interno = `espn-${eventId}`). */
+/**
+ * Pool di partite pescate da TUTTI i campionati attivi (scelti dall'admin).
+ * Ogni utente scieglie liberamente fino a MAX_PICKS_PER_SCHEDINA partite dal pool.
+ */
+export async function fetchActiveMatchdayPool(
+  competitions: { code: string; slug: string }[]
+): Promise<{
+  matches: EspnMatch[];
+  deadline: Date;
+  seasonStart: Date;
+  season: string;
+} | null> {
+  const results = await Promise.all(
+    competitions.map(c => fetchNextMatchdayForCompetition(c.code, c.slug))
+  );
+
+  const matches: EspnMatch[] = [];
+  let seasonStart: Date | null = null;
+  let season = '';
+  for (const r of results) {
+    if (!r) continue;
+    matches.push(...r.matches);
+    if (!seasonStart || r.seasonStart < seasonStart) {
+      seasonStart = r.seasonStart;
+      season = r.season;
+    }
+  }
+
+  if (matches.length < 5) return null;
+
+  matches.sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
+  const earliest = matches[0].scheduledAt.getTime();
+
+  return {
+    matches: matches.slice(0, 80),
+    deadline: new Date(earliest - 60 * 60 * 1000),
+    seasonStart: seasonStart ?? new Date(),
+    season,
+  };
+}
+
+/** Risultati per un set di partite multi-campionato (id interno = `espn-${eventId}`). */
 export async function fetchResults(
-  matches: { id: string; scheduledAt: Date }[]
+  matches: { id: string; scheduledAt: Date; competition: string }[]
 ): Promise<Map<string, EspnResult>> {
   const out = new Map<string, EspnResult>();
   if (matches.length === 0) return out;
 
-  const days = new Set<string>();
+  // Raggruppa per campionato + giorno, per interrogare l'endpoint ESPN corretto
+  // (competition == slug ESPN, vedi COMPETITIONS in config.ts).
+  const groups = new Map<string, { slug: string; day: string }>();
   for (const m of matches) {
-    days.add(m.scheduledAt.toISOString().slice(0, 10).replace(/-/g, ''));
+    const day = m.scheduledAt.toISOString().slice(0, 10).replace(/-/g, '');
+    groups.set(`${m.competition}_${day}`, { slug: m.competition, day });
   }
 
-  const boards = await Promise.all([...days].map(d => fetchScoreboard(d)));
   const wanted = new Set(matches.map(m => m.id));
+  const boards = await Promise.all(
+    [...groups.values()].map(({ slug, day }) => fetchScoreboard(slug, day))
+  );
 
   for (const sb of boards) {
     for (const ev of sb?.events ?? []) {

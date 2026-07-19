@@ -12,6 +12,8 @@ import type { BetType, BetOutcome, Prediction, Match } from '@/types';
 import type { MatchOdds } from '@/data/mockData';
 import { CountdownTimer, TeamLogo } from '@/components/ui';
 import { useToast } from '@/contexts/ToastContext';
+import { MAX_PICKS_PER_SCHEDINA } from '@/lib/economy';
+import { competitionName } from '@/lib/competitions';
 
 const BET_TYPES: {
   key: BetType;
@@ -234,7 +236,12 @@ const MatchCard = memo(function MatchCard({
               <TeamLogo src={match.awayTeam.logo} name={match.awayTeam.name} size={16} />
               <span>{match.awayTeam.shortName}</span>
             </div>
-            <p className="text-[9px] text-white/35">{formatDate(match.scheduledAt)}</p>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[8px] font-bold text-accent-400/70 uppercase tracking-wide">
+                {competitionName(match.competition)}
+              </span>
+              <p className="text-[9px] text-white/35">{formatDate(match.scheduledAt)}</p>
+            </div>
           </div>
         </div>
         {pred && (
@@ -311,9 +318,10 @@ export function PronosticiPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedBetType, setSelectedBetType] = useState<BetType>('esito');
+  const [selectedCompetition, setSelectedCompetition] = useState<string>('all');
 
   const predictions = useMemo(() => currentSchedina?.predictions || [], [currentSchedina?.predictions]);
-  const total = currentMatchday?.matches.length || 10;
+  const total = MAX_PICKS_PER_SCHEDINA;
   const completedCount = predictions.length;
   const isComplete = completedCount === total;
 
@@ -325,8 +333,30 @@ export function PronosticiPage() {
 
   const currentBetDef = BET_TYPES.find(b => b.key === selectedBetType)!;
 
+  const availableCompetitions = useMemo(() => {
+    const codes = new Set((currentMatchday?.matches ?? []).map(m => m.competition));
+    return [...codes];
+  }, [currentMatchday?.matches]);
+
+  const pickedMatches = useMemo(() => {
+    const pickedIds = new Set(predictions.map(p => p.matchId));
+    return (currentMatchday?.matches ?? []).filter(m => pickedIds.has(m.id));
+  }, [currentMatchday?.matches, predictions]);
+
+  const visibleMatches = useMemo(() => {
+    const all = currentMatchday?.matches ?? [];
+    if (selectedCompetition === 'all') return all;
+    if (selectedCompetition === 'mine') return pickedMatches;
+    return all.filter(m => m.competition === selectedCompetition);
+  }, [currentMatchday?.matches, selectedCompetition, pickedMatches]);
+
   const handleSelect = (matchId: string, betType: BetType, outcome: BetOutcome) => {
     if (currentSchedina?.isLocked) return;
+    const isNewMatch = !predictions.some(p => p.matchId === matchId);
+    if (isNewMatch && predictions.length >= MAX_PICKS_PER_SCHEDINA) {
+      toast.warning(`Hai già scelto ${MAX_PICKS_PER_SCHEDINA} partite: rimuovine una per cambiarla`);
+      return;
+    }
     const mOdds = matchOdds[matchId];
     const typeOdds = mOdds?.[betType] as Record<string, number> | undefined;
     const odds = typeOdds?.[outcome] || 2.00;
@@ -366,7 +396,7 @@ export function PronosticiPage() {
     completedCount,
     total,
     isLocked: !!currentSchedina?.isLocked,
-    matches: currentMatchday.matches,
+    matches: pickedMatches,
     predictions,
     totalPotential,
     isSubmitting,
@@ -414,7 +444,7 @@ export function PronosticiPage() {
             {/* Progress + Countdown */}
             <div className="glass-card p-3 space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-white/50">Pronostici inseriti</span>
+                <span className="text-white/50">Partite scelte (a piacere, da tutti i campionati attivi)</span>
                 <span className={cn('font-bold', isComplete ? 'text-green-400' : 'text-primary-400')}>
                   {completedCount} / {total}
                 </span>
@@ -437,6 +467,48 @@ export function PronosticiPage() {
                     {Math.round(totalPotential)} pt potenziali
                   </span>
                 )}
+              </div>
+            </div>
+
+            {/* Competition Filter */}
+            <div className="glass-card p-1.5 overflow-x-auto scrollbar-hide">
+              <div className="flex gap-1 min-w-max">
+                <button
+                  onClick={() => setSelectedCompetition('all')}
+                  className={cn(
+                    'px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap',
+                    selectedCompetition === 'all'
+                      ? 'bg-accent-500 text-white'
+                      : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                  )}
+                >
+                  Tutti i campionati
+                </button>
+                <button
+                  onClick={() => setSelectedCompetition('mine')}
+                  className={cn(
+                    'px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap',
+                    selectedCompetition === 'mine'
+                      ? 'bg-accent-500 text-white'
+                      : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                  )}
+                >
+                  Le mie ({completedCount})
+                </button>
+                {availableCompetitions.map(code => (
+                  <button
+                    key={code}
+                    onClick={() => setSelectedCompetition(code)}
+                    className={cn(
+                      'px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap',
+                      selectedCompetition === code
+                        ? 'bg-accent-500 text-white'
+                        : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                    )}
+                  >
+                    {competitionName(code)}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -466,7 +538,12 @@ export function PronosticiPage() {
 
             {/* Matches */}
             <div className="space-y-2">
-              {currentMatchday.matches.map((match, idx) => (
+              {visibleMatches.length === 0 && (
+                <div className="glass-card p-6 text-center text-white/40 text-sm">
+                  Nessuna partita in questo campionato al momento.
+                </div>
+              )}
+              {visibleMatches.map((match, idx) => (
               <MatchCard
                 key={match.id}
                 match={match}
