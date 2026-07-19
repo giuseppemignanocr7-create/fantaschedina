@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Clock, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -16,40 +16,42 @@ interface TimeLeft {
   total: number;
 }
 
-export function CountdownTimer({ deadline, onExpire, className }: CountdownTimerProps) {
-  const [timeLeft, setTimeLeft] = useState<TimeLeft>(calculateTimeLeft(deadline));
+function calculateTimeLeft(deadline: Date): TimeLeft {
+  const now = new Date().getTime();
+  const target = new Date(deadline).getTime();
+  const difference = target - now;
 
-  function calculateTimeLeft(deadline: Date): TimeLeft {
-    const now = new Date().getTime();
-    const target = new Date(deadline).getTime();
-    const difference = target - now;
-
-    if (difference <= 0) {
-      return { days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 };
-    }
-
-    return {
-      days: Math.floor(difference / (1000 * 60 * 60 * 24)),
-      hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
-      minutes: Math.floor((difference / 1000 / 60) % 60),
-      seconds: Math.floor((difference / 1000) % 60),
-      total: difference,
-    };
+  if (difference <= 0) {
+    return { days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 };
   }
+
+  return {
+    days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+    hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+    minutes: Math.floor((difference / 1000 / 60) % 60),
+    seconds: Math.floor((difference / 1000) % 60),
+    total: difference,
+  };
+}
+
+export function CountdownTimer({ deadline, onExpire, className }: CountdownTimerProps) {
+  const [timeLeft, setTimeLeft] = useState<TimeLeft>(() => calculateTimeLeft(deadline));
+  const onExpireRef = useRef(onExpire);
+  onExpireRef.current = onExpire;
 
   useEffect(() => {
     const timer = setInterval(() => {
       const newTimeLeft = calculateTimeLeft(deadline);
       setTimeLeft(newTimeLeft);
-      
+
       if (newTimeLeft.total <= 0) {
         clearInterval(timer);
-        onExpire?.();
+        onExpireRef.current?.();
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [deadline, onExpire]);
+  }, [deadline]);
 
   const isUrgent = timeLeft.total > 0 && timeLeft.total < 1000 * 60 * 60; // < 1 hour
   const isWarning = timeLeft.total > 0 && timeLeft.total < 1000 * 60 * 60 * 3; // < 3 hours

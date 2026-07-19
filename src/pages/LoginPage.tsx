@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Trophy, Users, Target, AlertCircle } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { burstConfetti, sideCannons } from '@/lib/juice';
+import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
+import { Logo } from '@/components/layout/Logo';
 
 type AuthMode = 'login' | 'register';
 
@@ -33,9 +36,12 @@ export function LoginPage() {
 
   // Pulisci errori auth quando cambia modalità
   useEffect(() => {
-    setAuthError(null);
-    setErrors({});
-    setSuccessMessage(null);
+    const t = setTimeout(() => {
+      setAuthError(null);
+      setErrors({});
+      setSuccessMessage(null);
+    }, 0);
+    return () => clearTimeout(t);
   }, [mode]);
 
   const validateForm = (): boolean => {
@@ -101,10 +107,12 @@ export function LoginPage() {
       }
       
       setSuccessMessage(mode === 'login' ? 'Accesso effettuato!' : 'Registrazione completata! Controlla la tua email.');
+      if (mode === 'register') sideCannons();
+      else burstConfetti();
       setTimeout(() => {
         navigate('/');
       }, 1000);
-    } catch (err) {
+    } catch {
       setAuthError('Errore di connessione. Riprova.');
     } finally {
       setIsLoading(false);
@@ -121,7 +129,7 @@ export function LoginPage() {
   };
 
   const features = [
-    { icon: Trophy, text: '500€ di premi garantiti' },
+    { icon: Trophy, text: `${DEFAULT_TOURNAMENT_CONFIG.firstPlacePrize + DEFAULT_TOURNAMENT_CONFIG.firstHalfPrize}€ di premi in palio` },
     { icon: Users, text: 'Sfida i tuoi amici' },
     { icon: Target, text: 'Se uno vince, vincono tutti' },
   ];
@@ -135,13 +143,8 @@ export function LoginPage() {
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1518091043644-c1d4457512c6?q=80&w=1931&auto=format&fit=crop')] bg-cover bg-center mix-blend-overlay opacity-20" />
         
         <div className="relative z-10">
-          <Link to="/" className="inline-flex items-center gap-3 group">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-600 to-primary-500 flex items-center justify-center font-display font-bold text-xl text-white shadow-lg shadow-primary-500/20 border border-white/10">
-              FS
-            </div>
-            <span className="font-display font-bold text-2xl text-white tracking-tight uppercase italic">
-              Fanta<span className="text-primary-500">Schedina</span>
-            </span>
+          <Link to="/">
+            <Logo badge tagline size="lg" />
           </Link>
         </div>
         
@@ -151,8 +154,8 @@ export function LoginPage() {
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-primary-600">più bello insieme</span>
           </h2>
           <p className="text-slate-300 text-lg max-w-md">
-            Unisciti alla community di scommettitori più appassionata. 
-            Gioca, sfida gli amici e vinci montepremi garantiti.
+            Unisciti alla community di pronosticatori più appassionata. 
+            Gioca, sfida gli amici e scala le classifiche!
           </p>
           
           <div className="space-y-6">
@@ -181,16 +184,11 @@ export function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-6 sm:p-12 bg-background relative">
         <div className="absolute inset-0 bg-gradient-radial from-primary-900/10 to-transparent opacity-50" />
         
-        <div className="w-full max-w-md relative z-10">
+        <div className="w-full max-w-md relative z-10 animate-slide-up">
           {/* Mobile Logo */}
-          <div className="lg:hidden mb-8 text-center">
-            <Link to="/" className="inline-flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-600 to-primary-500 flex items-center justify-center font-display font-bold text-xl text-white shadow-lg shadow-primary-500/20">
-                FS
-              </div>
-              <span className="font-display font-bold text-2xl text-white tracking-tight uppercase italic">
-                Fanta<span className="text-primary-500">Schedina</span>
-              </span>
+          <div className="lg:hidden mb-8 flex justify-center">
+            <Link to="/">
+              <Logo badge size="md" />
             </Link>
           </div>
           
@@ -235,7 +233,7 @@ export function LoginPage() {
           
           {/* Auth Error / Success Message */}
           {authError && (
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 mb-6">
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 mb-6 animate-shake">
               <AlertCircle className="text-red-400 shrink-0" size={20} />
               <p className="text-red-400 text-sm font-medium">{authError}</p>
             </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { CheckCircle2, XCircle, AlertCircle, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -33,13 +33,20 @@ export function Toast({ id, type, message, duration = 4000, onClose }: ToastProp
   const [isVisible, setIsVisible] = useState(false);
   const Icon = icons[type];
 
+  const rafRef = useRef<number>();
+
   useEffect(() => {
-    setIsVisible(true);
+    rafRef.current = requestAnimationFrame(() => setIsVisible(true));
+    let closeTimer: ReturnType<typeof setTimeout>;
     const timer = setTimeout(() => {
       setIsVisible(false);
-      setTimeout(() => onClose(id), 300);
+      closeTimer = setTimeout(() => onClose(id), 300);
     }, duration);
-    return () => clearTimeout(timer);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      clearTimeout(timer);
+      clearTimeout(closeTimer);
+    };
   }, [id, duration, onClose]);
 
   return (

@@ -1,0 +1,153 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+
+    function validUsername(value) {
+      return value is string && value.size() >= 2 && value.size() <= 30;
+    }
+
+    function validAvatar(value) {
+      return value == null || (value is string && value.size() <= 2048);
+    }
+
+    // ============================================
+    // PROFILES
+    // Punti, gettoni e statistiche sono scritti SOLO dalle Cloud Functions
+    // (Admin SDK bypassa le rules). L'utente può modificare solo
+    // username / avatarUrl / updatedAt.
+    // ============================================
+    match /profiles/{uid} {
+      allow get: if isOwner(uid);
+      allow list: if false;
+      allow create: if isOwner(uid)
+        && request.resource.data.keys().hasOnly([
+          'id', 'username', 'email', 'avatarUrl', 'totalPoints', 'weeklyPoints',
+          'matchdaysPlayed', 'perfectSchedine', 'bonusPointsTotal',
+          'penaltyPointsTotal', 'weeklyWins', 'bestMatchdayPoints',
+          'correctPredictions', 'paidWeeks', 'joinedMatchday', 'isActive',
+          'coins', 'coinsEarned', 'claimedMissions', 'leaguesJoined',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.id == uid
+        && request.auth.token.email is string
+        && request.resource.data.email == request.auth.token.email
+        && validUsername(request.resource.data.username)
+        && request.resource.data.avatarUrl == null
+        && request.resource.data.totalPoints == 0
+        && request.resource.data.weeklyPoints == 0
+        && request.resource.data.matchdaysPlayed == 0
+        && request.resource.data.perfectSchedine == 0
+        && request.resource.data.bonusPointsTotal == 0
+        && request.resource.data.penaltyPointsTotal == 0
+        && request.resource.data.weeklyWins == 0
+        && request.resource.data.bestMatchdayPoints == 0
+        && request.resource.data.correctPredictions == 0
+        && request.resource.data.paidWeeks == 0
+        && request.resource.data.joinedMatchday == 1
+        && request.resource.data.isActive == true
+        && request.resource.data.coins == 100
+        && request.resource.data.coinsEarned == 0
+        && request.resource.data.claimedMissions == []
+        && request.resource.data.leaguesJoined == 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['username', 'avatarUrl', 'updatedAt'])
+        && validUsername(request.resource.data.username)
+        && validAvatar(request.resource.data.avatarUrl)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // ============================================
+    // MATCHDAYS — sola lettura. Creazione/risultati/odds
+    // gestiti dalle Cloud Functions (syncMatchday / settleMatchdays).
+    // ============================================
+    match /matchdays/{number} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
+    // ============================================
+    // SCHEDINE — scritte SOLO dalla callable submitSchedina.
+    // Le schedine altrui sono leggibili solo DOPO la deadline
+    // della giornata (anti-copia).
+    // ============================================
+    match /schedine/{id} {
+      allow read: if isAuth() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.settled == true ||
+        request.time > get(/databases/$(database)/documents/matchdays/$(string(resource.data.matchdayNumber))).data.deadline
+      );
+      allow write: if false;
+    }
+
+    // ============================================
+    // LEAGUES — CRUD lato client con vincoli.
+    // ============================================
+    match /leagues/{leagueId} {
+      allow read: if isAuth() && (
+        resource.data.isPrivate == false ||
+        request.auth.uid in resource.data.memberIds
+      );
+      allow write: if false;
+    }
+
+    // ============================================
+    // WALLET TRANSACTIONS — audit trail, scritte solo dalle Functions.
+    // ============================================
+    match /wallet_transactions/{txId} {
+      allow read: if isAuth() && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // ============================================
+    // PRIZES — storico premi, scritti dalle Functions.
+    // ============================================
+    match /prizes/{prizeId} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
+    function isAdmin() {
+      return isAuth() && exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
+        && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // ============================================
+    // QUIZ QUESTIONS — pool domande (seed via console/admin).
+    // ============================================
+    match /quiz_questions/{qId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /quiz_sessions/{uid} {
+      allow read, write: if false;
+    }
+
+    // ============================================
+    // SPONSORS — gestiti da admin via Cloud Functions.
+    // ============================================
+    match /sponsors/{sponsorId} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
+    // ============================================
+    // RATE LIMITS — scritti solo dalle Cloud Functions.
+    // ============================================
+    match /rate_limits/{docId} {
+      allow read, write: if false;
+    }
+  }
+}

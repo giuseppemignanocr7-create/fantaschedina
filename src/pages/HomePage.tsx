@@ -78,7 +78,7 @@ export function HomePage() {
             
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-10 animate-slide-up">
-              <Link to="/schedina" className="btn-primary text-lg px-8 py-4 flex items-center gap-2 w-full sm:w-auto justify-center shadow-[0_0_30px_rgba(16,185,129,0.3)] hover:shadow-[0_0_50px_rgba(16,185,129,0.5)]">
+              <Link to="/schedina" className="btn-primary text-lg px-8 py-4 flex items-center gap-2 w-full sm:w-auto justify-center shadow-[0_0_30px_rgba(132,216,12,0.35)] hover:shadow-[0_0_50px_rgba(132,216,12,0.55)]">
                 Gioca Ora
                 <ArrowRight size={20} />
               </Link>

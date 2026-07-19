@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom';
 import { Trophy, FileText, Shield, Mail } from 'lucide-react';
+import { currentFootballSeason } from '@/lib/season';
 
 export function Footer() {
+  const season = currentFootballSeason();
+  const year = new Date().getFullYear();
   return (
     <footer className="bg-dark-800/50 border-t border-white/5 mt-auto">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -16,7 +19,7 @@ export function Footer() {
                 <h3 className="font-display font-bold text-xl gradient-text">
                   FANTA SCHEDINA
                 </h3>
-                <p className="text-xs text-white/50">2025-2026</p>
+                <p className="text-xs text-white/50">{season}</p>
               </div>
             </div>
             <p className="text-white/60 text-sm leading-relaxed max-w-md">
@@ -81,7 +84,7 @@ export function Footer() {
         {/* Bottom */}
         <div className="mt-12 pt-6 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-white/40">
-            © 2025-2026 Fanta Schedina. Tutti i diritti riservati.
+            © {year} Fanta Schedina. Tutti i diritti riservati.
           </p>
           <p className="text-xs text-white/40">
             Il torneo è pensato per divertirsi tra amici: fino all'ultima partita tutto può succedere!

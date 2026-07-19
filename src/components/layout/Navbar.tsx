@@ -12,6 +12,7 @@ import {
   Clock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Logo } from './Logo';
 
 const navLinks = [
   { to: '/', label: 'Dashboard', icon: Home },
@@ -31,15 +32,8 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-600 to-primary-500 flex items-center justify-center shadow-lg shadow-primary-500/20 group-hover:shadow-primary-500/40 transition-shadow border border-white/10">
-              <span className="text-white font-bold text-lg font-display italic">FS</span>
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="font-display font-bold text-xl tracking-tight text-white">
-                FANTA<span className="text-primary-500">SCHEDINA</span>
-              </h1>
-            </div>
+          <Link to="/" className="group">
+            <Logo badge size="md" className="[&_h1]:hidden sm:[&_h1]:block" />
           </Link>
 
           {/* Desktop Navigation */}

@@ -1,36 +1,56 @@
-import { 
-  Play, 
+import { useEffect } from 'react';
+import {
+  Play,
   Calendar,
   Trophy,
   Target,
-  Users
+  Users,
 } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
 import { useAppStore } from '@/store';
 import { LiveTracker, CountdownTimer, WinSimulator } from '@/components/ui';
 
 export function LivePage() {
-  const { 
-    currentMatchday, 
-    currentSchedina, 
+  const {
+    currentMatchday,
+    currentSchedina,
+    currentUser,
     rankings,
-    prizePool
+    prizePool,
+    liveScores,
+    loadRankings,
+    refreshLiveScores,
+    subscribeMatchday,
   } = useAppStore();
 
-  // Mock user for demo
-  const demoUser = {
-    id: 'demo',
-    username: 'Giocatore',
-    totalPoints: 42.5
-  };
+  useEffect(() => {
+    if (rankings.length === 0) loadRankings();
+  }, [rankings.length, loadRankings]);
+
+  // A: polling ESPN dei punteggi live reali (subito + ogni 45s)
+  useEffect(() => {
+    refreshLiveScores();
+    const interval = setInterval(() => refreshLiveScores(), 45_000);
+    return () => clearInterval(interval);
+  }, [refreshLiveScores]);
+
+  // B: realtime dal doc giornata Firestore (updateLiveScores lato server)
+  const matchdayNumber = currentMatchday?.number;
+  useEffect(() => {
+    if (!matchdayNumber) return;
+    const unsubscribe = subscribeMatchday(matchdayNumber);
+    return () => unsubscribe();
+  }, [matchdayNumber, subscribeMatchday]);
 
   const predictions = currentSchedina?.predictions || [];
-  const userPosition = 5;
+  const userPosition =
+    rankings.findIndex(r => r.participantId === currentUser?.id) + 1 || rankings.length;
 
   if (!currentMatchday) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
+        <div className="text-center animate-pop-in">
+          <p className="text-6xl mb-4 animate-float inline-block">📺</p>
           <h2 className="text-2xl font-bold mb-2">Nessuna giornata attiva</h2>
           <p className="text-white/60">Torna più tardi per la prossima giornata</p>
         </div>
@@ -38,12 +58,25 @@ export function LivePage() {
     );
   }
 
-  // Mock: partite in corso (in produzione verrebbe controllato da API)
-  const hasLiveMatches = true;
+  const hasLiveMatches = currentMatchday.matches.some(m => m.status === 'live');
+  const allFinished =
+    currentMatchday.matches.length > 0 &&
+    currentMatchday.matches.every(m => m.status === 'finished');
 
   return (
     <div className="min-h-screen py-6 sm:py-8">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Settlement info: calcolo automatico server-side */}
+        {allFinished && (
+          <div className="glass-card p-4 mb-6 border-green-500/30 bg-green-500/5">
+            <p className="font-bold text-green-300">Giornata terminata</p>
+            <p className="text-xs text-white/60">
+              I punteggi vengono calcolati automaticamente entro un'ora dalla fine
+              delle partite. La classifica si aggiornerà da sola.
+            </p>
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center gap-2 text-red-400 text-sm font-medium mb-2">
@@ -91,6 +124,7 @@ export function LivePage() {
               <LiveTracker 
                 matches={currentMatchday.matches}
                 predictions={predictions}
+                liveScores={liveScores}
                 className="border-t-4 border-t-live"
               />
             ) : (
@@ -122,15 +156,11 @@ export function LivePage() {
               </div>
               
               <div className="divide-y divide-white/5">
-                {currentMatchday.matches.map((match, idx) => {
-                  // Mock risultato random per demo
-                  const mockScore = {
-                    home: Math.floor(Math.random() * 4),
-                    away: Math.floor(Math.random() * 4),
-                  };
-                  const isLive = idx < 5; // Prime 5 partite "live" per demo
-                  const isFinished = idx >= 5 && idx < 10;
-                  
+                {currentMatchday.matches.map(match => {
+                  const isLive = match.status === 'live';
+                  const isFinished = match.status === 'finished';
+                  const score = match.result;
+
                   return (
                     <div key={match.id} className="px-4 sm:px-6 py-4 flex items-center gap-4 hover:bg-white/5 transition-colors">
                       {/* Status */}
@@ -151,12 +181,12 @@ export function LivePage() {
                           {match.homeTeam.shortName || match.homeTeam.name}
                         </div>
                         
-                        {(isLive || isFinished) ? (
+                        {(isLive || isFinished) && score ? (
                           <div className={cn(
                             "px-3 py-1 rounded font-mono font-bold text-lg min-w-[80px] text-center border",
                             isLive ? "bg-live text-white border-live shadow-[0_0_10px_rgba(239,68,68,0.3)]" : "bg-surface border-white/10 text-white"
                           )}>
-                            {mockScore.home} - {mockScore.away}
+                            {score.homeGoals} - {score.awayGoals}
                           </div>
                         ) : (
                           <div className="px-3 py-1 rounded bg-surface border border-white/5 text-slate-500 text-sm min-w-[80px] text-center font-mono">
@@ -198,7 +228,9 @@ export function LivePage() {
                   <div className="space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-white/60">Pronostici:</span>
-                      <span className="font-bold">{predictions.length}/15</span>
+                      <span className="font-bold">
+                        {predictions.length}/{currentMatchday.matches.length}
+                      </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-white/60">Stato:</span>
@@ -212,7 +244,10 @@ export function LivePage() {
                     <div className="pt-3 border-t border-white/10">
                       <p className="text-xs text-white/50 mb-1">Punti potenziali:</p>
                       <p className="text-2xl font-bold gradient-text">
-                        {predictions.reduce((sum, p) => sum + Math.min(p.odds, 3.5), 0).toFixed(1)} pt
+                        {predictions
+                          .reduce((sum, p) => sum + Math.min(p.odds * 10, 50), 0)
+                          .toFixed(0)}{' '}
+                        pt
                       </p>
                     </div>
                   </div>
@@ -225,9 +260,9 @@ export function LivePage() {
 
             {/* Win Simulator */}
             <WinSimulator
-              totalPoints={demoUser.totalPoints}
-                weeklyPool={prizePool.weeklyPool}
-                finalPool={prizePool.finalPool}
+              totalPoints={currentUser?.totalPoints ?? 0}
+              weeklyPool={prizePool.weeklyPool}
+              finalPool={prizePool.finalPool}
               currentRank={userPosition}
               participantCount={rankings.length}
             />
@@ -246,7 +281,7 @@ export function LivePage() {
                     key={r.participantId}
                     className={cn(
                       'px-4 py-2 flex items-center gap-3',
-                      r.participantId === demoUser.id && 'bg-primary-500/10'
+                      r.participantId === currentUser?.id && 'bg-primary-500/10'
                     )}
                   >
                     <span className={cn(
@@ -277,16 +312,21 @@ export function LivePage() {
               </h3>
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-white/60">Schedine inviate:</span>
+                  <span className="text-white/60">Partecipanti:</span>
                   <span className="font-bold">{rankings.length}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-white/60">Media punti attesi:</span>
-                  <span className="font-bold">3.2 pt</span>
+                  <span className="text-white/60">Partite live:</span>
+                  <span className="font-bold text-live">
+                    {currentMatchday.matches.filter(m => m.status === 'live').length}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-white/60">Quota più alta giocata:</span>
-                  <span className="font-bold text-accent-400">4.50</span>
+                  <span className="text-white/60">Partite concluse:</span>
+                  <span className="font-bold">
+                    {currentMatchday.matches.filter(m => m.status === 'finished').length}/
+                    {currentMatchday.matches.length}
+                  </span>
                 </div>
               </div>
             </div>

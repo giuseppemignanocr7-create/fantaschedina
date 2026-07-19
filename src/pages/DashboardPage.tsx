@@ -1,296 +1,317 @@
 import { Link } from 'react-router-dom';
-import { 
-  Trophy, 
-  Target, 
-  TrendingUp, 
-  Calendar,
-  Clock,
-  ChevronRight,
-  Zap,
-  Star,
-  Award,
-  Flame,
-  CheckCircle2,
-  XCircle
+import {
+  Target, Trophy, TrendingUp, Gift, Calendar, BarChart2, Flag, Gamepad2,
+  ChevronRight, Swords, CircleDot, HelpCircle, RefreshCw, ShoppingBag,
+  UserPlus, Clock, Zap,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
-import { formatCurrency } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+
+const featureTiles = [
+  {
+    to: '/pronostici',
+    label: 'PRONOSTICI',
+    sub: 'Fai i tuoi pronostici',
+    icon: Target,
+    bg: '#0d2515',
+    iconColor: '#22c55e',
+    border: '#1a4a2a',
+  },
+  {
+    to: '/leghe',
+    label: 'LEGHE',
+    sub: 'Le tue leghe',
+    icon: Trophy,
+    bg: '#0d1a3a',
+    iconColor: '#fbbf24',
+    border: '#1a2e5a',
+  },
+  {
+    to: '/classifica',
+    label: 'CLASSIFICHE',
+    sub: 'Scopri i migliori',
+    icon: TrendingUp,
+    bg: '#1a0d3a',
+    iconColor: '#a78bfa',
+    border: '#2e1a5a',
+  },
+  {
+    to: '/minigiochi',
+    label: 'MINIGIOCHI',
+    sub: 'Sfida altri utenti',
+    icon: Gamepad2,
+    bg: '#2a1400',
+    iconColor: '#fb923c',
+    border: '#4a2a00',
+  },
+  {
+    to: '/premi',
+    label: 'PREMI',
+    sub: 'I premi in palio',
+    icon: Gift,
+    bg: '#001a1a',
+    iconColor: '#22d3ee',
+    border: '#003030',
+  },
+  {
+    to: '/calendario',
+    label: 'CALENDARIO',
+    sub: 'Tutti i match',
+    icon: Calendar,
+    bg: '#1a1500',
+    iconColor: '#facc15',
+    border: '#3a3000',
+  },
+  {
+    to: '/statistiche',
+    label: 'STATISTICHE',
+    sub: 'Analisi e dati',
+    icon: BarChart2,
+    bg: '#001028',
+    iconColor: '#60a5fa',
+    border: '#002048',
+  },
+  {
+    to: '/missioni',
+    label: 'MISSIONI',
+    sub: 'Completa e vinci',
+    icon: Flag,
+    bg: '#1a0028',
+    iconColor: '#f472b6',
+    border: '#350050',
+  },
+];
+
+const quickActions = [
+  { label: 'Rigori PvP', icon: CircleDot, to: '/minigiochi/rigori' },
+  { label: 'Quiz Calcio', icon: HelpCircle, to: '/minigiochi/quiz' },
+  { label: 'Ruota', icon: RefreshCw, to: '/minigiochi/ruota' },
+  { label: 'Sfide', icon: Swords, to: '/minigiochi' },
+  { label: 'Premi', icon: ShoppingBag, to: '/premi' },
+  { label: 'Invita', icon: UserPlus, to: '/community' },
+];
+
+// Carosello "guadagna gettoni" — tutte destinazioni reali
+const earnCards = [
+  { name: '🧠 QUIZ', tagline: 'FINO A 30 🪙 AL GIORNO', cta: 'GIOCA', bg: '#0a1a3a', accent: '#60a5fa', to: '/minigiochi/quiz' },
+  { name: '🎡 RUOTA', tagline: 'JACKPOT DA 100 🪙', cta: 'GIRA', bg: '#2a1a00', accent: '#fbbf24', to: '/minigiochi/ruota' },
+  { name: '⚽ RIGORI', tagline: 'FINO A 10 🪙 A PARTITA', cta: 'TIRA', bg: '#0a2a1a', accent: '#34d399', to: '/minigiochi/rigori' },
+  { name: '🎯 MISSIONI', tagline: 'FINO A 500 🪙 EXTRA', cta: 'SCOPRI', bg: '#2a0a1a', accent: '#f472b6', to: '/missioni' },
+];
 
 export function DashboardPage() {
-  const { currentMatchday, rankings, prizePool, currentSchedina } = useAppStore();
+  const { currentMatchday, currentUser, currentSchedina, matchOdds, isLoadingOdds, refreshOdds } = useAppStore();
 
-  // Mock user for demo (no auth required)
-  const demoUser = {
-    id: 'demo',
-    username: 'Giocatore',
-    totalPoints: 42.5,
-    weeklyPoints: 4.8
+  // Prossima partita non ancora giocata
+  const nextMatch = currentMatchday?.matches
+    .filter(m => m.status === 'scheduled')
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0]
+    ?? currentMatchday?.matches[0];
+
+  const predCount = (currentSchedina?.predictions || []).filter(p => p.betType === 'esito').length;
+  const total = currentMatchday?.matches.length || 10;
+  const nextOdds = nextMatch ? matchOdds[nextMatch.id] : null;
+
+  const formatMatchTime = (d: Date) => {
+    const now = new Date();
+    const dt = new Date(d);
+    const diffDays = Math.round((dt.setHours(0,0,0,0) - now.setHours(0,0,0,0)) / 86400000);
+    const timeStr = new Date(d).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    if (diffDays === 0) return `Oggi — ${timeStr}`;
+    if (diffDays === 1) return `Domani — ${timeStr}`;
+    return new Date(d).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }) + ` — ${timeStr}`;
   };
 
-  const userPosition = 5;
-
-  const stats = {
-    totalSchedine: 17,
-    correctPredictions: 112,
-    totalPredictions: 170,
-    winRate: 65.9,
-    weeklyWins: 2,
-    bestMatchday: 8.5,
-    currentStreak: 3,
-    perfectSchedine: 1,
-  };
-
-  const badges = [
-    { id: 'first', name: 'Prima Schedina', icon: CheckCircle2, color: 'text-green-400', bg: 'bg-green-500/20', unlocked: true },
-    { id: 'winner', name: 'Vincitore', icon: Trophy, color: 'text-yellow-400', bg: 'bg-yellow-500/20', unlocked: stats.weeklyWins > 0 },
-    { id: 'perfect', name: '10/10', icon: Star, color: 'text-purple-400', bg: 'bg-purple-500/20', unlocked: stats.perfectSchedine > 0 },
-    { id: 'streak', name: 'Streak 5', icon: Flame, color: 'text-orange-400', bg: 'bg-orange-500/20', unlocked: stats.currentStreak >= 5 },
-    { id: 'top3', name: 'Top 3', icon: Award, color: 'text-primary-400', bg: 'bg-primary-500/20', unlocked: userPosition <= 3 },
-  ];
-
-  const schedineRecenti = [
-    { matchday: 17, points: 4.8, correct: 7, date: '25/01/2026' },
-    { matchday: 16, points: 5.2, correct: 8, date: '18/01/2026' },
-    { matchday: 15, points: 3.9, correct: 6, date: '11/01/2026' },
-  ];
+  const userInitials = currentUser?.username?.slice(0, 2).toUpperCase() ?? 'FM';
+  const userPoints = currentUser?.totalPoints ?? 0;
+  const userRank = currentUser?.rank ?? '—';
 
   return (
-    <div className="min-h-screen py-6 sm:py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Welcome */}
-        <div className="mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-display font-bold mb-1">
-            Ciao, <span className="gradient-text">{demoUser.username}</span>! 👋
-          </h1>
-          <p className="text-white/60">Ecco il riepilogo della tua attività</p>
-        </div>
+    <div>
+      <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
-          <div className="glass-card p-4 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-              <TrendingUp size={48} />
+        {/* ── Mobile profile summary ── */}
+        <div className="glass-card p-3 flex items-center gap-3 md:hidden">
+          <div className="relative flex-shrink-0">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 border-2 border-primary-500/40 flex items-center justify-center text-sm font-black text-white">
+              {userInitials}
             </div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-lg bg-primary-500/10 border border-primary-500/20 flex items-center justify-center">
-                <TrendingUp size={20} className="text-primary-400" />
-              </div>
-              <span className="text-slate-400 text-sm font-medium uppercase tracking-wide">Ranking</span>
-            </div>
-            <p className="text-3xl sm:text-4xl font-mono font-bold text-white">{userPosition}°</p>
-            <p className="text-xs text-slate-500 font-medium mt-1">su {rankings.length} tipsters</p>
           </div>
-
-          <div className="glass-card p-4 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-              <Zap size={48} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="font-display font-black text-sm text-white">{currentUser?.username ?? 'Ospite'}</span>
+              {currentUser && <span className="text-[8px] font-black bg-primary-500/20 text-primary-400 px-1 py-0.5 rounded border border-primary-500/30 uppercase">PRO</span>}
             </div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-lg bg-accent-500/10 border border-accent-500/20 flex items-center justify-center">
-                <Zap size={20} className="text-accent-400" />
-              </div>
-              <span className="text-slate-400 text-sm font-medium uppercase tracking-wide">Punti Totali</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-primary-400">{userPoints.toFixed(1)} pt</span>
+              {predCount > 0 && (
+                <span className="text-[10px] text-white/40">
+                  · Schedina: {predCount}/{total}
+                </span>
+              )}
             </div>
-            <p className="text-3xl sm:text-4xl font-mono font-bold text-accent-400">{demoUser.totalPoints}</p>
-            <p className="text-xs text-slate-500 font-medium mt-1">+{demoUser.weeklyPoints} questa settimana</p>
           </div>
-
-          <div className="glass-card p-4 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-              <Target size={48} />
-            </div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center">
-                <Target size={20} className="text-green-400" />
-              </div>
-              <span className="text-slate-400 text-sm font-medium uppercase tracking-wide">Precisione</span>
-            </div>
-            <p className="text-3xl sm:text-4xl font-mono font-bold text-green-400">{stats.winRate}%</p>
-            <p className="text-xs text-slate-500 font-medium mt-1">{stats.correctPredictions}/{stats.totalPredictions} pronostici</p>
-          </div>
-
-          <div className="glass-card p-4 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-              <Trophy size={48} />
-            </div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center">
-                <Trophy size={20} className="text-yellow-400" />
-              </div>
-              <span className="text-slate-400 text-sm font-medium uppercase tracking-wide">Vittorie</span>
-            </div>
-            <p className="text-3xl sm:text-4xl font-mono font-bold text-yellow-400">{stats.weeklyWins}</p>
-            <p className="text-xs text-slate-500 font-medium mt-1">settimanali</p>
+          <div className="text-right flex-shrink-0">
+            <p className="text-base font-black text-white">#{userRank}</p>
+            <Link to="/pronostici" className="text-[9px] font-black text-primary-400 hover:text-primary-300 flex items-center gap-0.5 justify-end mt-0.5">
+              Pronostici <ChevronRight size={9} />
+            </Link>
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Main Column */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Current Matchday */}
-            <div className="glass-card overflow-hidden border-t-4 border-t-primary-500">
-              <div className="bg-surface px-4 sm:px-6 py-4 border-b border-white/5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-primary-600 flex items-center justify-center animate-pulse-glow shadow-lg shadow-primary-500/20">
-                      <Calendar size={24} className="text-white" />
-                    </div>
-                    <div>
-                      <h3 className="font-display font-bold text-lg uppercase italic tracking-wide">Giornata {currentMatchday?.number || 18}</h3>
-                      <div className="flex items-center gap-2 text-primary-400 text-xs font-bold uppercase tracking-wider">
-                        <span className="w-2 h-2 rounded-full bg-primary-500 animate-pulse"></span>
-                        In Corso
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 text-accent-400 text-sm font-bold bg-accent-500/10 px-3 py-1 rounded-full border border-accent-500/20">
-                    <Clock size={14} />
-                    <span className="hidden sm:inline">DEADLINE VICINA</span>
+        {/* ── Prossimo Match / Schedina Status (compatto) ── */}
+        <div className="relative glass-card overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-primary-500 via-primary-400 to-transparent" />
+          <div className="px-3 py-2.5">
+            {/* Header row */}
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[8px] font-black text-primary-400 uppercase tracking-[0.25em]">
+                {currentMatchday ? `GIORNATA ${currentMatchday.number} · SERIE A` : 'PROSSIMO MATCH'}
+              </p>
+              <button
+                onClick={refreshOdds}
+                disabled={isLoadingOdds}
+                className={cn(
+                  'flex items-center gap-1 text-[8px] font-bold transition-all',
+                  isLoadingOdds ? 'text-white/20' : 'text-white/30 hover:text-accent-400'
+                )}
+              >
+                <RefreshCw size={8} className={cn(isLoadingOdds && 'animate-spin')} />
+                {isLoadingOdds ? 'Aggiorno...' : 'Aggiorna quote'}
+              </button>
+            </div>
+
+            {nextMatch ? (
+              <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-display font-black text-base text-white leading-tight truncate">
+                    {nextMatch.homeTeam.shortName} <span className="text-white/40 font-medium">vs</span> {nextMatch.awayTeam.shortName}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-white/40">
+                    <Clock size={10} />
+                    <span>{formatMatchTime(nextMatch.scheduledAt)}</span>
                   </div>
                 </div>
-              </div>
-              
-              <div className="p-4 sm:p-8">
-                {currentSchedina?.isLocked ? (
-                  <div className="text-center py-6">
-                    <div className="w-20 h-20 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center mx-auto mb-4 shadow-[0_0_30px_rgba(34,197,94,0.1)]">
-                      <CheckCircle2 size={40} className="text-green-400" />
-                    </div>
-                    <h4 className="font-display font-bold text-2xl text-white mb-2">Schedina Confermata</h4>
-                    <p className="text-slate-400 mb-6">
-                      Hai inserito {currentSchedina.predictions?.length || 0}/10 pronostici. Buona fortuna!
-                    </p>
-                    <Link to="/schedina" className="text-primary-400 font-bold hover:text-primary-300 inline-flex items-center gap-2 transition-colors uppercase tracking-wide text-sm">
-                      Rivedi le tue scelte <ChevronRight size={16} />
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="text-center py-6">
-                    <div className="w-20 h-20 rounded-full bg-accent-500/10 border border-accent-500/20 flex items-center justify-center mx-auto mb-4 shadow-[0_0_30px_rgba(245,158,11,0.1)]">
-                      <XCircle size={40} className="text-accent-400" />
-                    </div>
-                    <h4 className="font-display font-bold text-2xl text-white mb-2">Azione Richiesta</h4>
-                    <p className="text-slate-400 mb-6">Non hai ancora inviato la tua giocata per questa giornata.</p>
-                    <Link to="/schedina" className="btn-primary inline-flex items-center gap-2">
-                      Piazza la tua Schedina <ChevronRight size={18} />
-                    </Link>
+
+                {nextOdds && (
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {(['1','X','2'] as const).map(k => (
+                      <div key={k} className="flex flex-col items-center bg-white/5 rounded-lg px-2 py-1 min-w-[34px]">
+                        <span className="text-[7px] text-white/30 font-bold">{k}</span>
+                        <span className="text-[11px] font-mono font-black text-accent-400">
+                          {nextOdds.esito[k].toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 )}
-              </div>
-            </div>
 
-            {/* Recent */}
-            <div className="glass-card overflow-hidden">
-              <div className="px-4 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <Clock size={18} className="text-primary-400" />
-                  Ultime Schedine
-                </h3>
-                <Link to="/storico" className="text-sm text-primary-400 hover:underline flex items-center gap-1">
-                  Tutte <ChevronRight size={16} />
+                <Link
+                  to="/pronostici"
+                  className="flex-shrink-0 flex items-center justify-center gap-1 bg-primary-500 hover:bg-primary-400 active:bg-primary-600 text-background font-black text-[10px] uppercase tracking-wide px-3 py-2 rounded-xl transition-all shadow-lg shadow-primary-500/25 text-center"
+                >
+                  {predCount > 0 ? (
+                    <>
+                      <Zap size={12} />
+                      <span>{predCount}/{total}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>GIOCA</span>
+                      <ChevronRight size={12} />
+                    </>
+                  )}
                 </Link>
               </div>
-              
-              <div className="divide-y divide-white/5">
-                {schedineRecenti.map((s) => (
-                  <div key={s.matchday} className="px-4 sm:px-6 py-4 flex items-center justify-between hover:bg-white/5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center font-bold text-white/60">
-                        G{s.matchday}
-                      </div>
-                      <div>
-                        <p className="font-medium">Giornata {s.matchday}</p>
-                        <p className="text-xs text-white/50">{s.date}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold gradient-text">{s.points} pt</p>
-                      <p className="text-xs text-white/50">{s.correct}/10</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Badges */}
-            <div className="glass-card p-4 sm:p-6">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <Award size={18} className="text-primary-400" />
-                I tuoi Badge
-              </h3>
-              <div className="grid grid-cols-5 lg:grid-cols-3 gap-2">
-                {badges.map((b) => {
-                  const Icon = b.icon;
-                  return (
-                    <div 
-                      key={b.id}
-                      className={`aspect-square rounded-xl flex flex-col items-center justify-center p-2 ${
-                        b.unlocked ? `${b.bg} border border-white/10` : 'bg-white/5 opacity-40'
-                      }`}
-                      title={b.name}
-                    >
-                      <Icon size={20} className={b.unlocked ? b.color : 'text-white/30'} />
-                      <span className="text-[9px] mt-1 text-white/60">{b.name.split(' ')[0]}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              <Link to="/profilo" className="text-sm text-primary-400 hover:underline flex items-center gap-1 mt-4 justify-center">
-                Vedi profilo <ChevronRight size={16} />
-              </Link>
-            </div>
-
-            {/* Prize Pool */}
-            <div className="glass-card p-4 sm:p-6">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <Trophy size={18} className="text-yellow-400" />
-                Montepremi
-              </h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-white/60 text-sm">Finale</span>
-                  <span className="font-bold gradient-text">{formatCurrency(prizePool.finalPool)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white/60 text-sm">Settimanale</span>
-                  <span className="font-bold">{formatCurrency(prizePool.weeklyPool)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white/60 text-sm">Poker</span>
-                  <span className="font-bold text-accent-400">{formatCurrency(prizePool.accumulatedPoker)}</span>
-                </div>
-              </div>
-              <Link to="/classifica" className="btn-secondary w-full text-sm py-2 mt-4 flex items-center justify-center gap-2">
-                Classifica <ChevronRight size={16} />
-              </Link>
-            </div>
-
-            {/* Quick Links */}
-            <div className="glass-card p-4 sm:p-6">
-              <h3 className="font-semibold mb-4">Link Rapidi</h3>
-              <div className="space-y-2">
-                <Link to="/profilo" className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
-                  <Award size={18} className="text-primary-400" />
-                  <span className="text-sm">Il mio Profilo</span>
-                  <ChevronRight size={16} className="ml-auto text-white/40" />
-                </Link>
-                <Link to="/storico" className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
-                  <Clock size={18} className="text-primary-400" />
-                  <span className="text-sm">Storico Schedine</span>
-                  <ChevronRight size={16} className="ml-auto text-white/40" />
-                </Link>
-                <Link to="/regolamento" className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
-                  <Star size={18} className="text-primary-400" />
-                  <span className="text-sm">Regolamento</span>
-                  <ChevronRight size={16} className="ml-auto text-white/40" />
-                </Link>
-              </div>
-            </div>
+            ) : (
+              <p className="text-white/40 text-sm">Nessuna partita disponibile</p>
+            )}
           </div>
         </div>
+
+        {/* ── Feature Tiles Grid ── */}
+        <div className="grid grid-cols-4 gap-2.5">
+          {featureTiles.map((tile, ti) => {
+            const Icon = tile.icon;
+            return (
+              <Link
+                key={tile.to}
+                to={tile.to}
+                className="feature-tile aspect-square animate-pop-in hover:scale-[1.06] hover:-translate-y-0.5 active:scale-95 transition-transform duration-150"
+                style={{
+                  backgroundColor: tile.bg,
+                  border: `1px solid ${tile.border}`,
+                  boxShadow: `0 4px 20px ${tile.iconColor}14`,
+                  animationDelay: `${ti * 50}ms`,
+                  animationFillMode: 'backwards',
+                }}
+              >
+                <Icon size={28} style={{ color: tile.iconColor }} strokeWidth={1.8} />
+                <div className="text-center">
+                  <p className="text-[10px] font-black text-white uppercase leading-tight tracking-wide">{tile.label}</p>
+                  <p className="text-[8px] leading-tight mt-0.5" style={{ color: `${tile.iconColor}80` }}>{tile.sub}</p>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+
+        {/* ── Guadagna Gettoni ── */}
+        <div>
+          <div className="flex items-center justify-between mb-2.5">
+            <p className="section-title">🪙 Guadagna Gettoni</p>
+            <Link to="/minigiochi" className="text-[10px] text-primary-400 hover:text-primary-300 flex items-center gap-0.5 transition-colors">
+              Sala giochi <ChevronRight size={11} />
+            </Link>
+          </div>
+          <div className="flex gap-2.5 overflow-x-auto scrollbar-hide pb-1">
+            {earnCards.map((s, si) => (
+              <Link
+                key={s.name}
+                to={s.to}
+                className="relative flex-shrink-0 w-[148px] rounded-2xl p-3.5 border border-white/8 flex flex-col overflow-hidden hover:scale-[1.03] active:scale-95 transition-transform animate-slide-up"
+                style={{ backgroundColor: s.bg, animationDelay: `${si * 70}ms`, animationFillMode: 'backwards' }}
+              >
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                  <div className="absolute top-0 bottom-0 w-10 bg-white/5 animate-shine" style={{ animationDelay: `${si * 800}ms` }} />
+                </div>
+                <p className="font-black text-[15px] leading-none" style={{ color: s.accent }}>{s.name}</p>
+                <p className="text-[9px] text-white/55 mt-1 mb-2.5 leading-snug flex-1">{s.tagline}</p>
+                <span
+                  className="self-start text-[9px] font-black uppercase px-3 py-1.5 rounded-lg border transition-all"
+                  style={{ borderColor: `${s.accent}50`, color: s.accent, backgroundColor: `${s.accent}12` }}
+                >
+                  {s.cta} →
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Azioni Rapide ── */}
+        <div className="glass-card p-4">
+          <p className="section-title mb-3">Azioni Rapide</p>
+          <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-0.5">
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Link
+                  key={action.label}
+                  to={action.to}
+                  className="flex-shrink-0 flex flex-col items-center gap-2 group"
+                >
+                  <div className="w-11 h-11 rounded-full bg-primary-500/12 border border-primary-500/20 flex items-center justify-center group-hover:bg-primary-500/25 group-hover:border-primary-500/40 group-hover:shadow-lg group-hover:shadow-primary-500/15 transition-all duration-200">
+                    <Icon size={18} className="text-primary-400" strokeWidth={1.8} />
+                  </div>
+                  <span className="text-[9px] text-white/50 group-hover:text-white/80 text-center whitespace-nowrap transition-colors">{action.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="h-2" />
+
       </div>
     </div>
   );

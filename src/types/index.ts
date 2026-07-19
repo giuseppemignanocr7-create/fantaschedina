@@ -11,6 +11,7 @@ export interface User {
   createdAt: string;
   isActive: boolean;
   avatarUrl?: string;
+  role?: 'admin' | 'user';
 }
 
 export interface Participant extends User {
@@ -21,6 +22,8 @@ export interface Participant extends User {
   joinedMatchday?: number;
   entryFee?: number;
   startingPoints?: number;
+  coins: number;
+  coinsEarned: number;
 }
 
 // === PARTITA ===
@@ -30,7 +33,9 @@ export type GoalNoGoal = 'GG' | 'NG';
 export type DoppiaChance = '1X' | '12' | 'X2';
 export type MultiGoal = 'O0.5' | 'U0.5' | 'O1.5' | 'U1.5' | 'O2.5' | 'U2.5' | 'O3.5' | 'U3.5';
 
-export type BetType = 'esito' | 'over_under' | 'goal_nogoal' | 'doppia_chance' | 'multigoal';
+export type BetType =
+  | 'esito' | 'over_under' | 'goal_nogoal' | 'doppia_chance' | 'multigoal'
+  | 'esito_1t' | 'over_under_1t' | 'goal_nogoal_1t';
 export type BetOutcome = MatchOutcome | OverUnder | GoalNoGoal | DoppiaChance | MultiGoal;
 
 export interface Team {
@@ -50,6 +55,8 @@ export interface Match {
     homeGoals: number;
     awayGoals: number;
     outcome: MatchOutcome;
+    htHomeGoals?: number;
+    htAwayGoals?: number;
   };
   status: 'scheduled' | 'live' | 'finished' | 'postponed';
 }
@@ -75,6 +82,12 @@ export interface Schedina {
   predictions: Prediction[];
   submittedAt: Date;
   isLocked: boolean;
+  powerups?: {
+    jolly?: string;
+    shield?: boolean;
+    insurance?: boolean;
+  };
+  lastMinuteUsed?: boolean;
 }
 
 export interface SchedinaResult extends Omit<Schedina, 'predictions'> {

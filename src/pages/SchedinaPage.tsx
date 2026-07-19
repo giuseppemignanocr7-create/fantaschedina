@@ -1,64 +1,109 @@
-import { useState, useMemo } from 'react';
-import { 
-  Check, 
-  AlertCircle, 
-  Send, 
-  Info,
-  Trophy,
-  Zap,
-  Clock,
-  RotateCcw
+import { useMemo, useState } from 'react';
+import {
+  Check, AlertCircle, Send, Info, Trophy, Zap, Clock, RotateCcw, RefreshCw,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { useAppStore } from '@/store';
-import { MOCK_ODDS } from '@/data/mockData';
 import type { BetType, BetOutcome, Prediction } from '@/types';
-import { isValidOdds, isInPenaltyRange, calculateSchedinaScore } from '@/lib/scoring';
-import { CountdownTimer, QuickBet } from '@/components/ui';
+import { isValidOdds, isInPenaltyRange, calculateSchedinaScore, calculateBetPoints } from '@/lib/scoring';
+import { CountdownTimer, QuickBet, PowerUpSelector, TeamLogo } from '@/components/ui';
+import { useToast } from '@/contexts/ToastContext';
+import { sideCannons, vibrate } from '@/lib/juice';
 
-const TOTAL_PREDICTIONS = 15;
+// 10 matches = 10 giocate
+const TOTAL_PREDICTIONS = 10;
 
-const BET_TYPES: { key: BetType; label: string; options: { value: string; label: string }[] }[] = [
-  { key: 'esito', label: 'Esito Finale', options: [{ value: '1', label: '1' }, { value: 'X', label: 'X' }, { value: '2', label: '2' }] },
-  { key: 'over_under', label: 'Over/Under 2.5', options: [{ value: 'OVER', label: 'Over' }, { value: 'UNDER', label: 'Under' }] },
-  { key: 'goal_nogoal', label: 'Goal/NoGoal', options: [{ value: 'GG', label: 'GG' }, { value: 'NG', label: 'NG' }] },
-  { key: 'doppia_chance', label: 'Doppia Chance', options: [{ value: '1X', label: '1X' }, { value: '12', label: '12' }, { value: 'X2', label: 'X2' }] },
+const BET_TYPES: {
+  key: BetType;
+  label: string;
+  shortLabel: string;
+  cols: number;
+  options: { value: string; label: string }[];
+}[] = [
+  {
+    key: 'esito', label: 'Esito Finale', shortLabel: '1X2', cols: 3,
+    options: [{ value: '1', label: '1' }, { value: 'X', label: 'X' }, { value: '2', label: '2' }],
+  },
+  {
+    key: 'over_under', label: 'Over/Under 2.5', shortLabel: 'O/U', cols: 2,
+    options: [{ value: 'OVER', label: 'Over 2.5' }, { value: 'UNDER', label: 'Under 2.5' }],
+  },
+  {
+    key: 'goal_nogoal', label: 'Goal / NoGoal', shortLabel: 'GG', cols: 2,
+    options: [{ value: 'GG', label: 'Goal Goal' }, { value: 'NG', label: 'No Goal' }],
+  },
+  {
+    key: 'doppia_chance', label: 'Doppia Chance', shortLabel: 'DC', cols: 3,
+    options: [{ value: '1X', label: '1X' }, { value: '12', label: '12' }, { value: 'X2', label: 'X2' }],
+  },
+  {
+    key: 'multigoal', label: 'Multigoal', shortLabel: 'MG', cols: 4,
+    options: [
+      { value: 'O0.5', label: 'O 0.5' }, { value: 'U0.5', label: 'U 0.5' },
+      { value: 'O1.5', label: 'O 1.5' }, { value: 'U1.5', label: 'U 1.5' },
+      { value: 'O2.5', label: 'O 2.5' }, { value: 'U2.5', label: 'U 2.5' },
+      { value: 'O3.5', label: 'O 3.5' }, { value: 'U3.5', label: 'U 3.5' },
+    ],
+  },
+  {
+    key: 'esito_1t', label: 'Esito 1° Tempo', shortLabel: '1T', cols: 3,
+    options: [{ value: '1', label: '1' }, { value: 'X', label: 'X' }, { value: '2', label: '2' }],
+  },
+  {
+    key: 'over_under_1t', label: 'O/U 1° Tempo', shortLabel: 'O/U1T', cols: 2,
+    options: [{ value: 'OVER', label: 'Over 1.5' }, { value: 'UNDER', label: 'Under 1.5' }],
+  },
+  {
+    key: 'goal_nogoal_1t', label: 'GG/NG 1° Tempo', shortLabel: 'GG1T', cols: 2,
+    options: [{ value: 'GG', label: 'Goal Goal' }, { value: 'NG', label: 'No Goal' }],
+  },
 ];
 
 export function SchedinaPage() {
-  const { 
-    currentMatchday, 
-    currentSchedina, 
+  const {
+    currentMatchday,
+    matchOdds,
+    currentSchedina,
+    currentUser,
     updatePrediction,
     submitSchedina,
     resetSchedina,
+    selectedPowerups,
+    setPowerups,
+    isLoadingOdds,
+    isSubmitting,
+    lastOddsUpdate,
+    refreshOdds,
     error,
-    clearError
+    clearError,
   } = useAppStore();
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const toast = useToast();
+
+  const formatTime = (d: Date | null) => {
+    if (!d) return null;
+    return new Date(d).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  };
 
   const [selectedBetType, setSelectedBetType] = useState<BetType>('esito');
 
-  const predictions = currentSchedina?.predictions || [];
+  const predictions = useMemo(() => currentSchedina?.predictions || [], [currentSchedina?.predictions]);
   const completedCount = predictions.length;
   const isComplete = completedCount === TOTAL_PREDICTIONS;
 
   const scorePreview = useMemo(() => {
     if (predictions.length === 0) return null;
-    
-    const mockResults = predictions.map(p => ({
+    const previewResults = predictions.map(p => ({
       ...p,
       isCorrect: true,
-      pointsEarned: p.odds,
+      pointsEarned: calculateBetPoints(p.odds, true),
     }));
-    
-    return calculateSchedinaScore(mockResults);
+    return calculateSchedinaScore(previewResults);
   }, [predictions]);
 
   const handleOutcomeSelect = (matchId: string, betType: BetType, outcome: BetOutcome) => {
-    const matchOdds = MOCK_ODDS[matchId];
-    const typeOdds = matchOdds?.[betType] as Record<string, number>;
+    const mOdds = matchOdds[matchId];
+    const typeOdds = mOdds?.[betType] as Record<string, number>;
     const odds = typeOdds?.[outcome] || 2.00;
     const prediction: Prediction = {
       matchId,
@@ -71,11 +116,14 @@ export function SchedinaPage() {
 
   const handleSubmit = async () => {
     if (!isComplete) return;
-    setIsSubmitting(true);
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    submitSchedina();
-    setIsSubmitting(false);
+    await submitSchedina();
+    if (!useAppStore.getState().error) {
+      vibrate([50, 30, 80]);
+      sideCannons();
+      toast.success('Schedina inviata con successo!');
+    } else {
+      toast.error(useAppStore.getState().error || 'Errore nell\'invio della schedina');
+    }
   };
 
   const handleQuickBet = (newPredictions: Prediction[]) => {
@@ -84,15 +132,15 @@ export function SchedinaPage() {
     });
   };
 
-  // Calcola quota combinata totale
-  const combinedOdds = useMemo(() => {
+  const totalPoints = useMemo(() => {
     if (predictions.length === 0) return 0;
-    return predictions.reduce((acc, p) => acc * p.odds, 1);
+    return predictions.reduce((sum, p) => sum + p.odds * 10, 0);
   }, [predictions]);
 
-  const getPrediction = (matchId: string): Prediction | undefined => {
-    return predictions.find(p => p.matchId === matchId);
-  };
+  const getPrediction = (matchId: string): Prediction | undefined =>
+    predictions.find(p => p.matchId === matchId);
+
+  const currentBetDef = BET_TYPES.find(b => b.key === selectedBetType)!
 
   if (!currentMatchday) {
     return (
@@ -116,14 +164,30 @@ export function SchedinaPage() {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2 text-primary-400 text-sm font-medium">
                   <Trophy size={16} />
-                  Stagione 2025-2026
+                  Stagione {currentMatchday.season}
                 </div>
-                <QuickBet 
-                  matches={currentMatchday.matches}
-                  odds={MOCK_ODDS}
-                  onApply={handleQuickBet}
-                  disabled={currentSchedina?.isLocked}
-                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={refreshOdds}
+                    disabled={isLoadingOdds}
+                    title={lastOddsUpdate ? `Aggiornato alle ${formatTime(lastOddsUpdate)}` : 'Aggiorna quote live'}
+                    className={cn(
+                      'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all',
+                      isLoadingOdds
+                        ? 'bg-accent-500/10 border-accent-500/20 text-accent-400/50 cursor-not-allowed'
+                        : 'bg-accent-500/10 border-accent-500/20 text-accent-400 hover:bg-accent-500/20'
+                    )}
+                  >
+                    <RefreshCw size={12} className={cn(isLoadingOdds && 'animate-spin')} />
+                    {isLoadingOdds ? 'Aggiorno...' : lastOddsUpdate ? `Quote ${formatTime(lastOddsUpdate)}` : 'Quote LIVE'}
+                  </button>
+                  <QuickBet
+                    matches={currentMatchday.matches}
+                    odds={matchOdds}
+                    onApply={handleQuickBet}
+                    disabled={currentSchedina?.isLocked}
+                  />
+                </div>
               </div>
               <h1 className="text-2xl sm:text-3xl font-display font-bold mb-3">
                 Giornata {currentMatchday.number}
@@ -151,20 +215,24 @@ export function SchedinaPage() {
             )}
 
             {/* Bet Type Selector */}
-            <div className="glass-card p-3 mb-6">
-              <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="glass-card p-2 mb-4">
+              <div className="flex gap-1">
                 {BET_TYPES.map((bt) => (
                   <button
                     key={bt.key}
                     onClick={() => setSelectedBetType(bt.key)}
                     className={cn(
-                      'px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all',
+                      'flex-1 flex flex-col items-center gap-0.5 px-1 py-2 rounded-lg text-xs font-bold transition-all',
                       selectedBetType === bt.key
                         ? 'bg-primary-500 text-white'
-                        : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+                        : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
                     )}
                   >
-                    {bt.label}
+                    <span className="font-black text-[11px]">{bt.shortLabel}</span>
+                    <span className={cn(
+                      'text-[8px] font-normal hidden sm:block truncate max-w-full px-0.5',
+                      selectedBetType === bt.key ? 'text-white/70' : 'text-white/25'
+                    )}>{bt.label}</span>
                   </button>
                 ))}
               </div>
@@ -174,7 +242,7 @@ export function SchedinaPage() {
             <div className="space-y-3 mb-8">
               {currentMatchday.matches.map((match, index) => {
                 const prediction = getPrediction(match.id);
-                const odds = MOCK_ODDS[match.id];
+                const odds = matchOdds[match.id];
 
                 return (
                   <div 
@@ -196,9 +264,15 @@ export function SchedinaPage() {
                         
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                            <span className="font-semibold text-sm sm:text-base truncate">{match.homeTeam.shortName || match.homeTeam.name}</span>
+                            <span className="font-semibold text-sm sm:text-base truncate flex items-center gap-1.5">
+                              <TeamLogo src={match.homeTeam.logo} name={match.homeTeam.name} size={18} />
+                              {match.homeTeam.shortName || match.homeTeam.name}
+                            </span>
                             <span className="text-white/40 text-xs">vs</span>
-                            <span className="font-semibold text-sm sm:text-base truncate">{match.awayTeam.shortName || match.awayTeam.name}</span>
+                            <span className="font-semibold text-sm sm:text-base truncate flex items-center gap-1.5">
+                              <TeamLogo src={match.awayTeam.logo} name={match.awayTeam.name} size={18} />
+                              {match.awayTeam.shortName || match.awayTeam.name}
+                            </span>
                           </div>
                           <p className="text-xs text-white/50 mt-0.5">
                             {formatDate(match.scheduledAt)}
@@ -214,17 +288,20 @@ export function SchedinaPage() {
                         )}
                       </div>
 
-                      {/* Odds Buttons - Always visible */}
+                      {/* Odds Buttons */}
                       <div className={cn(
-                        'grid gap-2',
-                        BET_TYPES.find(b => b.key === selectedBetType)?.options.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
+                        'grid gap-1.5',
+                        currentBetDef.cols === 2 && 'grid-cols-2',
+                        currentBetDef.cols === 3 && 'grid-cols-3',
+                        currentBetDef.cols === 4 && 'grid-cols-4',
                       )}>
-                        {BET_TYPES.find(b => b.key === selectedBetType)?.options.map((opt) => {
+                        {currentBetDef.options.map((opt) => {
                           const typeOdds = odds?.[selectedBetType] as Record<string, number> | undefined;
-                          const outcomeOdds = typeOdds?.[opt.value] || 2.00;
+                          const outcomeOdds = typeOdds?.[opt.value] ?? 2.00;
                           const isSelected = prediction?.outcome === opt.value && prediction?.betType === selectedBetType;
                           const isValid = isValidOdds(outcomeOdds);
                           const isPenalty = isInPenaltyRange(outcomeOdds);
+                          const pts = Math.round(outcomeOdds * 10);
 
                           return (
                             <button
@@ -232,31 +309,36 @@ export function SchedinaPage() {
                               onClick={() => handleOutcomeSelect(match.id, selectedBetType, opt.value as BetOutcome)}
                               disabled={currentSchedina?.isLocked}
                               className={cn(
-                                'relative flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all duration-200',
-                                isSelected 
-                                  ? 'bg-primary-500 border-primary-400 text-white shadow-lg shadow-primary-500/30' 
-                                  : 'bg-white/5 border-white/10 hover:border-primary-500/50 hover:bg-white/10',
+                                'relative flex flex-col items-center justify-center p-2 rounded-xl border-2 transition-all duration-200 group',
+                                isSelected
+                                  ? 'bg-primary-500 border-primary-400 shadow-lg shadow-primary-500/30'
+                                  : 'bg-white/5 border-white/10 hover:border-primary-500/40 hover:bg-white/10',
                                 currentSchedina?.isLocked && 'opacity-50 cursor-not-allowed'
                               )}
                             >
                               <span className={cn(
-                                'text-sm font-bold mb-0.5',
-                                isSelected ? 'text-white' : 'text-slate-300'
+                                'text-[10px] font-bold mb-0.5 uppercase tracking-wide',
+                                isSelected ? 'text-white/80' : 'text-white/50'
                               )}>
                                 {opt.label}
                               </span>
                               <span className={cn(
-                                'text-lg font-mono font-bold',
+                                'text-base font-mono font-black leading-tight',
                                 isSelected ? 'text-white' : 'text-accent-400',
                                 !isValid && !isSelected && 'text-red-400',
                                 isPenalty && !isSelected && 'text-yellow-400'
                               )}>
                                 {outcomeOdds.toFixed(2)}
                               </span>
-                              
+                              <span className={cn(
+                                'text-[9px] font-bold mt-0.5',
+                                isSelected ? 'text-white/60' : 'text-white/25 group-hover:text-white/40'
+                              )}>
+                                {pts}pt
+                              </span>
                               {isSelected && (
-                                <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
-                                  <Check size={12} className="text-white" />
+                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                                  <Check size={9} className="text-white" />
                                 </div>
                               )}
                             </button>
@@ -332,18 +414,36 @@ export function SchedinaPage() {
 
                 {/* Stats */}
                 {predictions.length > 0 && (
-                  <div className="border-t border-white/10 pt-4 space-y-2">
+                  <div className="border-t border-white/10 pt-3 space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-white/60">Quota combinata:</span>
-                      <span className="font-bold text-accent-400">x{combinedOdds.toFixed(2)}</span>
+                      <span className="text-white/60">Punti totali (se esatti):</span>
+                      <span className="font-bold text-accent-400">{Math.round(totalPoints)} pt</span>
                     </div>
-                    {scorePreview && (
+                    {scorePreview && scorePreview.bonusPoints > 0 && (
                       <div className="flex justify-between text-sm">
-                        <span className="text-white/60">Punti potenziali:</span>
-                        <span className="font-bold gradient-text">{scorePreview.finalPoints.toFixed(2)} pt</span>
+                        <span className="text-white/60">Bonus ({scorePreview.details.correctPredictions}/10):</span>
+                        <span className="font-bold text-green-400">+{scorePreview.bonusPoints} pt</span>
+                      </div>
+                    )}
+                    {scorePreview && (
+                      <div className="flex justify-between text-sm border-t border-white/10 pt-2">
+                        <span className="font-bold text-white">Totale potenziale:</span>
+                        <span className="font-black gradient-text text-base">{Math.round(scorePreview.finalPoints)} pt</span>
                       </div>
                     )}
                   </div>
+                )}
+
+                {/* Power-up */}
+                {!currentSchedina?.isLocked && predictions.length > 0 && (
+                  <PowerUpSelector
+                    coins={currentUser?.coins ?? 0}
+                    selection={selectedPowerups}
+                    onChange={setPowerups}
+                    matches={currentMatchday.matches}
+                    predictions={predictions}
+                    disabled={isSubmitting}
+                  />
                 )}
 
                 {/* Submit Button */}
@@ -376,6 +476,21 @@ export function SchedinaPage() {
                   <div className="mt-4 p-3 bg-green-500/20 rounded-lg text-center">
                     <Check size={24} className="text-green-400 mx-auto mb-1" />
                     <p className="text-green-400 font-bold text-sm">Schedina Inviata!</p>
+                    {currentSchedina.powerups &&
+                      (currentSchedina.powerups.jolly ||
+                        currentSchedina.powerups.shield ||
+                        currentSchedina.powerups.insurance) && (
+                        <p className="text-xs text-white/50 mt-1">
+                          Power-up attivi:{' '}
+                          {[
+                            currentSchedina.powerups.jolly && '🃏 Jolly',
+                            currentSchedina.powerups.shield && '🛡️ Scudo',
+                            currentSchedina.powerups.insurance && '⭐ Assicurazione',
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
+                      )}
                   </div>
                 )}
               </div>
@@ -385,12 +500,14 @@ export function SchedinaPage() {
                 <div className="flex items-start gap-3">
                   <Info className="text-primary-400 shrink-0 mt-0.5" size={18} />
                   <div className="text-xs text-white/60">
-                    <p className="mb-2 font-bold text-white text-sm">Regole punteggio</p>
+                    <p className="mb-2 font-bold text-white text-sm">Formula Punteggio</p>
                     <ul className="space-y-1">
-                      <li>• Punti = quota (max 3.5)</li>
-                      <li>• Quote &lt;1.25: 0.5 pt</li>
-                      <li>• 13/15: +2 pt bonus</li>
-                      <li>• 15/15: +5 pt bonus</li>
+                      <li>• <span className="text-primary-400 font-bold">Punti = Quota × 10</span></li>
+                      <li>• Es: quota 2.20 → 22 pt</li>
+                      <li>• Quote &lt;1.25: 5 pt fissi</li>
+                      <li>• Quote &lt;1.30: non valide</li>
+                      <li>• 9/10 esatti: +20 pt bonus</li>
+                      <li>• 10/10 esatti: +50 pt bonus</li>
                     </ul>
                   </div>
                 </div>

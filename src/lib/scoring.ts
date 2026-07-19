@@ -12,23 +12,24 @@ import type {
   TournamentConfig,
   Match
 } from '@/types';
+import { currentFootballSeason } from './season';
 
 // Configurazione di default del torneo basata sul regolamento
 export const DEFAULT_TOURNAMENT_CONFIG: TournamentConfig = {
-  season: '2025-2026',
+  season: currentFootballSeason(),
   participationFee: 20,
   weeklyFee: 10,
   weeklyFeeToPool: 5,
   weeklyFeeToOrganizer: 5,
   minValidOdds: 1.30,
-  maxPointsPerBet: 3.5,
+  maxPointsPerBet: 50,      // quota 5.00 × 10 = 50 pt max
   lowOddsThreshold: 1.25,
-  lowOddsMaxPoints: 0.5,
+  lowOddsMaxPoints: 5,       // 0.5 × 10 = 5 pt (quota < 1.25)
   penaltyOddsMin: 1.25,
   penaltyOddsMax: 1.29,
-  penaltyPerThree: -1.5,
-  bonus9Correct: 2,
-  bonus10Correct: 5,
+  penaltyPerThree: -15,      // -1.5 × 10 scaled
+  bonus9Correct: 20,         // 2 × 10 scaled
+  bonus10Correct: 50,        // 5 × 10 scaled
   maxJoinMatchday: 10,
   lateJoinFeePerMatchday: 5,
   minParticipantsForGuarantee: 30,
@@ -46,24 +47,24 @@ export const DEFAULT_TOURNAMENT_CONFIG: TournamentConfig = {
 
 /**
  * Calcola i punti per una singola scommessa vinta
- * - Se quota < 1.25: vale solo 0.5 punti
- * - Se quota >= 1.25 e < 1.30: vale il valore della quota (ma attenzione alle penalità)
- * - Se quota >= 1.30: vale il valore della quota (max 3.5)
+ * Formula ufficiale: Punti = Quota × 10
+ * - Se quota < 1.25: vale solo 5 punti (0.5 × 10)
+ * - Se quota >= 1.25: Quota × 10 (max 50 pt = quota 5.00)
  */
 export function calculateBetPoints(
-  odds: number, 
+  odds: number,
   isCorrect: boolean,
   config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG
 ): number {
   if (!isCorrect) return 0;
 
-  // Quote inferiori a 1.25: vale solo 0.5 punti
+  // Quote inferiori a 1.25: vale solo 5 punti
   if (odds < config.lowOddsThreshold) {
     return config.lowOddsMaxPoints;
   }
 
-  // Punti = quota, con massimo 3.5
-  return Math.min(odds, config.maxPointsPerBet);
+  // Punti = Quota × 10, con massimo 50
+  return Math.min(odds * 10, config.maxPointsPerBet);
 }
 
 /**
@@ -137,10 +138,8 @@ export function calculateSchedinaScore(
   // Conta pronostici corretti
   const correctPredictions = predictions.filter(p => p.isCorrect).length;
   
-  // Calcola punti base (somma delle quote vinte, con cap e regole speciali)
-  const basePoints = predictions.reduce((sum, pred) => {
-    return sum + calculateBetPoints(pred.odds, pred.isCorrect, config);
-  }, 0);
+  // Calcola punti base: somma dei punti già valutati (incluso rimborso void)
+  const basePoints = predictions.reduce((sum, pred) => sum + pred.pointsEarned, 0);
 
   // Conta quote nella fascia penalità
   const penaltyRangeBets = countPenaltyRangeBets(predictions, config);
@@ -148,8 +147,8 @@ export function calculateSchedinaScore(
   // Conta quote sotto soglia minima
   const lowOddsBets = predictions.filter(p => p.odds < config.lowOddsThreshold).length;
   
-  // Conta quote cappate a 3.5
-  const cappedBets = predictions.filter(p => p.odds > config.maxPointsPerBet).length;
+  // Conta giocate cappate al massimo (quota × 10 > maxPointsPerBet)
+  const cappedBets = predictions.filter(p => p.odds * 10 > config.maxPointsPerBet).length;
 
   // Calcola bonus
   const bonusPoints = calculateBonusPoints(correctPredictions, config);
@@ -175,7 +174,55 @@ export function calculateSchedinaScore(
 }
 
 /**
- * Valuta i risultati di una schedina confrontandola con i risultati delle partite
+ * Valuta un singolo pronostico multi-mercato contro il risultato della partita.
+ * Ritorna null se il mercato non è valutabile (es. 1° tempo senza dato HT).
+ * Allineata a functions/src/scoring.ts (fonte di verità per il settlement).
+ */
+export function evaluateBet(
+  betType: string,
+  outcome: string,
+  result: NonNullable<Match['result']>
+): boolean | null {
+  const total = result.homeGoals + result.awayGoals;
+  const outcomeOf = (h: number, a: number) => (h > a ? '1' : a > h ? '2' : 'X');
+  switch (betType) {
+    case 'esito':
+      return outcome === result.outcome;
+    case 'over_under':
+      return outcome === 'OVER' ? total >= 3 : total <= 2;
+    case 'goal_nogoal': {
+      const gg = result.homeGoals > 0 && result.awayGoals > 0;
+      return outcome === 'GG' ? gg : !gg;
+    }
+    case 'doppia_chance':
+      return outcome.includes(result.outcome);
+    case 'multigoal': {
+      const line = parseFloat(outcome.slice(1));
+      if (Number.isNaN(line)) return null;
+      return outcome.startsWith('O') ? total > line : total < line;
+    }
+    case 'esito_1t': {
+      if (result.htHomeGoals == null || result.htAwayGoals == null) return null;
+      return outcome === outcomeOf(result.htHomeGoals, result.htAwayGoals);
+    }
+    case 'over_under_1t': {
+      if (result.htHomeGoals == null || result.htAwayGoals == null) return null;
+      const ht = result.htHomeGoals + result.htAwayGoals;
+      return outcome === 'OVER' ? ht >= 2 : ht <= 1; // linea 1.5
+    }
+    case 'goal_nogoal_1t': {
+      if (result.htHomeGoals == null || result.htAwayGoals == null) return null;
+      const gg = result.htHomeGoals > 0 && result.htAwayGoals > 0;
+      return outcome === 'GG' ? gg : !gg;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Valuta i risultati di una schedina confrontandola con i risultati delle partite.
+ * Mercati non valutabili (void) = quota 1.00 → 10 punti, contano come corretti.
  */
 export function evaluateSchedina(
   schedina: Schedina,
@@ -184,12 +231,19 @@ export function evaluateSchedina(
 ): SchedinaResult {
   const predictionResults: PredictionResult[] = schedina.predictions.map(pred => {
     const match = matches.find(m => m.id === pred.matchId);
-    const isCorrect = match?.result?.outcome === pred.outcome;
-    const pointsEarned = calculateBetPoints(pred.odds, isCorrect, config);
+    if (!match?.result) {
+      return { ...pred, isCorrect: false, pointsEarned: 0 };
+    }
+    const evalResult = evaluateBet(pred.betType, pred.outcome, match.result);
+    if (evalResult === null) {
+      // Void: rimborso a quota 1.00
+      return { ...pred, isCorrect: true, pointsEarned: 10 };
+    }
+    const pointsEarned = calculateBetPoints(pred.odds, evalResult, config);
     
     return {
       ...pred,
-      isCorrect,
+      isCorrect: evalResult,
       pointsEarned,
     };
   });
