@@ -157,6 +157,10 @@ export const useAppStore = create<AppStore>()((set, get) => ({
         get().currentSchedina ??
         emptyDraft(get().currentMatchday?.number ?? 1, participant.id),
     });
+    // Carica la schedina salvata dell'utente ora che abbiamo il profile
+    if (get().currentMatchday) {
+      get().loadUserSchedina();
+    }
   },
 
   updatePrediction: (matchId: string, prediction: Prediction) => {
@@ -269,6 +273,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
             predictions: saved.predictions,
             submittedAt: saved.submittedAt?.toDate(),
             isLocked: saved.isLocked,
+            powerups: saved.powerups,
           },
         });
       } else if (
