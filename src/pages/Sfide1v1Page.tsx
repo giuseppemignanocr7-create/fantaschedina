@@ -33,10 +33,6 @@ export function Sfide1v1Page() {
   const [error, setError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
 
-  useEffect(() => {
-    loadOpponents();
-  }, []);
-
   const loadOpponents = async () => {
     try {
       const { profiles } = await getPublicProfilesFn();
@@ -48,6 +44,10 @@ export function Sfide1v1Page() {
       setLoadingList(false);
     }
   };
+
+  useEffect(() => {
+    loadOpponents();
+  }, []);
 
   const challengeOpponent = async (opp: PublicProfileData) => {
     setError(null);

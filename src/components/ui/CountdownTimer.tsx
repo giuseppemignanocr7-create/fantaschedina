@@ -37,7 +37,10 @@ function calculateTimeLeft(deadline: Date): TimeLeft {
 export function CountdownTimer({ deadline, onExpire, className }: CountdownTimerProps) {
   const [timeLeft, setTimeLeft] = useState<TimeLeft>(() => calculateTimeLeft(deadline));
   const onExpireRef = useRef(onExpire);
-  onExpireRef.current = onExpire;
+
+  useEffect(() => {
+    onExpireRef.current = onExpire;
+  }, [onExpire]);
 
   useEffect(() => {
     const timer = setInterval(() => {
