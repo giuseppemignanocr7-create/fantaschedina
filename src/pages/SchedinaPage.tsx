@@ -98,7 +98,8 @@ export function SchedinaPage() {
     return new Date().getTime() >= new Date(currentMatchday.deadline).getTime();
   }, [currentMatchday?.deadline]);
 
-  const canEdit = currentSchedina?.isLocked && !isDeadlinePassed;
+  const isSubmitted = !!(currentSchedina?.isLocked || currentSchedina?.submittedAt);
+  const canEdit = isSubmitted && !isDeadlinePassed;
 
   const scorePreview = useMemo(() => {
     if (predictions.length === 0) return null;
@@ -216,7 +217,7 @@ export function SchedinaPage() {
                     matches={currentMatchday.matches}
                     odds={matchOdds}
                     onApply={handleQuickBet}
-                    disabled={currentSchedina?.isLocked}
+                    disabled={isSubmitted}
                   />
                 </div>
               </div>
@@ -246,7 +247,7 @@ export function SchedinaPage() {
             )}
 
             {/* Schedina inviata - banner modifiche in alto */}
-            {currentSchedina?.isLocked && canEdit && (
+            {isSubmitted && canEdit && (
               <div className="glass-card p-4 mb-6 border-green-500/30 bg-green-500/5">
                 <div className="flex items-center gap-2 mb-3">
                   <Check size={18} className="text-green-400" />
@@ -384,13 +385,13 @@ export function SchedinaPage() {
                             <button
                               key={opt.value}
                               onClick={() => handleOutcomeSelect(match.id, selectedBetType, opt.value as BetOutcome)}
-                              disabled={currentSchedina?.isLocked}
+                              disabled={isSubmitted}
                               className={cn(
                                 'relative flex flex-col items-center justify-center p-2 rounded-xl border-2 transition-all duration-200 group',
                                 isSelected
                                   ? 'bg-primary-500 border-primary-400 shadow-lg shadow-primary-500/30'
                                   : 'bg-white/5 border-white/10 hover:border-primary-500/40 hover:bg-white/10',
-                                currentSchedina?.isLocked && 'opacity-50 cursor-not-allowed'
+                                isSubmitted && 'opacity-50 cursor-not-allowed'
                               )}
                             >
                               <span className={cn(
@@ -439,7 +440,7 @@ export function SchedinaPage() {
                     <Zap size={18} className="text-primary-400" />
                     Riepilogo Schedina
                   </h3>
-                  {predictions.length > 0 && !currentSchedina?.isLocked && (
+                  {predictions.length > 0 && !isSubmitted && (
                     <button
                       onClick={resetSchedina}
                       className="flex items-center gap-1 px-2 py-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all"
@@ -512,7 +513,7 @@ export function SchedinaPage() {
                 )}
 
                 {/* Power-up */}
-                {!currentSchedina?.isLocked && predictions.length > 0 && (
+                {!isSubmitted && predictions.length > 0 && (
                   <PowerUpSelector
                     coins={currentUser?.coins ?? 0}
                     selection={selectedPowerups}
@@ -524,7 +525,7 @@ export function SchedinaPage() {
                 )}
 
                 {/* Submit Button */}
-                {!currentSchedina?.isLocked && (
+                {!isSubmitted && (
                   <button
                     onClick={handleSubmit}
                     disabled={!isComplete || isSubmitting}
@@ -549,7 +550,7 @@ export function SchedinaPage() {
                   </button>
                 )}
 
-                {currentSchedina?.isLocked && (
+                {isSubmitted && (
                   <div className="mt-4 p-3 bg-green-500/20 rounded-lg text-center space-y-2">
                     <Check size={24} className="text-green-400 mx-auto mb-1" />
                     <p className="text-green-400 font-bold text-sm">Schedina Inviata!</p>
