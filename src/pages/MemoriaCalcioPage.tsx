@@ -7,7 +7,7 @@ import { COINS } from '@/lib/economy';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { burstConfetti, sideCannons, coinRain, vibrate } from '@/lib/juice';
 
-const EMOJIS = ['⚽', '🥅', '🧤', '🚩', '🏟️', '🏆', '🎯', '🥈', '🥉', '🏅', '🎖️', '👟', '🧦', '�', '�', '🟥'];
+const EMOJIS = ['⚽', '🥅', '🧤', '🚩', '🏟️', '🏆', '🎯', '🥈', '🥉', '🏅', '🎖️', '👟', '🧦', '🟨', '🥇', '🟥'];
 
 interface Level {
   pairs: number;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Swords, Search, User, Coins } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -37,7 +37,7 @@ export function Sfide1v1Page() {
   const [error, setError] = useState<string | null>(null);
   const [loadingList, setLoadingList] = useState(true);
 
-  const loadOpponents = async () => {
+  const loadOpponents = useCallback(async () => {
     try {
       const { profiles } = await getPublicProfilesFn();
       const filtered = profiles.filter(p => p.id !== profile?.id).slice(0, 50);
@@ -47,11 +47,11 @@ export function Sfide1v1Page() {
     } finally {
       setLoadingList(false);
     }
-  };
+  }, [profile?.id]);
 
   useEffect(() => {
     loadOpponents();
-  }, []);
+  }, [loadOpponents]);
 
   const challengeOpponent = async (opp: PublicProfileData) => {
     setError(null);

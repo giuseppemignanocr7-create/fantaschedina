@@ -74,7 +74,7 @@ export function PenaltyPowerMeter({ zone, onConfirm, onCancel }: PenaltyPowerMet
     <div className="glass-card p-3 space-y-2 animate-pop-in">
       <div className="flex items-center justify-between">
         <p className="text-[10px] text-white/50 font-bold uppercase tracking-wide">
-          Tocca al centro per il tiro perfetto
+          Ferma la barra nel verde per la massima precisione!
         </p>
         <span className={cn(
           'text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase',

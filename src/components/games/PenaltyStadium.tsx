@@ -75,7 +75,7 @@ export function PenaltyStadium({ revealShot, revealKey, children }: PenaltyStadi
           <p
             className={cn('font-display font-black text-3xl uppercase drop-shadow-lg animate-pop-in',
               revealShot.goal ? 'text-primary-300' : 'text-red-400')}
-            style={{ animationDelay: '450ms', opacity: 0, animationFillMode: 'forwards' }}
+            style={{ animationDelay: '450ms' }}
           >
             {revealShot.goal ? 'GOOOOL! ⚽' : 'PARATO! 🧤'}
           </p>
