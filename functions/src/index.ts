@@ -594,7 +594,7 @@ async function settleSchedine(
 
 // ---------- 3. SUBMIT SCHEDINA (callable) ----------
 
-export const submitSchedina = onCall({ region: REGION, enforceAppCheck: true }, async request => {
+export const submitSchedina = onCall({ region: REGION, enforceAppCheck: false }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'submitSchedina', 3, 60_000);
@@ -720,7 +720,7 @@ export const submitSchedina = onCall({ region: REGION, enforceAppCheck: true }, 
 
 // ---------- 4. CAMBIO LAST-MINUTE (callable) ----------
 
-export const changePrediction = onCall({ region: REGION, enforceAppCheck: true }, async request => {
+export const changePrediction = onCall({ region: REGION, enforceAppCheck: false }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'changePrediction', 5, 60_000);
@@ -792,7 +792,7 @@ export const seedQuizQuestions = onCall({ region: REGION }, async request => {
   return { message: 'Domande caricate', count: ALL_QUIZ_QUESTIONS.length };
 });
 
-export const playMinigame = onCall({ region: REGION, enforceAppCheck: true }, async request => {
+export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'playMinigame', 10, 60_000);
@@ -1204,7 +1204,7 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: true }, as
   }
 });
 
-export const getPublicProfiles = onCall({ region: REGION, enforceAppCheck: true }, async request => {
+export const getPublicProfiles = onCall({ region: REGION, enforceAppCheck: false }, async request => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   }
@@ -1246,7 +1246,7 @@ export const getPublicProfiles = onCall({ region: REGION, enforceAppCheck: true 
   };
 });
 
-export const manageLeague = onCall({ region: REGION, enforceAppCheck: true }, async request => {
+export const manageLeague = onCall({ region: REGION, enforceAppCheck: false }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   const action = request.data?.action as string;
@@ -1422,7 +1422,7 @@ export const onLeagueWritten = onDocumentWritten(
 
 // ---------- 7. MISSIONI (callable) ----------
 
-export const claimMission = onCall({ region: REGION, enforceAppCheck: true }, async request => {
+export const claimMission = onCall({ region: REGION, enforceAppCheck: false }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
 
