@@ -22,6 +22,14 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Forza l'aggiornamento del Service Worker a ogni caricamento per evitare cache PWA obsolete
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(r => { r.update(); });
+        });
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
