@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Users, Swords, Timer, Copy, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, Swords, Copy, Loader2, Sparkles, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -19,10 +19,10 @@ import { vibrate } from '@/lib/juice';
 
 type GamePhase = 'menu' | 'create' | 'join' | 'game' | 'finished';
 
-const TARGETS: { value: PenaltyTarget; label: string; icon: string; position: string }[] = [
-  { value: 'left', label: 'Sinistra', icon: '⬅️', position: 'absolute left-[12%] top-1/2 -translate-y-1/2' },
-  { value: 'center', label: 'Centro', icon: '⬆️', position: 'absolute left-1/2 top-[15%] -translate-x-1/2' },
-  { value: 'right', label: 'Destra', icon: '➡️', position: 'absolute right-[12%] top-1/2 -translate-y-1/2' },
+const TARGETS: { value: PenaltyTarget; label: string; x: number; y: number }[] = [
+  { value: 'left', label: 'SINISTRA', x: 18, y: 58 },
+  { value: 'center', label: 'CENTRO', x: 50, y: 42 },
+  { value: 'right', label: 'DESTRA', x: 82, y: 58 },
 ];
 
 export function RigoriDuelPage() {
@@ -36,7 +36,8 @@ export function RigoriDuelPage() {
   const [loading, setLoading] = useState(false);
   const [myChoice, setMyChoice] = useState<PenaltyTarget | null>(null);
   const [lastAnim, setLastAnim] = useState<PenaltyDuelState['lastRound'] | null>(null);
-  const [revealing, setRevealing] = useState(false);
+  const [shotAnim, setShotAnim] = useState<'goal' | 'save' | null>(null);
+  const [shake, setShake] = useState(false);
   const [timer, setTimer] = useState(5);
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -44,8 +45,7 @@ export function RigoriDuelPage() {
 
   const isP1 = duel?.p1.uid === profile?.id;
   const playerNum = isP1 ? 1 : 2;
-  const isMyTurn = duel?.attacker === playerNum;
-  const amAttacker = isMyTurn;
+  const amAttacker = duel?.attacker === playerNum;
 
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -64,7 +64,6 @@ export function RigoriDuelPage() {
     });
   }, [duelId]);
 
-  // Start timer when playing and new round
   useEffect(() => {
     if (duel?.phase !== 'playing' || !duel.deadlineAt) return;
     if (timerRef.current) clearInterval(timerRef.current);
@@ -72,26 +71,27 @@ export function RigoriDuelPage() {
     const update = () => {
       const remaining = Math.max(0, Math.ceil((duel.deadlineAt - Date.now()) / 1000));
       setTimer(remaining);
-      if (remaining <= 1) {
-        // auto timeout
-        if (myChoice === null && duel.phase === 'playing') {
-          handleTimeout();
-        }
+      if (remaining <= 0 && myChoice === null) {
+        handleTimeout();
       }
     };
     update();
-    timerRef.current = setInterval(update, 250);
+    timerRef.current = setInterval(update, 100);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [duel?.round, duel?.phase, duel?.deadlineAt]);
 
-  // Reveal animation when lastRound changes
   useEffect(() => {
     if (!duel?.lastRound) return;
     if (lastAnim?.round === duel.lastRound.round) return;
     setLastAnim(duel.lastRound);
-    setRevealing(true);
+    setShotAnim(duel.lastRound.goal ? 'goal' : 'save');
+    setShake(true);
     setMyChoice(null);
-    const t = setTimeout(() => setRevealing(false), 1800);
+    vibrate(duel.lastRound.goal ? 80 : 40);
+    const t = setTimeout(() => {
+      setShotAnim(null);
+      setShake(false);
+    }, 2200);
     return () => clearTimeout(t);
   }, [duel?.lastRound]);
 
@@ -106,7 +106,7 @@ export function RigoriDuelPage() {
   };
 
   const handleChoice = async (target: PenaltyTarget) => {
-    if (!duelId || myChoice !== null || revealing || duel?.phase !== 'playing') return;
+    if (!duelId || myChoice !== null || shotAnim || duel?.phase !== 'playing') return;
     setMyChoice(target);
     vibrate(20);
     try {
@@ -168,39 +168,34 @@ export function RigoriDuelPage() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const isFinished = duel?.phase === 'finished';
   useEffect(() => {
-    if (isFinished && phase !== 'finished') {
+    if (duel?.phase === 'finished' && phase !== 'finished') {
       setPhase('finished');
       setTimer(0);
     }
-  }, [isFinished, phase]);
+  }, [duel?.phase, phase]);
 
   if (phase === 'create') {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="glass-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in">
+      <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('/rigori/ref3.jpg')] bg-cover bg-center opacity-15" />
+        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/90 to-background" />
+        <div className="glass-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in relative z-10">
           <div className="text-6xl animate-bounce">⚽</div>
           <h1 className="font-display font-black text-2xl text-white uppercase">Sala d'attesa</h1>
           <p className="text-white/50 text-sm">Condividi il codice con un amico per iniziare il duello</p>
-
           <div className="bg-white/5 rounded-2xl p-5 space-y-3">
             <p className="text-[10px] text-white/40 uppercase tracking-widest">Codice partita</p>
             <div className="font-black text-4xl text-primary-400 tracking-[0.2em]">{code}</div>
-            <button
-              onClick={copyCode}
-              className="flex items-center justify-center gap-2 mx-auto text-xs text-white/60 hover:text-white transition-colors"
-            >
+            <button onClick={copyCode} className="flex items-center justify-center gap-2 mx-auto text-xs text-white/60 hover:text-white transition-colors">
               <Copy size={14} /> {copied ? 'Copiato!' : 'Copia codice'}
             </button>
           </div>
-
           {duel?.p2?.uid ? (
             <p className="text-sm text-green-400 font-bold animate-pulse">Avversario connesso! Partita in corso…</p>
           ) : (
             <p className="text-sm text-white/40">In attesa dell'avversario…</p>
           )}
-
           {error && <p className="text-sm text-red-400">{error}</p>}
           <Link to="/minigiochi" className="block text-xs text-white/30 hover:text-white/60">← Torna ai minigiochi</Link>
         </div>
@@ -214,17 +209,15 @@ export function RigoriDuelPage() {
     const oppScore = iAmP1 ? duel.p2.score : duel.p1.score;
     const iWon = duel.winner === playerNum;
     const isDraw = duel.winner === 'draw';
-
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="glass-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in">
-          <div className="text-7xl animate-heartbeat">
-            {iWon ? '🏆' : isDraw ? '🤝' : '😢'}
-          </div>
+      <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('/rigori/ref5.jpg')] bg-cover bg-center opacity-20" />
+        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/90 to-background" />
+        <div className="glass-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in relative z-10">
+          <div className="text-7xl animate-heartbeat">{iWon ? '🏆' : isDraw ? '🤝' : '😢'}</div>
           <h2 className="font-display font-black text-3xl text-white uppercase">
             {iWon ? 'HAI VINTO!' : isDraw ? 'PAREGGIO!' : 'HAI PERSO!'}
           </h2>
-
           <div className="flex items-center justify-center gap-6">
             <div className="text-center">
               <p className="text-xs text-white/40 uppercase">Tu</p>
@@ -236,21 +229,15 @@ export function RigoriDuelPage() {
               <p className="font-black text-4xl text-red-400">{oppScore}</p>
             </div>
           </div>
-
-          {(duel.reward > 0 && (iWon || isDraw)) && (
+          {duel.reward > 0 && (iWon || isDraw) && (
             <div className="bg-gradient-to-r from-yellow-500/15 via-yellow-500/25 to-yellow-500/15 border border-yellow-500/30 rounded-2xl p-5">
               <p className="text-yellow-200/60 text-xs uppercase tracking-widest mb-1">Premio</p>
               <p className="font-black text-4xl text-yellow-400">+{duel.reward} 🪙</p>
             </div>
           )}
-
           <div className="flex gap-2">
-            <button onClick={() => { cleanup(); setPhase('menu'); setDuel(null); setDuelId(null); }} className="flex-1 btn-green text-sm font-black">
-              🔄 Gioca ancora
-            </button>
-            <Link to="/minigiochi" className="flex items-center justify-center flex-1 btn-secondary text-sm">
-              ← Minigiochi
-            </Link>
+            <button onClick={() => { cleanup(); setPhase('menu'); setDuel(null); setDuelId(null); }} className="flex-1 btn-green text-sm font-black">🔄 Gioca ancora</button>
+            <Link to="/minigiochi" className="flex items-center justify-center flex-1 btn-secondary text-sm">← Minigiochi</Link>
           </div>
         </div>
       </div>
@@ -263,155 +250,144 @@ export function RigoriDuelPage() {
     const oppName = iAmP1 ? duel.p2.username : duel.p1.username;
     const myScore = iAmP1 ? duel.p1.score : duel.p2.score;
     const oppScore = iAmP1 ? duel.p2.score : duel.p1.score;
-    const roleSub = amAttacker ? 'Scegli uno dei 3 lati della porta' : 'Indovina dove tirerà l\'avversario';
+    const showResult = shotAnim !== null;
+    const resultMsg = lastAnim ? (lastAnim.goal ? 'GOAL!' : 'PARATA!') : '';
 
     return (
-      <div className="min-h-screen px-4 py-6">
-        <div className="max-w-md mx-auto space-y-4">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <Link to="/minigiochi" className="p-2 text-white/40 hover:text-white transition-colors">
-              <ArrowLeft size={20} />
-            </Link>
-            <div className="text-center">
-              <p className="font-black text-sm text-white">Rigore {duel.round} / {duel.mode.startsWith('bot') && duel.mode !== 'botAlternate' ? 5 : '∞'}</p>
-              <p className="text-[10px] text-primary-400 uppercase tracking-widest font-bold">
-                {duel.mode.startsWith('bot') ? 'vs Bot' : '1 vs 1'}
-              </p>
+      <div className={cn('min-h-screen relative overflow-hidden', shake && 'animate-shake')}>
+        <div className="absolute inset-0 bg-[url('/rigori/ref1.jpg')] bg-cover bg-center opacity-20" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent" />
+
+        <div className="relative z-10 min-h-screen flex flex-col px-4 py-6">
+          <div className="max-w-md mx-auto w-full flex-1 flex flex-col">
+            <header className="flex items-center justify-between mb-6">
+              <Link to="/minigiochi" className="p-2 text-white/60 hover:text-white transition-colors -ml-2">
+                <ArrowLeft size={22} />
+              </Link>
+              <div className="text-center">
+                <p className="font-black text-sm text-white tracking-widest">TURNO {duel.round}</p>
+                <p className="text-[10px] text-primary-400 uppercase tracking-widest font-bold">{duel.mode.startsWith('bot') ? 'VS BOT' : '1 VS 1'}</p>
+              </div>
+              <div className="w-8" />
+            </header>
+
+            {/* Scoreboard */}
+            <div className="glass-card p-3 flex items-center justify-between mb-4 shadow-2xl">
+              <div className="text-center flex-1">
+                <p className="text-[10px] font-black text-primary-400 truncate max-w-[80px] mx-auto">{myName}</p>
+                <p className="font-black text-4xl text-primary-400 drop-shadow-[0_0_12px_rgba(132,216,12,0.5)]">{myScore}</p>
+              </div>
+              <div className="px-3">
+                <Swords size={24} className="text-orange-400" />
+              </div>
+              <div className="text-center flex-1">
+                <p className="text-[10px] font-black text-red-400 truncate max-w-[80px] mx-auto">{oppName}</p>
+                <p className="font-black text-4xl text-red-400">{oppScore}</p>
+              </div>
             </div>
-            <div className="w-8" />
-          </div>
 
-          {/* Scoreboard */}
-          <div className="glass-card p-4 flex items-center justify-between">
-            <div className="text-center flex-1">
-              <p className="text-xs font-bold text-primary-400 truncate max-w-[80px] mx-auto">{myName}</p>
-              <p className="font-black text-4xl text-primary-400">{myScore}</p>
-            </div>
-            <div className="px-4">
-              <Swords size={28} className="text-orange-400" />
-            </div>
-            <div className="text-center flex-1">
-              <p className="text-xs font-bold text-red-400 truncate max-w-[80px] mx-auto">{oppName}</p>
-              <p className="font-black text-4xl text-red-400">{oppScore}</p>
-            </div>
-          </div>
-
-          {/* Timer */}
-          <div className={cn(
-            'flex items-center justify-center gap-2 text-xl font-black',
-            timer <= 2 ? 'text-red-400 animate-pulse' : 'text-white'
-          )}>
-            <Timer size={20} />
-            <span>{timer}s</span>
-          </div>
-
-          {/* Role banner */}
-          <div className="text-center space-y-1">
-            <p className={cn('font-black text-lg uppercase', amAttacker ? 'text-primary-400' : 'text-yellow-400')}>
-              {amAttacker ? '⚽ Sei l\'attaccante' : '🧤 Sei il portiere'}
-            </p>
-            <p className="text-sm text-white/60">{roleSub}</p>
-          </div>
-
-          {/* Goal with 3 targets */}
-          <div className="relative aspect-[16/10] bg-gradient-to-b from-green-900/40 to-green-800/20 rounded-3xl border-4 border-white/20 overflow-hidden shadow-2xl">
-            {/* Goal net */}
-            <div className="absolute inset-0 opacity-10" style={{
-              backgroundImage: 'linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)',
-              backgroundSize: '40px 40px'
-            }} />
-
-            {TARGETS.map(t => {
-              const disabled = revealing || myChoice !== null || duel.phase !== 'playing';
-              return (
-                <button
-                  key={t.value}
-                  onClick={() => handleChoice(t.value)}
-                  disabled={disabled}
-                  className={cn(
-                    'w-20 h-20 rounded-full flex flex-col items-center justify-center transition-all active:scale-90',
-                    t.position,
-                    disabled ? 'opacity-40 cursor-not-allowed' : 'hover:scale-110 hover:bg-white/20 bg-white/10 border border-white/20 shadow-lg'
-                  )}
-                >
-                  <span className="text-3xl filter drop-shadow-lg">{t.icon}</span>
-                  <span className="text-[10px] font-black text-white/80 uppercase mt-1">{t.label}</span>
-                </button>
-              );
-            })}
-
-            {revealing && lastAnim && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 animate-pop-in z-20">
-                <p className="text-5xl mb-2">{lastAnim.goal ? '⚽' : '🧤'}</p>
-                <p className={cn('font-black text-2xl uppercase', lastAnim.goal ? 'text-green-400' : 'text-red-400')}>
-                  {lastAnim.goal ? 'GOAL!' : 'PARATA!'}
+            {/* Role + Timer */}
+            <div className="text-center space-y-3 mb-6">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/40 border border-white/10">
+                {amAttacker ? <Zap size={16} className="text-primary-400" /> : <Sparkles size={16} className="text-yellow-400" />}
+                <p className={cn('font-black text-sm uppercase tracking-widest', amAttacker ? 'text-primary-400' : 'text-yellow-400')}>
+                  {amAttacker ? '⚽ TIRA TU!' : '🧤 PARA TU!'}
                 </p>
               </div>
-            )}
-          </div>
 
-          {error && <p className="text-sm text-red-400 text-center animate-shake">{error}</p>}
+              <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
+                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
+                  <path className="text-white/10" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
+                  <path
+                    className={cn(timer <= 2 ? 'text-red-500' : 'text-primary-500')}
+                    strokeDasharray={`${(timer / 5) * 100}, 100`}
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    style={{ transition: 'stroke-dasharray 0.2s linear' }}
+                  />
+                </svg>
+                <span className={cn('text-2xl font-black', timer <= 2 ? 'text-red-400 animate-pulse' : 'text-white')}>{timer}</span>
+              </div>
+            </div>
+
+            {/* Targets */}
+            <div className="relative flex-1 min-h-[360px] rounded-3xl border-4 border-white/20 overflow-hidden shadow-2xl bg-black/30 backdrop-blur-sm">
+              <div className="absolute inset-0 bg-[url('/rigori/ref2.jpg')] bg-cover bg-center opacity-40" />
+
+              {TARGETS.map(t => {
+                const disabled = showResult || myChoice !== null || duel.phase !== 'playing';
+                const isSelected = myChoice === t.value;
+                return (
+                  <button
+                    key={t.value}
+                    onClick={() => handleChoice(t.value)}
+                    disabled={disabled}
+                    className={cn(
+                      'absolute w-24 h-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 flex flex-col items-center justify-center transition-all active:scale-90 shadow-2xl',
+                      isSelected
+                        ? 'bg-primary-500/90 border-primary-300 scale-110 shadow-[0_0_30px_rgba(132,216,12,0.5)]'
+                        : 'bg-white/10 border-white/40 hover:bg-primary-500/30 hover:border-primary-300 hover:scale-105'
+                    )}
+                    style={{ left: `${t.x}%`, top: `${t.y}%` }}
+                  >
+                    <span className="text-3xl font-black drop-shadow-lg">
+                      {t.value === 'left' ? '⬅' : t.value === 'right' ? '➡' : '⬆'}
+                    </span>
+                    <span className="text-[10px] font-black text-white/90 uppercase tracking-wide mt-1">{t.label}</span>
+                  </button>
+                );
+              })}
+
+              {showResult && (
+                <div className={cn('absolute inset-0 flex flex-col items-center justify-center animate-pop-in z-20', lastAnim?.goal ? 'bg-green-500/20' : 'bg-red-500/20')}>
+                  <p className="text-7xl mb-2 animate-bounce">{lastAnim?.goal ? '⚽' : '🧤'}</p>
+                  <p className={cn('font-display font-black text-5xl uppercase tracking-widest drop-shadow-2xl', lastAnim?.goal ? 'text-green-400' : 'text-red-400')}>
+                    {resultMsg}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Instruction */}
+            <p className="text-center text-sm text-white/70 font-bold mt-5">
+              {amAttacker ? 'Scegli dove spiazzare il portiere' : 'Indovina dove tirerà l\'avversario'}
+            </p>
+
+            {error && <p className="text-sm text-red-400 text-center mt-3 animate-shake">{error}</p>}
+          </div>
         </div>
       </div>
     );
   }
 
-  // Default menu
+  // Menu
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="glass-card p-8 max-w-sm w-full space-y-5 animate-pop-in">
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+      <div className="absolute inset-0 bg-[url('/rigori/ref4.jpg')] bg-cover bg-center opacity-15" />
+      <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/95 to-background" />
+      <div className="glass-card p-8 max-w-sm w-full space-y-5 animate-pop-in relative z-10">
         <div className="text-center space-y-2">
           <div className="text-6xl animate-bounce">⚽</div>
           <h1 className="font-display font-black text-3xl text-white uppercase">Rigori Duello</h1>
-          <p className="text-white/50 text-sm">3 mirini, 5 secondi, 5 rigori a testa. Vince il più freddo!</p>
+          <p className="text-white/50 text-sm">3 mirini. 5 secondi. 5 rigori. Vince il più freddo.</p>
         </div>
-
         {error && <p className="text-sm text-red-400 text-center animate-shake">{error}</p>}
-
         <div className="space-y-3">
-          <button
-            onClick={handleCreate}
-            disabled={loading}
-            className="w-full btn-green text-sm font-black flex items-center justify-center gap-2"
-          >
-            <Users size={16} /> CREA PARTITA 1v1
-          </button>
-
+          <button onClick={handleCreate} disabled={loading} className="w-full btn-green text-sm font-black flex items-center justify-center gap-2"><Users size={16} /> CREA PARTITA 1v1</button>
           <div className="flex gap-2">
-            <input
-              value={inputCode}
-              onChange={e => setInputCode(e.target.value.toUpperCase())}
-              placeholder="CODICE"
-              maxLength={6}
-              className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-center font-black text-white tracking-widest uppercase focus:outline-none focus:border-primary-500"
-            />
-            <button
-              onClick={handleJoin}
-              disabled={loading || inputCode.length !== 6}
-              className="btn-primary px-4 text-sm font-black"
-            >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : 'ENTRA'}
-            </button>
+            <input value={inputCode} onChange={e => setInputCode(e.target.value.toUpperCase())} placeholder="CODICE" maxLength={6} className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-center font-black text-white tracking-widest uppercase focus:outline-none focus:border-primary-500" />
+            <button onClick={handleJoin} disabled={loading || inputCode.length !== 6} className="btn-primary px-4 text-sm font-black">{loading ? <Loader2 size={16} className="animate-spin" /> : 'ENTRA'}</button>
           </div>
-
           <div className="h-px bg-white/10" />
-
           <p className="text-[10px] text-white/40 uppercase tracking-widest text-center font-bold">Gioca contro il Bot</p>
-
           <div className="grid grid-cols-3 gap-2">
-            <button onClick={() => handleBot('botAttacker')} className="btn-secondary text-xs font-black py-3">
-              ⚽ Attaccante
-            </button>
-            <button onClick={() => handleBot('botKeeper')} className="btn-secondary text-xs font-black py-3">
-              🧤 Portiere
-            </button>
-            <button onClick={() => handleBot('botAlternate')} className="btn-secondary text-xs font-black py-3">
-              🔄 Alterna
-            </button>
+            <button onClick={() => handleBot('botAttacker')} className="btn-secondary text-xs font-black py-3">⚽ Attaccante</button>
+            <button onClick={() => handleBot('botKeeper')} className="btn-secondary text-xs font-black py-3">🧤 Portiere</button>
+            <button onClick={() => handleBot('botAlternate')} className="btn-secondary text-xs font-black py-3">🔄 Alterna</button>
           </div>
         </div>
-
         <Link to="/minigiochi" className="block text-xs text-white/30 hover:text-white/60 text-center">← Torna ai minigiochi</Link>
       </div>
     </div>
