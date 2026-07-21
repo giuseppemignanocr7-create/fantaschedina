@@ -4,6 +4,7 @@ import { MobileHeader } from './MobileHeader';
 import { BottomNav } from './BottomNav';
 import { Sidebar } from './Sidebar';
 import { FocusManager } from './FocusManager';
+import { SponsorBanner } from '@/components/ui/SponsorTicker';
 
 export function Layout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -20,6 +21,9 @@ export function Layout() {
 
       {/* Page content — pushed right on desktop, padded top for header */}
       <div className="pt-14 md:pl-64">
+        {/* Sponsor scrolling banner */}
+        <SponsorBanner />
+
         <main className="min-h-[calc(100vh-3.5rem)] pb-16 md:pb-0">
           <Outlet />
         </main>
