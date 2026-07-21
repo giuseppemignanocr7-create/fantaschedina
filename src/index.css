@@ -145,3 +145,29 @@
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-primary-500/40;
 }
+
+@keyframes shot-ball {
+  from {
+    left: 50%;
+    top: 92%;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  to {
+    left: var(--tx);
+    top: var(--ty);
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes keeper-dive {
+  from {
+    left: 50%;
+    top: 12%;
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    left: var(--kx);
+    top: var(--ky);
+    transform: translate(-50%, -50%) rotate(var(--kr, 0deg));
+  }
+}

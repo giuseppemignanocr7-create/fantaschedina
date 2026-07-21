@@ -252,6 +252,13 @@ export function RigoriDuelPage() {
     const oppScore = iAmP1 ? duel.p2.score : duel.p1.score;
     const showResult = shotAnim !== null;
     const resultMsg = lastAnim ? (lastAnim.goal ? 'GOAL!' : 'PARATA!') : '';
+    const attackerChoice = lastAnim ? (lastAnim.attacker === 1 ? lastAnim.p1Choice : lastAnim.p2Choice) : null;
+    const keeperChoice = lastAnim ? (lastAnim.attacker === 1 ? lastAnim.p2Choice : lastAnim.p1Choice) : null;
+    const shotTarget = attackerChoice ? TARGETS.find(t => t.value === attackerChoice) : null;
+    const keeperTarget = keeperChoice ? TARGETS.find(t => t.value === keeperChoice) : null;
+    const keeperRotate = keeperTarget
+      ? keeperTarget.value === 'left' ? '-30deg' : keeperTarget.value === 'right' ? '30deg' : '0deg'
+      : '0deg';
 
     return (
       <div className={cn('min-h-screen relative overflow-hidden', shake && 'animate-shake')}>
@@ -340,13 +347,38 @@ export function RigoriDuelPage() {
                 );
               })}
 
-              {showResult && (
-                <div className={cn('absolute inset-0 flex flex-col items-center justify-center animate-pop-in z-20', lastAnim?.goal ? 'bg-green-500/20' : 'bg-red-500/20')}>
-                  <p className="text-7xl mb-2 animate-bounce">{lastAnim?.goal ? '⚽' : '🧤'}</p>
-                  <p className={cn('font-display font-black text-5xl uppercase tracking-widest drop-shadow-2xl', lastAnim?.goal ? 'text-green-400' : 'text-red-400')}>
-                    {resultMsg}
-                  </p>
-                </div>
+              {showResult && lastAnim && (
+                <>
+                  {/* Pallone che tira */}
+                  <div
+                    className="absolute w-11 h-11 rounded-full bg-white border-2 border-black/20 flex items-center justify-center text-2xl z-20 shadow-[0_0_20px_rgba(255,255,255,0.45)]"
+                    style={{
+                      '--tx': `${shotTarget?.x ?? 50}%`,
+                      '--ty': `${shotTarget?.y ?? 58}%`,
+                      animation: 'shot-ball 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
+                    } as React.CSSProperties}
+                  >
+                    ⚽
+                  </div>
+                  {/* Portiere che si tuffa */}
+                  <div
+                    className="absolute z-20"
+                    style={{
+                      '--kx': `${keeperTarget?.x ?? 50}%`,
+                      '--ky': `${keeperTarget?.y ?? 58}%`,
+                      '--kr': keeperRotate,
+                      animation: 'keeper-dive 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
+                    } as React.CSSProperties}
+                  >
+                    <span className="text-6xl drop-shadow-[0_0_12px_rgba(255,255,255,0.35)]">🧤</span>
+                  </div>
+                  <div className={cn('absolute inset-0 flex flex-col items-center justify-center z-30', lastAnim.goal ? 'bg-green-500/20' : 'bg-red-500/20')}>
+                    <p className="text-7xl mb-2 animate-bounce">{lastAnim.goal ? '⚽' : '🧤'}</p>
+                    <p className={cn('font-display font-black text-5xl uppercase tracking-widest drop-shadow-2xl', lastAnim.goal ? 'text-green-400' : 'text-red-400')}>
+                      {resultMsg}
+                    </p>
+                  </div>
+                </>
               )}
             </div>
 
