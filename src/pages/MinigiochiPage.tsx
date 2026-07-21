@@ -66,6 +66,18 @@ const games: Game[] = [
     pts: `fino a ${COINS.sfidaMaxReward} 🪙`,
   },
   {
+    emoji: '🥅',
+    name: 'RIGORI DUELLO',
+    tagline: 'Realtime 1vs1 / Bot',
+    desc: '3 mirini, 5 secondi, 5 rigori a testa. Sei attaccante o portiere.',
+    gradient: 'linear-gradient(135deg, #064e3b 0%, #0d9488 45%, #022c22 100%)',
+    glow: '#14b8a6',
+    color: '#2dd4bf',
+    cta: 'DUELLA!',
+    to: '/minigiochi/rigori-duello',
+    pts: 'fino a 50 🪙',
+  },
+  {
     emoji: '🃏',
     name: 'MEMORIA CALCIO',
     tagline: 'Trova le coppie!',

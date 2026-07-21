@@ -967,9 +967,21 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
   switch (action) {
     // --- QUIZ ---
     case 'quiz_start': {
-      const pool = await db.collection('quiz_questions').get();
+      let pool = await db.collection('quiz_questions').get();
       if (pool.empty) {
-        throw new HttpsError('unavailable', 'Nessuna domanda disponibile');
+        // Auto-seed questions on first use, no admin needed
+        const batch = db.batch();
+        for (let i = 0; i < ALL_QUIZ_QUESTIONS.length; i++) {
+          const q = ALL_QUIZ_QUESTIONS[i];
+          batch.set(db.collection('quiz_questions').doc(`q_${i}`), {
+            question: q.question,
+            options: q.options,
+            answerIndex: q.answerIndex,
+            category: q.category,
+          });
+        }
+        await batch.commit();
+        pool = await db.collection('quiz_questions').get();
       }
       // Get user's seen questions to avoid repeats
       const seenDoc = await db.collection('quiz_seen').doc(uid).get();
@@ -1706,4 +1718,318 @@ export const adminToggleBan = onCall({ region: REGION }, async request => {
   });
 
   return { ok: true, isActive: !currentActive };
+});
+
+// ---------- 6. RIGORI DUELLO REALTIME 1v1 / BOT ----------
+
+type PenaltyTarget = 'left' | 'center' | 'right';
+type DuelMode = 'human' | 'botAttacker' | 'botKeeper' | 'botAlternate';
+
+interface PenaltyDuelDoc {
+  code: string;
+  p1: { uid: string; username: string; score: number };
+  p2: { uid: string; username: string; score: number; isBot?: boolean };
+  mode: DuelMode;
+  round: number;
+  attacker: 1 | 2;
+  p1Choice: PenaltyTarget | null;
+  p2Choice: PenaltyTarget | null;
+  phase: 'waiting' | 'playing' | 'finished';
+  startedAt: number;
+  deadlineAt: number;
+  winner: 1 | 2 | 'draw' | null;
+  reward: number;
+  lastRound: {
+    round: number;
+    attacker: 1 | 2;
+    p1Choice: PenaltyTarget;
+    p2Choice: PenaltyTarget;
+    goal: boolean;
+    p1Score: number;
+    p2Score: number;
+  } | null;
+}
+
+function duelCode(): string {
+  return Array.from({ length: 6 }, () =>
+    'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[randomInt(34)]
+  ).join('');
+}
+
+function attackerForRound(round: number, mode: DuelMode): 1 | 2 {
+  if (mode === 'botAttacker') {
+    return round <= 5 ? 1 : (round % 2 === 0 ? 2 : 1);
+  }
+  if (mode === 'botKeeper') {
+    return round <= 5 ? 2 : (round % 2 === 0 ? 1 : 2);
+  }
+  return round % 2 === 1 ? 1 : 2;
+}
+
+function totalRegularRounds(mode: DuelMode): number {
+  return mode === 'human' || mode === 'botAlternate' ? 10 : 5;
+}
+
+function randomTarget(): PenaltyTarget {
+  const targets: PenaltyTarget[] = ['left', 'center', 'right'];
+  return targets[randomInt(targets.length)];
+}
+
+function botTarget(): PenaltyTarget {
+  // Slight preference for center (realistic keeper dives)
+  const weights: PenaltyTarget[] = ['left', 'center', 'right', 'center', 'left', 'right'];
+  return weights[randomInt(weights.length)];
+}
+
+export const managePenaltyDuel = onCall({ region: REGION, enforceAppCheck: false }, async request => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await enforceRateLimit(uid, 'managePenaltyDuel', 15, 60_000);
+
+  const action = request.data?.action as string;
+  const duelsRef = db.collection('penalty_duels');
+  const profileRef = db.collection('profiles').doc(uid);
+
+  const getUsername = async (): Promise<string> => {
+    const snap = await profileRef.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Profilo non trovato');
+    return (snap.data()?.username as string) ?? 'Tu';
+  };
+
+  // --- CREATE ---
+  if (action === 'create') {
+    const username = await getUsername();
+    const code = duelCode();
+    const now = Date.now();
+    const docRef = duelsRef.doc();
+    await docRef.set({
+      code,
+      p1: { uid, username, score: 0 },
+      p2: { uid: '', username: '', score: 0 },
+      mode: 'human',
+      round: 1,
+      attacker: 1,
+      p1Choice: null,
+      p2Choice: null,
+      phase: 'waiting',
+      startedAt: now,
+      deadlineAt: now + 30000,
+      winner: null,
+      reward: 0,
+      lastRound: null,
+    });
+    return { duelId: docRef.id, code };
+  }
+
+  // --- JOIN BY CODE ---
+  if (action === 'join') {
+    const code = (request.data?.code as string)?.toUpperCase().trim();
+    if (!code || code.length !== 6) throw new HttpsError('invalid-argument', 'Codice non valido');
+    const username = await getUsername();
+
+    const query = await duelsRef.where('code', '==', code).where('phase', '==', 'waiting').limit(1).get();
+    if (query.empty) throw new HttpsError('not-found', 'Partita non trovata o già iniziata');
+    const doc = query.docs[0];
+    const data = doc.data() as PenaltyDuelDoc;
+    if (data.p1.uid === uid) throw new HttpsError('failed-precondition', 'Non puoi unire la tua partita');
+
+    const now = Date.now();
+    await doc.ref.update({
+      'p2.uid': uid,
+      'p2.username': username,
+      phase: 'playing',
+      startedAt: now,
+      deadlineAt: now + 5000,
+    });
+    return { duelId: doc.id };
+  }
+
+  // --- CREATE VS BOT ---
+  if (action === 'bot') {
+    const mode = (request.data?.mode as DuelMode) ?? 'botAlternate';
+    if (!['botAttacker', 'botKeeper', 'botAlternate'].includes(mode)) {
+      throw new HttpsError('invalid-argument', 'Modalità bot non valida');
+    }
+    const username = await getUsername();
+    const docRef = duelsRef.doc();
+    const now = Date.now();
+    const starting = attackerForRound(1, mode);
+    await docRef.set({
+      code: '',
+      p1: { uid, username, score: 0 },
+      p2: { uid: 'bot', username: 'Bot', score: 0, isBot: true },
+      mode,
+      round: 1,
+      attacker: starting,
+      p1Choice: null,
+      p2Choice: null,
+      phase: 'playing',
+      startedAt: now,
+      deadlineAt: now + 5000,
+      winner: null,
+      reward: 0,
+      lastRound: null,
+    });
+    return { duelId: docRef.id };
+  }
+
+  // --- MAKE MOVE ---
+  if (action === 'move') {
+    const duelId = request.data?.duelId as string;
+    const rawTarget = request.data?.target as string;
+    const timeout = request.data?.timeout === true;
+    if (!duelId) throw new HttpsError('invalid-argument', 'duelId richiesto');
+
+    const target = (rawTarget as PenaltyTarget | null) ?? null;
+    if (target && !['left', 'center', 'right'].includes(target)) {
+      throw new HttpsError('invalid-argument', 'Target non valido');
+    }
+
+    return db.runTransaction(async tx => {
+      const duelRef = duelsRef.doc(duelId);
+      const duelSnap = await tx.get(duelRef);
+      if (!duelSnap.exists) throw new HttpsError('not-found', 'Partita non trovata');
+      const duel = duelSnap.data() as PenaltyDuelDoc;
+
+      if (duel.phase !== 'playing') throw new HttpsError('failed-precondition', 'La partita non è in corso');
+      if (duel.p1.uid !== uid && duel.p2.uid !== uid) {
+        throw new HttpsError('permission-denied', 'Non fai parte di questa partita');
+      }
+
+      const isP1 = duel.p1.uid === uid;
+      const isBotGame = duel.p2.isBot === true;
+      const playerNum = isP1 ? 1 : 2;
+
+      // Only the involved players can move; attacker chooses shot, keeper chooses dive
+      if (duel.attacker !== playerNum && playerNum !== (duel.attacker === 1 ? 2 : 1)) {
+        throw new HttpsError('failed-precondition', 'Non è il tuo turno');
+      }
+
+      const now = Date.now();
+      const deadlinePassed = now >= duel.deadlineAt;
+
+      // Assign random if timed out and no choice yet
+      const existingChoice = isP1 ? duel.p1Choice : duel.p2Choice;
+      const finalChoice = existingChoice ?? (timeout || deadlinePassed ? randomTarget() : (target ?? randomTarget()));
+      if (!finalChoice) throw new HttpsError('invalid-argument', 'Scelta non valida');
+
+      // Update choice field
+      const updateChoice: Record<string, unknown> = isP1 ? { p1Choice: finalChoice } : { p2Choice: finalChoice };
+
+      let p1Choice = isP1 ? finalChoice : duel.p1Choice;
+      let p2Choice = isP1 ? duel.p2Choice : finalChoice;
+
+      // If bot game, make bot move immediately
+      if (isBotGame) {
+        if (duel.attacker === 2 && p2Choice === null) {
+          p2Choice = botTarget();
+        } else if (duel.attacker === 1 && p1Choice === null) {
+          p1Choice = botTarget();
+        }
+        if (duel.attacker === 1 && p2Choice === null) {
+          p2Choice = botTarget();
+        } else if (duel.attacker === 2 && p1Choice === null) {
+          p1Choice = botTarget();
+        }
+      }
+
+      const bothChosen = p1Choice !== null && p2Choice !== null;
+      const canResolve = bothChosen || (deadlinePassed && (p1Choice === null || p2Choice === null));
+
+      if (!canResolve) {
+        // Just store the player's choice and wait for opponent
+        tx.update(duelRef, {
+          ...updateChoice,
+          ...(isBotGame ? { p1Choice, p2Choice } : {}),
+        });
+        return { ok: true, resolved: false };
+      }
+
+      // Resolve the round
+      const shooter = duel.attacker === 1 ? (p1Choice ?? randomTarget()) : (p2Choice ?? randomTarget());
+      const keeper = duel.attacker === 1 ? (p2Choice ?? randomTarget()) : (p1Choice ?? randomTarget());
+      const goal = shooter !== keeper;
+
+      let p1Score = duel.p1.score;
+      let p2Score = duel.p2.score;
+      if (goal) {
+        if (duel.attacker === 1) p1Score++; else p2Score++;
+      }
+
+      const lastRound = {
+        round: duel.round,
+        attacker: duel.attacker,
+        p1Choice: p1Choice ?? randomTarget(),
+        p2Choice: p2Choice ?? randomTarget(),
+        goal,
+        p1Score,
+        p2Score,
+      };
+
+      // Check finish
+      const regular = totalRegularRounds(duel.mode);
+      const roundsSinceRegular = duel.round - regular;
+      const canFinish = duel.round >= regular && roundsSinceRegular % 2 === 1;
+      const finished = canFinish && p1Score !== p2Score;
+
+      if (finished) {
+        let winner: 1 | 2 | 'draw' = 'draw';
+        if (p1Score > p2Score) winner = 1;
+        if (p2Score > p1Score) winner = 2;
+
+        const reward = winner === 'draw' ? 25 : 50;
+        const winnerUid = winner === 1 ? duel.p1.uid : winner === 2 ? duel.p2.uid : null;
+
+        if (winnerUid && winnerUid !== 'bot') {
+          tx.update(profileRef, {
+            coins: FieldValue.increment(reward),
+            coinsEarned: FieldValue.increment(reward),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          tx.set(
+            db.collection('wallet_transactions').doc(`${winnerUid}_penaltyduel_${duelId}`),
+            {
+              userId: winnerUid,
+              amount: reward,
+              reason: 'penalty_duel_win',
+              createdAt: FieldValue.serverTimestamp(),
+            }
+          );
+        }
+
+        tx.update(duelRef, {
+          p1: { ...duel.p1, score: p1Score },
+          p2: { ...duel.p2, score: p2Score },
+          phase: 'finished',
+          winner,
+          reward,
+          lastRound,
+          deadlineAt: now + 60000,
+        });
+        return { ok: true, resolved: true, finished: true, winner, p1Score, p2Score, reward };
+      }
+
+      // Setup next round
+      const nextRound = duel.round + 1;
+      const nextAttacker = attackerForRound(nextRound, duel.mode);
+      const nextStart = now;
+      const nextDeadline = now + 5000;
+
+      tx.update(duelRef, {
+        p1: { ...duel.p1, score: p1Score },
+        p2: { ...duel.p2, score: p2Score },
+        round: nextRound,
+        attacker: nextAttacker,
+        p1Choice: null,
+        p2Choice: null,
+        phase: 'playing',
+        startedAt: nextStart,
+        deadlineAt: nextDeadline,
+        lastRound,
+      });
+      return { ok: true, resolved: true, finished: false, p1Score, p2Score, goal };
+    });
+  }
+
+  throw new HttpsError('invalid-argument', 'Azione non valida');
 });

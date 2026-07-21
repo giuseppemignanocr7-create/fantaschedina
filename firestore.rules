@@ -136,6 +136,18 @@ service cloud.firestore {
     }
 
     // ============================================
+    // PENALTY DUELS — stato partita realtime.
+    // Scritto solo dalle Cloud Functions, letto dai giocatori.
+    // ============================================
+    match /penalty_duels/{duelId} {
+      allow read: if isAuth() && (
+        resource.data.p1.uid == request.auth.uid ||
+        resource.data.p2.uid == request.auth.uid
+      );
+      allow write: if false;
+    }
+
+    // ============================================
     // SPONSORS — gestiti da admin via Cloud Functions.
     // ============================================
     match /sponsors/{sponsorId} {

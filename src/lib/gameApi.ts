@@ -241,6 +241,95 @@ export async function manageLeagueFn(
   return res.data;
 }
 
+// --- RIGORI DUELLO REALTIME ---
+
+export type PenaltyTarget = 'left' | 'center' | 'right';
+export type DuelMode = 'human' | 'botAttacker' | 'botKeeper' | 'botAlternate';
+
+export interface PenaltyDuelState {
+  id: string;
+  code: string;
+  p1: { uid: string; username: string; score: number };
+  p2: { uid: string; username: string; score: number; isBot?: boolean };
+  mode: DuelMode;
+  round: number;
+  attacker: 1 | 2;
+  p1Choice: PenaltyTarget | null;
+  p2Choice: PenaltyTarget | null;
+  phase: 'waiting' | 'playing' | 'finished';
+  startedAt: number;
+  deadlineAt: number;
+  winner: 1 | 2 | 'draw' | null;
+  reward: number;
+  lastRound: {
+    round: number;
+    attacker: 1 | 2;
+    p1Choice: PenaltyTarget;
+    p2Choice: PenaltyTarget;
+    goal: boolean;
+    p1Score: number;
+    p2Score: number;
+  } | null;
+}
+
+export async function createPenaltyDuelFn(): Promise<{ duelId: string; code: string }> {
+  const fn = httpsCallable<Record<string, never>, { duelId: string; code: string }>(
+    functions,
+    'managePenaltyDuel'
+  );
+  const res = await fn({ action: 'create' } as unknown as Record<string, never>);
+  return res.data;
+}
+
+export async function joinPenaltyDuelFn(code: string): Promise<{ duelId: string }> {
+  const fn = httpsCallable<{ action: string; code: string }, { duelId: string }>(
+    functions,
+    'managePenaltyDuel'
+  );
+  const res = await fn({ action: 'join', code });
+  return res.data;
+}
+
+export async function createPenaltyDuelBotFn(mode: Exclude<DuelMode, 'human'>): Promise<{ duelId: string }> {
+  const fn = httpsCallable<{ action: string; mode: string }, { duelId: string }>(
+    functions,
+    'managePenaltyDuel'
+  );
+  const res = await fn({ action: 'bot', mode });
+  return res.data;
+}
+
+export async function penaltyDuelMoveFn(
+  duelId: string,
+  target?: PenaltyTarget,
+  timeout = false
+): Promise<{
+  ok: boolean;
+  resolved: boolean;
+  finished?: boolean;
+  winner?: 1 | 2 | 'draw';
+  p1Score?: number;
+  p2Score?: number;
+  reward?: number;
+  goal?: boolean;
+}> {
+  const fn = httpsCallable<
+    { action: string; duelId: string; target?: PenaltyTarget; timeout?: boolean },
+    {
+      ok: boolean;
+      resolved: boolean;
+      finished?: boolean;
+      winner?: 1 | 2 | 'draw';
+      p1Score?: number;
+      p2Score?: number;
+      reward?: number;
+      goal?: boolean;
+    }
+  >(functions, 'managePenaltyDuel');
+  const res = await fn({ action: 'move', duelId, target, timeout });
+  return res.data;
+}
+
 /** Estrae il messaggio utente da un errore di una callable. */
 export function callableErrorMessage(e: unknown): string {
   const err = e as { message?: string; code?: string };
