@@ -52,6 +52,15 @@ function romeDateString(d = new Date()): string {
   }).format(d);
 }
 
+function fyShuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return Array.from({ length: 6 }, () => chars[randomInt(chars.length)]).join('');
@@ -808,15 +817,10 @@ export const cancelSchedina = onCall({ region: REGION, enforceAppCheck: false },
 
 // ---------- 5. MINIGIOCHI (callable) ----------
 
-// --- Seed quiz questions into Firestore (admin callable, one-time) ---
+// --- Seed/update quiz questions into Firestore (admin callable) ---
 export const seedQuizQuestions = onCall({ region: REGION }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
-
-  const existing = await db.collection('quiz_questions').limit(1).get();
-  if (!existing.empty) {
-    return { message: 'Domande già presenti', count: 0 };
-  }
 
   const batch = db.batch();
   for (let i = 0; i < ALL_QUIZ_QUESTIONS.length; i++) {
@@ -827,10 +831,17 @@ export const seedQuizQuestions = onCall({ region: REGION }, async request => {
       options: q.options,
       answerIndex: q.answerIndex,
       category: q.category,
-    });
+    }, { merge: true });
+  }
+  // Remove old questions beyond current pool
+  const allDocs = await db.collection('quiz_questions').get();
+  for (const doc of allDocs.docs) {
+    if (!doc.id.startsWith('q_') || parseInt(doc.id.slice(2)) >= ALL_QUIZ_QUESTIONS.length) {
+      batch.delete(doc.ref);
+    }
   }
   await batch.commit();
-  return { message: 'Domande caricate', count: ALL_QUIZ_QUESTIONS.length };
+  return { message: 'Domande aggiornate', count: ALL_QUIZ_QUESTIONS.length };
 });
 
 export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, async request => {
@@ -970,10 +981,23 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
         available = [...pool.docs];
         seenIds.clear();
       }
-      const shuffled = [...available].sort(() => Math.random() - 0.5);
-      const candidates = shuffled.slice(0, COINS.quizMaxQuestions).map(d => d.id);
+      const shuffled = fyShuffle(available);
+      const picked = shuffled.slice(0, COINS.quizMaxQuestions);
+      // Pre-shuffle options for each question and save mapping in session
+      const questionsData = picked.map(d => {
+        const opts = d.data()?.options as string[];
+        const ans = d.data()?.answerIndex as number;
+        const indexed = opts.map((opt, i) => ({ opt, correct: i === ans }));
+        const shuffledOpts = fyShuffle(indexed);
+        return {
+          id: d.id,
+          question: d.data()?.question as string,
+          options: shuffledOpts.map(o => o.opt),
+          answerIndex: shuffledOpts.findIndex(o => o.correct),
+        };
+      });
       const sessionRef = db.collection('quiz_sessions').doc(uid);
-      const questionIds = await db.runTransaction(async tx => {
+      const savedQuestions = await db.runTransaction(async tx => {
         const profile = await tx.get(profileRef);
         if (!profile.exists) throw new HttpsError('not-found', 'Profilo non trovato');
         const last = profile.data()?.lastPlayed?.quiz as string | undefined;
@@ -986,30 +1010,18 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
           session.data()?.date === today &&
           session.data()?.submitted === false
         ) {
-          return session.data()?.questionIds as string[];
+          return session.data()?.questions as { id: string; options: string[]; answerIndex: number }[];
         }
         tx.set(sessionRef, {
           userId: uid,
-          questionIds: candidates,
+          questions: questionsData.map(q => ({ id: q.id, options: q.options, answerIndex: q.answerIndex })),
           date: today,
           submitted: false,
           createdAt: FieldValue.serverTimestamp(),
         });
-        return candidates;
+        return questionsData;
       });
-      const selected = await Promise.all(
-        questionIds.map(id => db.collection('quiz_questions').doc(id).get())
-      );
-      return {
-        questions: selected
-          .filter(d => d.exists)
-          .map(d => ({
-            id: d.id,
-            question: d.data()?.question,
-            options: d.data()?.options,
-            answerIndex: d.data()?.answerIndex,
-          })),
-      };
+      return { questions: savedQuestions };
     }
     case 'quiz_submit': {
       const answers = (request.data?.answers ?? {}) as Record<string, number>;
@@ -1019,8 +1031,8 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
         if (!session.exists || session.data()?.submitted || session.data()?.date !== today) {
           throw new HttpsError('failed-precondition', 'Nessuna sessione quiz attiva');
         }
-        const qIds = session.data()?.questionIds as string[];
-        if (!Array.isArray(qIds) || qIds.length === 0 || qIds.length > COINS.quizMaxQuestions) {
+        const sessQuestions = session.data()?.questions as { id: string; options: string[]; answerIndex: number }[];
+        if (!Array.isArray(sessQuestions) || sessQuestions.length === 0) {
           throw new HttpsError('failed-precondition', 'Sessione quiz non valida');
         }
         const profile = await tx.get(profileRef);
@@ -1029,16 +1041,11 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
         if (last === today) {
           throw new HttpsError('failed-precondition', 'Hai già giocato oggi, torna domani!');
         }
-        const qDocs = [];
-        for (const id of qIds) {
-          qDocs.push(await tx.get(db.collection('quiz_questions').doc(id)));
-        }
         let correct = 0;
         const corrections: Record<string, number> = {};
-        for (const q of qDocs) {
-          const right = q.data()?.answerIndex as number;
-          corrections[q.id] = right;
-          if (answers[q.id] === right) correct++;
+        for (const q of sessQuestions) {
+          corrections[q.id] = q.answerIndex;
+          if (answers[q.id] === q.answerIndex) correct++;
         }
         const reward = correct * COINS.quizPerCorrect;
         const updates: Record<string, unknown> = {
@@ -1055,7 +1062,7 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
         const seenRef = db.collection('quiz_seen').doc(uid);
         const seenSnap = await tx.get(seenRef);
         const existingSeen = (seenSnap.data()?.questionIds ?? []) as string[];
-        const newSeen = [...new Set([...existingSeen, ...qIds])];
+        const newSeen = [...new Set([...existingSeen, ...sessQuestions.map(q => q.id)])];
         tx.set(seenRef, { questionIds: newSeen, updatedAt: FieldValue.serverTimestamp() });
         if (reward > 0) {
           tx.set(db.collection('wallet_transactions').doc(`${uid}_quiz_${today}`), {
@@ -1065,7 +1072,7 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
             createdAt: FieldValue.serverTimestamp(),
           });
         }
-        return { correct, total: qIds.length, reward, corrections };
+        return { correct, total: sessQuestions.length, reward, corrections };
       });
     }
 
