@@ -20,7 +20,7 @@ export function WinSimulator({
 }: WinSimulatorProps) {
   // Calcola vincite potenziali
   const weeklyWinnerPrize = weeklyPool * 0.40;
-  const weeklySharePrize = (weeklyPool * 0.40) / participantCount;
+  const weeklySharePrize = participantCount > 0 ? (weeklyPool * 0.40) / participantCount : 0;
   
   // Premi finali stimati
   const finalFirst = finalPool * 0.50;
