@@ -140,7 +140,7 @@ function StatsTab({ stats, loading, onRefresh }: {
     <div className="space-y-3">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-bold text-white">Panoramica</h2>
-        <button onClick={onRefresh} className="p-2 rounded-lg hover:bg-white/5 text-white/60">
+        <button onClick={onRefresh} aria-label="Aggiorna panoramica" className="p-2 rounded-lg hover:bg-white/5 text-white/60">
           <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
@@ -257,6 +257,7 @@ function MatchdayTab({ onError, onSuccess }: {
             value={settleNumber}
             onChange={e => setSettleNumber(e.target.value)}
             placeholder="N. giornata"
+            aria-label="Numero giornata da liquidare"
             className="flex-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
           />
           <button
@@ -359,6 +360,8 @@ function CompetitionsTab({ onError, onSuccess }: {
                   c.active ? 'text-green-400' : 'text-white/30'
                 )}
                 title={c.active ? 'Attivo' : 'Disattivato'}
+                aria-label={`${c.name}: ${c.active ? 'Attivo, clicca per disattivare' : 'Disattivato, clicca per attivare'}`}
+                aria-pressed={c.active}
               >
                 {c.active ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
               </button>
@@ -459,6 +462,7 @@ function SponsorsTab({ onError, onSuccess }: {
           <input
             type="text"
             placeholder="Nome sponsor"
+            aria-label="Nome sponsor"
             value={form.name}
             onChange={e => setForm({ ...form, name: e.target.value })}
             className="w-full px-3 py-2 rounded-lg bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
@@ -466,6 +470,7 @@ function SponsorsTab({ onError, onSuccess }: {
           <input
             type="text"
             placeholder="Tagline (opzionale)"
+            aria-label="Tagline sponsor"
             value={form.tagline}
             onChange={e => setForm({ ...form, tagline: e.target.value })}
             className="w-full px-3 py-2 rounded-lg bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
@@ -475,11 +480,13 @@ function SponsorsTab({ onError, onSuccess }: {
               type="color"
               value={form.accent}
               onChange={e => setForm({ ...form, accent: e.target.value })}
+              aria-label="Colore accento sponsor"
               className="w-12 h-10 rounded-lg bg-surface border border-white/10 cursor-pointer"
             />
             <input
               type="text"
               placeholder="URL link (opzionale)"
+              aria-label="URL link sponsor"
               value={form.href}
               onChange={e => setForm({ ...form, href: e.target.value })}
               className="flex-1 px-3 py-2 rounded-lg bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
@@ -514,11 +521,14 @@ function SponsorsTab({ onError, onSuccess }: {
                 onClick={() => handleToggle(s.id)}
                 className={cn('p-1.5 rounded-lg', s.active ? 'text-green-400' : 'text-white/30')}
                 title={s.active ? 'Attivo' : 'Disattivato'}
+                aria-label={`${s.name}: ${s.active ? 'Attivo, clicca per disattivare' : 'Disattivato, clicca per attivare'}`}
+                aria-pressed={s.active}
               >
                 {s.active ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
               </button>
               <button
                 onClick={() => handleDelete(s.id)}
+                aria-label={`Elimina sponsor ${s.name}`}
                 className="p-1.5 rounded-lg text-red-400/70 hover:text-red-400 hover:bg-red-500/10"
               >
                 <Trash2 size={16} />
@@ -574,7 +584,7 @@ function UsersTab({ onError, onSuccess }: {
     <div className="space-y-3">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-bold text-white">Utenti ({users.length})</h2>
-        <button onClick={load} className="p-2 rounded-lg hover:bg-white/5 text-white/60">
+        <button onClick={load} aria-label="Aggiorna elenco utenti" className="p-2 rounded-lg hover:bg-white/5 text-white/60">
           <RefreshCw size={18} />
         </button>
       </div>

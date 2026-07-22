@@ -259,6 +259,7 @@ export function Sfide1v1Page() {
           <div className="flex items-center justify-between">
             <button
               onClick={() => { setPhase('select'); setShots([]); setSelectedOpp(null); }}
+              aria-label="Torna alla selezione avversario"
               className="p-2 text-white/40 hover:text-white transition-colors"
             >
               <ArrowLeft size={20} />

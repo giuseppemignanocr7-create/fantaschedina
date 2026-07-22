@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
 import { useAppStore } from '@/store';
-import { LiveTracker, CountdownTimer, WinSimulator } from '@/components/ui';
+import { LiveTracker, CountdownTimer, WinSimulator, SkeletonList } from '@/components/ui';
 
 export function LivePage() {
   const {
@@ -18,6 +18,8 @@ export function LivePage() {
     rankings,
     prizePool,
     liveScores,
+    isLoadingOdds,
+    isLoadingRankings,
     loadRankings,
     refreshLiveScores,
     subscribeMatchday,
@@ -47,6 +49,13 @@ export function LivePage() {
     rankings.findIndex(r => r.participantId === currentUser?.id) + 1 || rankings.length;
 
   if (!currentMatchday) {
+    if (isLoadingOdds) {
+      return (
+        <div className="min-h-screen flex items-center justify-center" role="status" aria-label="Caricamento giornata in corso">
+          <div className="w-8 h-8 border-2 border-white/20 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center animate-pop-in">
@@ -276,31 +285,39 @@ export function LivePage() {
                 </h3>
               </div>
               <div className="divide-y divide-white/5">
-                {rankings.slice(0, 5).map((r, idx) => (
-                  <div 
-                    key={r.participantId}
-                    className={cn(
-                      'px-4 py-2 flex items-center gap-3',
-                      r.participantId === currentUser?.id && 'bg-primary-500/10'
-                    )}
-                  >
-                    <span className={cn(
-                      'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
-                      idx === 0 && 'bg-yellow-500 text-black',
-                      idx === 1 && 'bg-gray-400 text-black',
-                      idx === 2 && 'bg-orange-500 text-black',
-                      idx > 2 && 'bg-white/10'
-                    )}>
-                      {idx + 1}
-                    </span>
-                    <span className="flex-1 text-sm font-medium truncate">
-                      {r.username}
-                    </span>
-                    <span className="text-sm font-bold gradient-text">
-                      {r.totalPoints} pt
-                    </span>
+                {isLoadingRankings && rankings.length === 0 ? (
+                  <div className="p-3">
+                    <SkeletonList count={5} />
                   </div>
-                ))}
+                ) : rankings.length === 0 ? (
+                  <p className="text-sm text-white/40 px-4 py-6 text-center">Nessuna classifica disponibile</p>
+                ) : (
+                  rankings.slice(0, 5).map((r, idx) => (
+                    <div
+                      key={r.participantId}
+                      className={cn(
+                        'px-4 py-2 flex items-center gap-3',
+                        r.participantId === currentUser?.id && 'bg-primary-500/10'
+                      )}
+                    >
+                      <span className={cn(
+                        'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
+                        idx === 0 && 'bg-yellow-500 text-black',
+                        idx === 1 && 'bg-gray-400 text-black',
+                        idx === 2 && 'bg-orange-500 text-black',
+                        idx > 2 && 'bg-white/10'
+                      )}>
+                        {idx + 1}
+                      </span>
+                      <span className="flex-1 text-sm font-medium truncate">
+                        {r.username}
+                      </span>
+                      <span className="text-sm font-bold gradient-text">
+                        {r.totalPoints} pt
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 

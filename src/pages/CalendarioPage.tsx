@@ -1,28 +1,37 @@
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Calendar } from 'lucide-react';
+import { cn, formatDateShort, formatTime } from '@/lib/utils';
+import { useAppStore } from '@/store';
 
-const rounds = [
-  { n: 16, status: 'done' as const },
-  { n: 17, status: 'done' as const },
-  { n: 18, status: 'current' as const },
-  { n: 19, status: 'upcoming' as const },
-  { n: 20, status: 'upcoming' as const },
-];
-
-const matches = [
-  { home: 'Inter', away: 'Milan', date: 'Sab 24 Mag', time: '20:45', homeScore: null, awayScore: null },
-  { home: 'Juventus', away: 'Napoli', date: 'Dom 25 Mag', time: '15:00', homeScore: null, awayScore: null },
-  { home: 'Roma', away: 'Lazio', date: 'Dom 25 Mag', time: '18:00', homeScore: null, awayScore: null },
-  { home: 'Atalanta', away: 'Fiorentina', date: 'Dom 25 Mag', time: '20:45', homeScore: null, awayScore: null },
-  { home: 'Torino', away: 'Bologna', date: 'Sab 24 Mag', time: '15:00', homeScore: null, awayScore: null },
-  { home: 'Udinese', away: 'Verona', date: 'Sab 24 Mag', time: '18:00', homeScore: null, awayScore: null },
-  { home: 'Empoli', away: 'Lecce', date: 'Dom 25 Mag', time: '12:30', homeScore: null, awayScore: null },
-  { home: 'Genoa', away: 'Cagliari', date: 'Sab 24 Mag', time: '12:30', homeScore: null, awayScore: null },
-  { home: 'Monza', away: 'Venezia', date: 'Dom 25 Mag', time: '15:00', homeScore: null, awayScore: null },
-  { home: 'Como', away: 'Parma', date: 'Dom 25 Mag', time: '18:00', homeScore: null, awayScore: null },
-];
+const STATUS_LABEL: Record<string, string> = {
+  upcoming: 'IN ARRIVO',
+  open: 'APERTA',
+  locked: 'IN CORSO',
+  completed: 'CONCLUSA',
+};
 
 export function CalendarioPage() {
+  const { currentMatchday, isLoadingOdds } = useAppStore();
+
+  if (!currentMatchday) {
+    if (isLoadingOdds) {
+      return (
+        <div className="min-h-screen flex items-center justify-center" role="status" aria-label="Caricamento calendario in corso">
+          <div className="w-8 h-8 border-2 border-white/20 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      );
+    }
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-2">Nessuna giornata attiva</h2>
+          <p className="text-white/60">Torna più tardi per la prossima giornata</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { number, season, status, matches } = currentMatchday;
+
   return (
     <div className="min-h-screen">
       <div className="max-w-2xl mx-auto px-3 py-3 space-y-3">
@@ -32,65 +41,61 @@ export function CalendarioPage() {
           <h1 className="page-title">CALENDARIO</h1>
         </div>
 
-        {/* Round selector */}
-        <div className="flex items-center gap-2">
-          <button className="p-2 text-white/40 hover:text-white transition-colors">
-            <ChevronLeft size={18} />
-          </button>
-          <div className="flex-1 flex gap-1.5 overflow-x-auto scrollbar-hide">
-            {rounds.map((r) => (
-              <button
-                key={r.n}
-                className={cn(
-                  'flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wide transition-all',
-                  r.status === 'current'
-                    ? 'bg-primary-500 text-white'
-                    : r.status === 'done'
-                    ? 'bg-white/10 text-white/60'
-                    : 'bg-white/5 text-white/30'
-                )}
-              >
-                G{r.n}
-              </button>
-            ))}
-          </div>
-          <button className="p-2 text-white/40 hover:text-white transition-colors">
-            <ChevronRight size={18} />
-          </button>
-        </div>
-
         {/* Current round header */}
         <div className="glass-card p-3 flex items-center justify-between">
           <div>
-            <p className="font-display font-black text-base text-white uppercase">Giornata 18</p>
-            <p className="text-xs text-white/40">24-25 Maggio 2026</p>
+            <p className="font-display font-black text-base text-white uppercase">Giornata {number}</p>
+            <p className="text-xs text-white/40">Stagione {season}</p>
           </div>
           <span className="text-[10px] font-black text-primary-400 bg-primary-500/15 border border-primary-500/30 px-2.5 py-1 rounded-full">
-            IN CORSO
+            {STATUS_LABEL[status] ?? status.toUpperCase()}
           </span>
         </div>
 
         {/* Matches */}
-        <div className="space-y-2">
-          {matches.map((m, i) => (
-            <div key={i} className="glass-card p-3 flex items-center gap-3">
-              <div className="flex-1 flex items-center justify-between">
-                <span className="font-bold text-sm text-white flex-1 text-right">{m.home}</span>
-                <div className="mx-3 text-center min-w-[50px]">
-                  {m.homeScore !== null ? (
-                    <span className="font-black text-base text-white">
-                      {m.homeScore} - {m.awayScore}
+        {matches.length === 0 ? (
+          <p className="text-sm text-white/40 text-center py-10">Nessuna partita in calendario per questa giornata</p>
+        ) : (
+          <div className="space-y-2">
+            {matches.map((m) => {
+              const isLive = m.status === 'live';
+              const isFinished = m.status === 'finished';
+              const isPostponed = m.status === 'postponed';
+              return (
+                <div key={m.id} className="glass-card p-3 flex items-center gap-3">
+                  <div className="flex-1 flex items-center justify-between">
+                    <span className="font-bold text-sm text-white flex-1 text-right truncate">
+                      {m.homeTeam.shortName || m.homeTeam.name}
                     </span>
-                  ) : (
-                    <span className="text-xs text-white/40 font-bold">{m.time}</span>
+                    <div className="mx-3 text-center min-w-[54px]">
+                      {isPostponed ? (
+                        <span className="text-[10px] text-white/40 font-bold uppercase">Rinviata</span>
+                      ) : (isLive || isFinished) && m.result ? (
+                        <span className={cn(
+                          'font-black text-base',
+                          isLive ? 'text-live' : 'text-white'
+                        )}>
+                          {m.result.homeGoals} - {m.result.awayGoals}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-white/40 font-bold">{formatTime(m.scheduledAt)}</span>
+                      )}
+                      <p className="text-[8px] text-white/20">{formatDateShort(m.scheduledAt)}</p>
+                    </div>
+                    <span className="font-bold text-sm text-white flex-1 truncate">
+                      {m.awayTeam.shortName || m.awayTeam.name}
+                    </span>
+                  </div>
+                  {isLive && (
+                    <span className="text-[9px] font-black text-live bg-live/15 px-1.5 py-0.5 rounded uppercase animate-pulse">
+                      Live
+                    </span>
                   )}
-                  <p className="text-[8px] text-white/20">{m.date}</p>
                 </div>
-                <span className="font-bold text-sm text-white flex-1">{m.away}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
 
       </div>
     </div>

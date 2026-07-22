@@ -409,7 +409,7 @@ export function RigoriDuelPage() {
         <div className="space-y-3">
           <button onClick={handleCreate} disabled={loading} className="w-full btn-green text-sm font-black flex items-center justify-center gap-2"><Users size={16} /> CREA PARTITA 1v1</button>
           <div className="flex gap-2">
-            <input value={inputCode} onChange={e => setInputCode(e.target.value.toUpperCase())} placeholder="CODICE" maxLength={6} className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-center font-black text-white tracking-widest uppercase focus:outline-none focus:border-primary-500" />
+            <input value={inputCode} onChange={e => setInputCode(e.target.value.toUpperCase())} placeholder="CODICE" aria-label="Codice partita da unire" maxLength={6} className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-center font-black text-white tracking-widest uppercase focus:outline-none focus:border-primary-500" />
             <button onClick={handleJoin} disabled={loading || inputCode.length !== 6} className="btn-primary px-4 text-sm font-black">{loading ? <Loader2 size={16} className="animate-spin" /> : 'ENTRA'}</button>
           </div>
           <div className="h-px bg-white/10" />

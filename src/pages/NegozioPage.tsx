@@ -271,6 +271,7 @@ export function NegozioPage() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => removeFromCart(p.id)}
+                        aria-label={`Rimuovi una unità di ${p.name} dal carrello`}
                         className="w-7 h-7 rounded-lg bg-surface border border-white/10 flex items-center justify-center text-white/60 hover:text-white hover:border-white/20 transition-all"
                       >
                         <Minus size={14} />
@@ -278,6 +279,7 @@ export function NegozioPage() {
                       <span className="font-black text-sm text-white w-5 text-center">{cart[p.id]}</span>
                       <button
                         onClick={() => addToCart(p.id)}
+                        aria-label={`Aggiungi una unità di ${p.name} al carrello`}
                         className="w-7 h-7 rounded-lg bg-primary-500/20 border border-primary-500/30 flex items-center justify-center text-primary-400 hover:bg-primary-500/30 transition-all"
                       >
                         <Plus size={14} />

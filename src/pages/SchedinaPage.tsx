@@ -175,6 +175,13 @@ export function SchedinaPage() {
   const currentBetDef = BET_TYPES.find(b => b.key === selectedBetType)!
 
   if (!currentMatchday) {
+    if (isLoadingOdds) {
+      return (
+        <div className="min-h-screen flex items-center justify-center" role="status" aria-label="Caricamento giornata in corso">
+          <div className="w-8 h-8 border-2 border-white/20 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

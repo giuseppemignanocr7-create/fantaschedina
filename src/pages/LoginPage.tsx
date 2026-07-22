@@ -251,12 +251,13 @@ export function LoginPage() {
             {/* Username (register only) */}
             {mode === 'register' && (
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                <label htmlFor="username" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                   Username
                 </label>
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
                   <input
+                    id="username"
                     type="text"
                     value={formData.username}
                     onChange={handleInputChange('username')}
@@ -269,15 +270,16 @@ export function LoginPage() {
                 )}
               </div>
             )}
-            
+
             {/* Email */}
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+              <label htmlFor="email" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                 Email
               </label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
                 <input
+                  id="email"
                   type="email"
                   value={formData.email}
                   onChange={handleInputChange('email')}
@@ -289,15 +291,16 @@ export function LoginPage() {
                 <p className="text-red-400 text-xs mt-1 font-medium">{errors.email}</p>
               )}
             </div>
-            
+
             {/* Password */}
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+              <label htmlFor="password" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                 Password
               </label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
                 <input
+                  id="password"
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
                   onChange={handleInputChange('password')}
@@ -307,6 +310,7 @@ export function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Nascondi password' : 'Mostra password'}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
@@ -316,16 +320,17 @@ export function LoginPage() {
                 <p className="text-red-400 text-xs mt-1 font-medium">{errors.password}</p>
               )}
             </div>
-            
+
             {/* Confirm Password (register only) */}
             {mode === 'register' && (
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                <label htmlFor="confirmPassword" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                   Conferma Password
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
                   <input
+                    id="confirmPassword"
                     type={showPassword ? 'text' : 'password'}
                     value={formData.confirmPassword}
                     onChange={handleInputChange('confirmPassword')}

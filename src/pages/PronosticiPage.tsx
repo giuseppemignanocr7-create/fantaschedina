@@ -107,7 +107,7 @@ const SlipPanel = memo(function SlipPanel({
             {completedCount}/{total}
           </span>
           {completedCount > 0 && !isLocked && (
-            <button onClick={onReset} title="Azzera" className="text-white/25 hover:text-red-400 transition-colors p-0.5">
+            <button onClick={onReset} title="Azzera" aria-label="Azzera pronostico" className="text-white/25 hover:text-red-400 transition-colors p-0.5">
               <RotateCcw size={11} />
             </button>
           )}
@@ -384,6 +384,13 @@ export function PronosticiPage() {
   };
 
   if (!currentMatchday) {
+    if (isLoadingOdds) {
+      return (
+        <div className="min-h-screen flex items-center justify-center" role="status" aria-label="Caricamento giornata in corso">
+          <div className="w-8 h-8 border-2 border-white/20 border-t-primary-500 rounded-full animate-spin" />
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-white/40">Nessuna giornata disponibile</p>

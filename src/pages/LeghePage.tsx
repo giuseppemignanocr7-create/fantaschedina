@@ -363,10 +363,11 @@ export function LeghePage() {
         {activeTab === 1 && (
           <div className="glass-card p-4 space-y-4">
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
+              <label htmlFor="leagueName" className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
                 Nome lega *
               </label>
               <input
+                id="leagueName"
                 value={nome}
                 onChange={e => setNome(e.target.value)}
                 maxLength={40}
@@ -375,10 +376,11 @@ export function LeghePage() {
               />
             </div>
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
+              <label htmlFor="leagueDescription" className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
                 Descrizione
               </label>
               <input
+                id="leagueDescription"
                 value={descrizione}
                 onChange={e => setDescrizione(e.target.value)}
                 maxLength={80}
@@ -388,10 +390,11 @@ export function LeghePage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
+                <label htmlFor="leagueVisibility" className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
                   Visibilità
                 </label>
                 <select
+                  id="leagueVisibility"
                   value={isPrivate ? 'private' : 'public'}
                   onChange={e => setIsPrivate(e.target.value === 'private')}
                   className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-primary-500/50 focus:outline-none"
@@ -401,10 +404,11 @@ export function LeghePage() {
                 </select>
               </div>
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
+                <label htmlFor="leagueMaxMembers" className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
                   Max partecipanti
                 </label>
                 <select
+                  id="leagueMaxMembers"
                   value={maxMembers}
                   onChange={e => setMaxMembers(e.target.value)}
                   className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-primary-500/50 focus:outline-none"
@@ -430,11 +434,12 @@ export function LeghePage() {
         {activeTab === 2 && (
           <div className="space-y-4">
             <div className="glass-card p-4 space-y-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+              <label htmlFor="leagueInviteCode" className="text-[10px] font-bold uppercase tracking-widest text-white/40 block">
                 Codice invito
-              </p>
+              </label>
               <div className="flex gap-2">
                 <input
+                  id="leagueInviteCode"
                   value={inviteCode}
                   onChange={e => setInviteCode(e.target.value.toUpperCase())}
                   maxLength={6}

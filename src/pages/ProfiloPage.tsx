@@ -384,8 +384,9 @@ export function ProfiloPage() {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Password attuale</label>
+                  <label htmlFor="currentPassword" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Password attuale</label>
                   <input
+                    id="currentPassword"
                     type="password"
                     value={currentPassword}
                     onChange={e => setCurrentPassword(e.target.value)}
@@ -394,8 +395,9 @@ export function ProfiloPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Nuova password</label>
+                  <label htmlFor="newPassword" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Nuova password</label>
                   <input
+                    id="newPassword"
                     type="password"
                     value={newPassword}
                     onChange={e => setNewPassword(e.target.value)}
@@ -404,8 +406,9 @@ export function ProfiloPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Conferma password</label>
+                  <label htmlFor="confirmNewPassword" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Conferma password</label>
                   <input
+                    id="confirmNewPassword"
                     type="password"
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}

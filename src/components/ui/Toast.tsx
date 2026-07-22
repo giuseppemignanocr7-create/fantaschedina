@@ -51,6 +51,8 @@ export function Toast({ id, type, message, duration = 4000, onClose }: ToastProp
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className={cn(
         'flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-xl shadow-lg transition-all duration-300',
         styles[type],
@@ -64,6 +66,7 @@ export function Toast({ id, type, message, duration = 4000, onClose }: ToastProp
           setIsVisible(false);
           setTimeout(() => onClose(id), 300);
         }}
+        aria-label="Chiudi notifica"
         className="shrink-0 p-1 rounded-lg hover:bg-white/10 transition-colors"
       >
         <X size={16} />

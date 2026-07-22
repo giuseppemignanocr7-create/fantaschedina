@@ -2,10 +2,13 @@ import { Settings, Bell, Globe, Moon, Volume2 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <button
       onClick={() => onChange(!value)}
+      role="switch"
+      aria-checked={value}
+      aria-label={label}
       className={cn(
         'w-11 h-6 rounded-full transition-colors relative flex-shrink-0',
         value ? 'bg-primary-500' : 'bg-white/20'
@@ -69,7 +72,7 @@ export function ImpostazioniPage() {
                       <p className="text-sm font-bold text-white">{item.label}</p>
                       <p className="text-[10px] text-white/40">{item.desc}</p>
                     </div>
-                    <Toggle value={item.value} onChange={item.onChange} />
+                    <Toggle value={item.value} onChange={item.onChange} label={item.label} />
                   </div>
                 );
               })}
@@ -85,10 +88,11 @@ export function ImpostazioniPage() {
               <Globe size={17} className="text-primary-400" strokeWidth={1.8} />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-bold text-white">Lingua App</p>
+              <label htmlFor="appLanguage" className="text-sm font-bold text-white block">Lingua App</label>
               <p className="text-[10px] text-white/40">Seleziona la tua lingua</p>
             </div>
             <select
+              id="appLanguage"
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
               className="bg-transparent text-sm text-white/60 focus:outline-none cursor-pointer"
