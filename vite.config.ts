@@ -76,11 +76,17 @@ export default defineConfig({
     },
   },
   build: {
+    // firestore's modular SDK alone minifies to ~570kB (offline persistence, realtime
+    // listeners, transactions) - that's its real floor, not something manualChunks can shrink.
+    chunkSizeWarningLimit: 600,
     rollupOptions: {
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'firebase-vendor': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/functions'],
+          'firebase-app-vendor': ['firebase/app', 'firebase/app-check'],
+          'firebase-auth-vendor': ['firebase/auth'],
+          'firebase-firestore-vendor': ['firebase/firestore'],
+          'firebase-functions-vendor': ['firebase/functions'],
         },
       },
     },
