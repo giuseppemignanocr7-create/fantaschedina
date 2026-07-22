@@ -64,6 +64,16 @@ export function RigoriDuelPage() {
     });
   }, [duelId]);
 
+  const handleTimeout = useCallback(async () => {
+    if (!duelId || myChoice !== null) return;
+    setMyChoice(randomTarget());
+    try {
+      await penaltyDuelMoveFn(duelId, undefined, true);
+    } catch (e) {
+      setError(callableErrorMessage(e));
+    }
+  }, [duelId, myChoice]);
+
   useEffect(() => {
     if (duel?.phase !== 'playing' || !duel.deadlineAt) return;
     if (timerRef.current) clearInterval(timerRef.current);
@@ -78,7 +88,7 @@ export function RigoriDuelPage() {
     update();
     timerRef.current = setInterval(update, 100);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [duel?.round, duel?.phase, duel?.deadlineAt]);
+  }, [duel?.round, duel?.phase, duel?.deadlineAt, myChoice, handleTimeout]);
 
   useEffect(() => {
     if (!duel?.lastRound) return;
@@ -93,17 +103,7 @@ export function RigoriDuelPage() {
       setShake(false);
     }, 2200);
     return () => clearTimeout(t);
-  }, [duel?.lastRound]);
-
-  const handleTimeout = async () => {
-    if (!duelId || myChoice !== null) return;
-    setMyChoice(randomTarget());
-    try {
-      await penaltyDuelMoveFn(duelId, undefined, true);
-    } catch (e) {
-      setError(callableErrorMessage(e));
-    }
-  };
+  }, [duel?.lastRound, lastAnim?.round]);
 
   const handleChoice = async (target: PenaltyTarget) => {
     if (!duelId || myChoice !== null || shotAnim || duel?.phase !== 'playing') return;

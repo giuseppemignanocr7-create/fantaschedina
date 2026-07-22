@@ -1898,12 +1898,9 @@ export const managePenaltyDuel = onCall({ region: REGION, enforceAppCheck: false
 
       const isP1 = duel.p1.uid === uid;
       const isBotGame = duel.p2.isBot === true;
-      const playerNum = isP1 ? 1 : 2;
 
-      // Only the involved players can move; attacker chooses shot, keeper chooses dive
-      if (duel.attacker !== playerNum && playerNum !== (duel.attacker === 1 ? 2 : 1)) {
-        throw new HttpsError('failed-precondition', 'Non è il tuo turno');
-      }
+      // Both players submit simultaneously each round (attacker's shot, keeper's dive) —
+      // no per-round turn restriction beyond already being one of the two participants.
 
       const now = Date.now();
       const deadlinePassed = now >= duel.deadlineAt;

@@ -96,7 +96,7 @@ export function SchedinaPage() {
   const isDeadlinePassed = useMemo(() => {
     if (!currentMatchday?.deadline) return false;
     return new Date().getTime() >= new Date(currentMatchday.deadline).getTime();
-  }, [currentMatchday?.deadline]);
+  }, [currentMatchday]);
 
   const isSubmitted = !!(currentSchedina?.isLocked || currentSchedina?.submittedAt);
   const canEdit = isSubmitted && !isDeadlinePassed;
