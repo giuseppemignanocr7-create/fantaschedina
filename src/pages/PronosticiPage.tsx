@@ -12,6 +12,7 @@ import type { BetType, BetOutcome, Prediction, Match } from '@/types';
 import type { MatchOdds } from '@/data/mockData';
 import { CountdownTimer, TeamLogo } from '@/components/ui';
 import { useToast } from '@/contexts/ToastContext';
+import { useSchedinaEditWindow } from '@/hooks';
 import { MAX_PICKS_PER_SCHEDINA } from '@/lib/economy';
 import { competitionName } from '@/lib/competitions';
 
@@ -344,17 +345,15 @@ export function PronosticiPage() {
     updatePrediction,
     resetSchedina,
     submitSchedina,
-    unlockSchedina,
-    cancelSchedina,
     isLoadingOdds,
     lastOddsUpdate,
     refreshOdds,
   } = useAppStore();
 
   const toast = useToast();
+  const { canEdit, isSubmitting: isCancelling, handleEdit, handleCancel } = useSchedinaEditWindow();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
   const [selectedBetType, setSelectedBetType] = useState<BetType>('esito');
   const [selectedCompetition, setSelectedCompetition] = useState<string>('all');
 
@@ -416,23 +415,6 @@ export function PronosticiPage() {
     }
   };
 
-  const handleEdit = () => {
-    unlockSchedina();
-    toast.info('Puoi modificare la schedina. Re-invia per confermare le modifiche.');
-  };
-
-  const handleCancel = async () => {
-    setIsCancelling(true);
-    await cancelSchedina();
-    setIsCancelling(false);
-    if (!useAppStore.getState().error) {
-      vibrate([40, 20, 40]);
-      toast.success('Schedina annullata con successo. Gettoni power-up rimborsati.');
-    } else {
-      toast.error(useAppStore.getState().error || 'Errore nell\'annullamento della schedina');
-    }
-  };
-
   const formatTime = (d: Date | null) => {
     if (!d) return null;
     return new Date(d).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
@@ -452,9 +434,6 @@ export function PronosticiPage() {
       </div>
     );
   }
-
-  const isDeadlinePassed = new Date().getTime() >= new Date(currentMatchday.deadline).getTime();
-  const canEdit = !!currentSchedina?.isLocked && !isDeadlinePassed;
 
   const slipProps = {
     isComplete,

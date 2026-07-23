@@ -8,6 +8,7 @@ import type { BetType, BetOutcome, Prediction } from '@/types';
 import { isValidOdds, isInPenaltyRange, calculateSchedinaScore, calculateBetPoints } from '@/lib/scoring';
 import { CountdownTimer, QuickBet, PowerUpSelector, TeamLogo } from '@/components/ui';
 import { useToast } from '@/contexts/ToastContext';
+import { useSchedinaEditWindow } from '@/hooks';
 import { sideCannons, vibrate } from '@/lib/juice';
 
 // 10 matches = 10 giocate
@@ -69,11 +70,9 @@ export function SchedinaPage() {
     submitSchedina,
     resetSchedina,
     unlockSchedina,
-    cancelSchedina,
     selectedPowerups,
     setPowerups,
     isLoadingOdds,
-    isSubmitting,
     lastOddsUpdate,
     refreshOdds,
     error,
@@ -81,6 +80,7 @@ export function SchedinaPage() {
   } = useAppStore();
 
   const toast = useToast();
+  const { isSubmitted, canEdit, isSubmitting, handleEdit, handleCancel } = useSchedinaEditWindow();
 
   const formatTime = (d: Date | null) => {
     if (!d) return null;
@@ -92,14 +92,6 @@ export function SchedinaPage() {
   const predictions = useMemo(() => currentSchedina?.predictions || [], [currentSchedina?.predictions]);
   const completedCount = predictions.length;
   const isComplete = completedCount === TOTAL_PREDICTIONS;
-
-  const isDeadlinePassed = useMemo(() => {
-    if (!currentMatchday?.deadline) return false;
-    return new Date().getTime() >= new Date(currentMatchday.deadline).getTime();
-  }, [currentMatchday]);
-
-  const isSubmitted = !!(currentSchedina?.isLocked || currentSchedina?.submittedAt);
-  const canEdit = isSubmitted && !isDeadlinePassed;
 
   const scorePreview = useMemo(() => {
     if (predictions.length === 0) return null;
@@ -137,25 +129,10 @@ export function SchedinaPage() {
     }
   };
 
-  const handleEdit = () => {
-    unlockSchedina();
-    toast.info('Puoi modificare la schedina. Re-invia per confermare le modifiche.');
-  };
-
   const handleReset = () => {
     unlockSchedina();
     resetSchedina();
     toast.info('Schedina azzerata. Ricompila e re-invia.');
-  };
-
-  const handleCancel = async () => {
-    await cancelSchedina();
-    if (!useAppStore.getState().error) {
-      vibrate([40, 20, 40]);
-      toast.success('Schedina annullata con successo. Gettoni power-up rimborsati.');
-    } else {
-      toast.error(useAppStore.getState().error || 'Errore nell\'annullamento della schedina');
-    }
   };
 
   const handleQuickBet = (newPredictions: Prediction[]) => {
@@ -597,7 +574,7 @@ export function SchedinaPage() {
                     <p className="text-[10px] text-white/40">
                       Puoi modificare, azzerare o annullare fino a 2 ore dall'inizio della prima partita
                     </p>
-                    {currentSchedina.powerups &&
+                    {currentSchedina?.powerups &&
                       (currentSchedina.powerups.jolly ||
                         currentSchedina.powerups.shield ||
                         currentSchedina.powerups.insurance) && (
