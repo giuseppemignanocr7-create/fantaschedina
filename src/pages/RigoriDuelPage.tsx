@@ -33,6 +33,10 @@ const PENALTY_PHOTO = {
   save: '/rigori/ref5.jpg', // 6. Esito: Parata
 };
 
+/* Durata della rivelazione: deve combaciare con il timeout che resetta shotAnim (vedi useEffect lastRound) */
+const PENALTY_REVEAL_MS = 2200;
+const penaltyAnim = (name: string) => `${name} ${PENALTY_REVEAL_MS}ms ease forwards`;
+
 export function RigoriDuelPage() {
   const { profile } = useAuthContext();
   const [phase, setPhase] = useState<GamePhase>('menu');
@@ -61,6 +65,16 @@ export function RigoriDuelPage() {
   }, []);
 
   useEffect(() => cleanup, [cleanup]);
+
+  // Precarica shot/dive/save: idle è già a schermo e si carica da sé, ma senza
+  // questo le altre 3 foto verrebbero richieste solo al primo tiro, in corsa
+  // con l'animazione a tempo fisso (rischio di frame vuoto a cache fredda).
+  useEffect(() => {
+    [PENALTY_PHOTO.shot, PENALTY_PHOTO.dive, PENALTY_PHOTO.save].forEach(src => {
+      const img = new Image();
+      img.src = src;
+    });
+  }, []);
 
   useEffect(() => {
     if (!duelId) return;
@@ -108,12 +122,12 @@ export function RigoriDuelPage() {
     vibrate(duel.lastRound.goal ? 80 : 40);
     let confettiTimer: ReturnType<typeof setTimeout> | undefined;
     if (duel.lastRound.goal) {
-      confettiTimer = setTimeout(() => burstConfetti(), 650);
+      confettiTimer = setTimeout(() => burstConfetti(), Math.round(PENALTY_REVEAL_MS * 0.3));
     }
     const t = setTimeout(() => {
       setShotAnim(null);
       setShake(false);
-    }, 2200);
+    }, PENALTY_REVEAL_MS);
     return () => { clearTimeout(t); if (confettiTimer) clearTimeout(confettiTimer); };
   }, [duel?.lastRound, lastAnim?.round]);
 
@@ -264,6 +278,12 @@ export function RigoriDuelPage() {
     const oppScore = iAmP1 ? duel.p2.score : duel.p1.score;
     const showResult = shotAnim !== null;
     const resultMsg = lastAnim ? (lastAnim.goal ? 'GOAL!' : 'PARATA!') : '';
+    const diveAnim = lastAnim?.goal ? 'penalty-dive-hold-goal' : 'penalty-dive-hold-save';
+    const revealLayers = lastAnim ? [
+      { src: PENALTY_PHOTO.shot, anim: penaltyAnim('penalty-shot-flash') },
+      { src: PENALTY_PHOTO.dive, anim: penaltyAnim(diveAnim) },
+      ...(lastAnim.goal ? [] : [{ src: PENALTY_PHOTO.save, anim: penaltyAnim('penalty-result-in') }]),
+    ] : [];
 
     return (
       <div className={cn('min-h-screen relative overflow-hidden', shake && 'animate-shake')}>
@@ -331,30 +351,20 @@ export function RigoriDuelPage() {
                 className="absolute inset-0 bg-cover bg-center"
                 style={{
                   backgroundImage: `url('${PENALTY_PHOTO.idle}')`,
-                  animation: showResult ? 'penalty-idle-out 2.2s ease forwards' : undefined,
+                  animation: showResult ? penaltyAnim('penalty-idle-out') : undefined,
                   opacity: showResult ? undefined : 1,
                 }}
               />
 
               {showResult && lastAnim && (
                 <div key={`seq-${lastAnim.round}`} className="absolute inset-0">
-                  <div
-                    className="absolute inset-0 bg-cover bg-center"
-                    style={{ backgroundImage: `url('${PENALTY_PHOTO.shot}')`, animation: 'penalty-shot-flash 2.2s ease forwards' }}
-                  />
-                  <div
-                    className="absolute inset-0 bg-cover bg-center"
-                    style={{
-                      backgroundImage: `url('${PENALTY_PHOTO.dive}')`,
-                      animation: `${lastAnim.goal ? 'penalty-dive-hold-goal' : 'penalty-dive-hold-save'} 2.2s ease forwards`,
-                    }}
-                  />
-                  {!lastAnim.goal && (
+                  {revealLayers.map(layer => (
                     <div
+                      key={layer.src}
                       className="absolute inset-0 bg-cover bg-center"
-                      style={{ backgroundImage: `url('${PENALTY_PHOTO.save}')`, animation: 'penalty-result-in 2.2s ease forwards' }}
+                      style={{ backgroundImage: `url('${layer.src}')`, animation: layer.anim }}
                     />
-                  )}
+                  ))}
                 </div>
               )}
 
@@ -382,7 +392,7 @@ export function RigoriDuelPage() {
               })}
 
               {showResult && lastAnim && (
-                <div className="absolute inset-0 flex flex-col items-center justify-end pb-6 z-30" style={{ animation: 'penalty-result-in 2.2s ease forwards', opacity: 0 }}>
+                <div className="absolute inset-0 flex flex-col items-center justify-end pb-6 z-30" style={{ animation: penaltyAnim('penalty-result-in'), opacity: 0 }}>
                   <p className={cn(
                     'font-display font-black text-4xl uppercase tracking-widest drop-shadow-2xl px-4 py-1 rounded-xl',
                     lastAnim.goal ? 'text-primary-300 bg-black/40' : 'text-red-400 bg-black/40'
