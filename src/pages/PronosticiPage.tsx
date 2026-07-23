@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Target, Clock, CheckCircle2, Send, RotateCcw,
   ChevronRight, Trophy, RefreshCw,
-  ListChecks, TrendingUp,
+  ListChecks, TrendingUp, Pencil, Trash2,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -67,12 +67,16 @@ type SlipPanelProps = {
   completedCount: number;
   total: number;
   isLocked: boolean;
+  canEdit: boolean;
   matches: Match[];
   predictions: Prediction[];
   totalPotential: number;
   isSubmitting: boolean;
+  isCancelling: boolean;
   onReset: () => void;
   onSubmit: () => void;
+  onEdit: () => void;
+  onCancel: () => void;
 };
 
 const SlipPanel = memo(function SlipPanel({
@@ -81,12 +85,16 @@ const SlipPanel = memo(function SlipPanel({
   completedCount,
   total,
   isLocked,
+  canEdit,
   matches,
   predictions,
   totalPotential,
   isSubmitting,
+  isCancelling,
   onReset,
   onSubmit,
+  onEdit,
+  onCancel,
 }: SlipPanelProps) {
   const getPrediction = (matchId: string): Prediction | undefined =>
     predictions.find(p => p.matchId === matchId);
@@ -184,12 +192,39 @@ const SlipPanel = memo(function SlipPanel({
           </button>
         </div>
       ) : (
-        <div className="p-3 text-center">
+        <div className="p-3 text-center space-y-2">
           <CheckCircle2 size={24} className="text-green-400 mx-auto mb-1.5" />
           <p className="font-bold text-green-400 text-sm">Inviata!</p>
-          <Link to="/classifica" className="text-[10px] text-primary-400 font-bold hover:text-primary-300 flex items-center gap-0.5 justify-center mt-1">
-            Classifica <ChevronRight size={10} />
-          </Link>
+          {canEdit ? (
+            <>
+              <div className="flex flex-wrap gap-1.5 justify-center pt-1">
+                <button
+                  onClick={onEdit}
+                  className="flex items-center justify-center gap-1 py-1.5 px-3 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-300 text-[10px] font-bold hover:bg-primary-500/30 transition-all"
+                >
+                  <Pencil size={11} />
+                  Modifica
+                </button>
+                <button
+                  onClick={onCancel}
+                  disabled={isCancelling}
+                  className="flex items-center justify-center gap-1 py-1.5 px-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 text-[10px] font-bold hover:bg-red-500/30 transition-all disabled:opacity-50"
+                >
+                  {isCancelling ? (
+                    <div className="w-2.5 h-2.5 border-2 border-red-300/30 border-t-red-300 rounded-full animate-spin" />
+                  ) : (
+                    <Trash2 size={11} />
+                  )}
+                  Annulla
+                </button>
+              </div>
+              <p className="text-[9px] text-white/30">Disponibile fino a 2 ore dall'inizio della prima partita</p>
+            </>
+          ) : (
+            <Link to="/classifica" className="text-[10px] text-primary-400 font-bold hover:text-primary-300 flex items-center gap-0.5 justify-center mt-1">
+              Classifica <ChevronRight size={10} />
+            </Link>
+          )}
         </div>
       )}
     </div>
@@ -309,6 +344,8 @@ export function PronosticiPage() {
     updatePrediction,
     resetSchedina,
     submitSchedina,
+    unlockSchedina,
+    cancelSchedina,
     isLoadingOdds,
     lastOddsUpdate,
     refreshOdds,
@@ -317,6 +354,7 @@ export function PronosticiPage() {
   const toast = useToast();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [selectedBetType, setSelectedBetType] = useState<BetType>('esito');
   const [selectedCompetition, setSelectedCompetition] = useState<string>('all');
 
@@ -378,6 +416,23 @@ export function PronosticiPage() {
     }
   };
 
+  const handleEdit = () => {
+    unlockSchedina();
+    toast.info('Puoi modificare la schedina. Re-invia per confermare le modifiche.');
+  };
+
+  const handleCancel = async () => {
+    setIsCancelling(true);
+    await cancelSchedina();
+    setIsCancelling(false);
+    if (!useAppStore.getState().error) {
+      vibrate([40, 20, 40]);
+      toast.success('Schedina annullata con successo. Gettoni power-up rimborsati.');
+    } else {
+      toast.error(useAppStore.getState().error || 'Errore nell\'annullamento della schedina');
+    }
+  };
+
   const formatTime = (d: Date | null) => {
     if (!d) return null;
     return new Date(d).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
@@ -398,17 +453,24 @@ export function PronosticiPage() {
     );
   }
 
+  const isDeadlinePassed = new Date().getTime() >= new Date(currentMatchday.deadline).getTime();
+  const canEdit = !!currentSchedina?.isLocked && !isDeadlinePassed;
+
   const slipProps = {
     isComplete,
     completedCount,
     total,
     isLocked: !!currentSchedina?.isLocked,
+    canEdit,
     matches: pickedMatches,
     predictions,
     totalPotential,
     isSubmitting,
+    isCancelling,
     onReset: resetSchedina,
     onSubmit: handleSubmit,
+    onEdit: handleEdit,
+    onCancel: handleCancel,
   };
 
   return (
