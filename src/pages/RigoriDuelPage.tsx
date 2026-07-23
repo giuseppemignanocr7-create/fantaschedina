@@ -15,15 +15,23 @@ import {
 } from '@/lib/gameApi';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { vibrate } from '@/lib/juice';
+import { vibrate, burstConfetti } from '@/lib/juice';
 
 type GamePhase = 'menu' | 'create' | 'join' | 'game' | 'finished';
 
 const TARGETS: { value: PenaltyTarget; label: string; x: number; y: number }[] = [
-  { value: 'left', label: 'SINISTRA', x: 18, y: 58 },
-  { value: 'center', label: 'CENTRO', x: 50, y: 42 },
-  { value: 'right', label: 'DESTRA', x: 82, y: 58 },
+  { value: 'left', label: 'SINISTRA', x: 20, y: 50 },
+  { value: 'center', label: 'CENTRO', x: 50, y: 45 },
+  { value: 'right', label: 'DESTRA', x: 80, y: 50 },
 ];
+
+/* Sequenza fotografica reale del rigore (vedi public/rigori) */
+const PENALTY_PHOTO = {
+  idle: '/rigori/ref3.jpg', // 1. Preparazione
+  shot: '/rigori/ref1.jpg', // 3. Tiro
+  dive: '/rigori/ref2.jpg', // 4. Volo del portiere
+  save: '/rigori/ref5.jpg', // 6. Esito: Parata
+};
 
 export function RigoriDuelPage() {
   const { profile } = useAuthContext();
@@ -98,11 +106,15 @@ export function RigoriDuelPage() {
     setShake(true);
     setMyChoice(null);
     vibrate(duel.lastRound.goal ? 80 : 40);
+    let confettiTimer: ReturnType<typeof setTimeout> | undefined;
+    if (duel.lastRound.goal) {
+      confettiTimer = setTimeout(() => burstConfetti(), 650);
+    }
     const t = setTimeout(() => {
       setShotAnim(null);
       setShake(false);
     }, 2200);
-    return () => clearTimeout(t);
+    return () => { clearTimeout(t); if (confettiTimer) clearTimeout(confettiTimer); };
   }, [duel?.lastRound, lastAnim?.round]);
 
   const handleChoice = async (target: PenaltyTarget) => {
@@ -252,17 +264,10 @@ export function RigoriDuelPage() {
     const oppScore = iAmP1 ? duel.p2.score : duel.p1.score;
     const showResult = shotAnim !== null;
     const resultMsg = lastAnim ? (lastAnim.goal ? 'GOAL!' : 'PARATA!') : '';
-    const attackerChoice = lastAnim ? (lastAnim.attacker === 1 ? lastAnim.p1Choice : lastAnim.p2Choice) : null;
-    const keeperChoice = lastAnim ? (lastAnim.attacker === 1 ? lastAnim.p2Choice : lastAnim.p1Choice) : null;
-    const shotTarget = attackerChoice ? TARGETS.find(t => t.value === attackerChoice) : null;
-    const keeperTarget = keeperChoice ? TARGETS.find(t => t.value === keeperChoice) : null;
-    const keeperRotate = keeperTarget
-      ? keeperTarget.value === 'left' ? '-30deg' : keeperTarget.value === 'right' ? '30deg' : '0deg'
-      : '0deg';
 
     return (
       <div className={cn('min-h-screen relative overflow-hidden', shake && 'animate-shake')}>
-        <div className="absolute inset-0 bg-[url('/rigori/ref1.jpg')] bg-cover bg-center opacity-20" />
+        <div className="absolute inset-0 bg-[url('/rigori/ref3.jpg')] bg-cover bg-center opacity-15" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent" />
 
         <div className="relative z-10 min-h-screen flex flex-col px-4 py-6">
@@ -319,66 +324,72 @@ export function RigoriDuelPage() {
               </div>
             </div>
 
-            {/* Targets */}
-            <div className="relative flex-1 min-h-[360px] rounded-3xl border-4 border-white/20 overflow-hidden shadow-2xl bg-black/30 backdrop-blur-sm">
-              <div className="absolute inset-0 bg-[url('/rigori/ref2.jpg')] bg-cover bg-center opacity-40" />
+            {/* Scena rigore: sequenza fotografica reale */}
+            <div className="relative flex-1 min-h-[360px] rounded-3xl border-4 border-white/20 overflow-hidden shadow-2xl bg-black">
+              {/* Frame idle: preparazione, visibile finché non parte la rivelazione */}
+              <div
+                className="absolute inset-0 bg-cover bg-center"
+                style={{
+                  backgroundImage: `url('${PENALTY_PHOTO.idle}')`,
+                  animation: showResult ? 'penalty-idle-out 2.2s ease forwards' : undefined,
+                  opacity: showResult ? undefined : 1,
+                }}
+              />
 
-              {TARGETS.map(t => {
-                const disabled = showResult || myChoice !== null || duel.phase !== 'playing';
+              {showResult && lastAnim && (
+                <div key={`seq-${lastAnim.round}`} className="absolute inset-0">
+                  <div
+                    className="absolute inset-0 bg-cover bg-center"
+                    style={{ backgroundImage: `url('${PENALTY_PHOTO.shot}')`, animation: 'penalty-shot-flash 2.2s ease forwards' }}
+                  />
+                  <div
+                    className="absolute inset-0 bg-cover bg-center"
+                    style={{
+                      backgroundImage: `url('${PENALTY_PHOTO.dive}')`,
+                      animation: `${lastAnim.goal ? 'penalty-dive-hold-goal' : 'penalty-dive-hold-save'} 2.2s ease forwards`,
+                    }}
+                  />
+                  {!lastAnim.goal && (
+                    <div
+                      className="absolute inset-0 bg-cover bg-center"
+                      style={{ backgroundImage: `url('${PENALTY_PHOTO.save}')`, animation: 'penalty-result-in 2.2s ease forwards' }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Mirini di scelta (allineati ai reticoli verdi già presenti nella foto) */}
+              {!showResult && TARGETS.map(t => {
+                const disabled = myChoice !== null || duel.phase !== 'playing';
                 const isSelected = myChoice === t.value;
                 return (
                   <button
                     key={t.value}
                     onClick={() => handleChoice(t.value)}
                     disabled={disabled}
+                    aria-label={`Tira a ${t.label.toLowerCase()}`}
                     className={cn(
-                      'absolute w-24 h-24 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 flex flex-col items-center justify-center transition-all active:scale-90 shadow-2xl',
+                      'absolute w-20 h-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 transition-all active:scale-90',
                       isSelected
-                        ? 'bg-primary-500/90 border-primary-300 scale-110 shadow-[0_0_30px_rgba(132,216,12,0.5)]'
-                        : 'bg-white/10 border-white/40 hover:bg-primary-500/30 hover:border-primary-300 hover:scale-105'
+                        ? 'bg-primary-500/40 border-primary-300 scale-110 shadow-[0_0_30px_rgba(132,216,12,0.6)]'
+                        : 'bg-transparent border-transparent hover:bg-primary-500/20 hover:border-primary-300/70 hover:scale-105'
                     )}
                     style={{ left: `${t.x}%`, top: `${t.y}%` }}
                   >
-                    <span className="text-3xl font-black drop-shadow-lg">
-                      {t.value === 'left' ? '⬅' : t.value === 'right' ? '➡' : '⬆'}
-                    </span>
-                    <span className="text-[10px] font-black text-white/90 uppercase tracking-wide mt-1">{t.label}</span>
+                    <span className="sr-only">{t.label}</span>
                   </button>
                 );
               })}
 
               {showResult && lastAnim && (
-                <>
-                  {/* Pallone che tira */}
-                  <div
-                    className="absolute w-11 h-11 rounded-full bg-white border-2 border-black/20 flex items-center justify-center text-2xl z-20 shadow-[0_0_20px_rgba(255,255,255,0.45)]"
-                    style={{
-                      '--tx': `${shotTarget?.x ?? 50}%`,
-                      '--ty': `${shotTarget?.y ?? 58}%`,
-                      animation: 'shot-ball 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
-                    } as React.CSSProperties}
-                  >
-                    ⚽
-                  </div>
-                  {/* Portiere che si tuffa */}
-                  <div
-                    className="absolute z-20"
-                    style={{
-                      '--kx': `${keeperTarget?.x ?? 50}%`,
-                      '--ky': `${keeperTarget?.y ?? 58}%`,
-                      '--kr': keeperRotate,
-                      animation: 'keeper-dive 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards',
-                    } as React.CSSProperties}
-                  >
-                    <span className="text-6xl drop-shadow-[0_0_12px_rgba(255,255,255,0.35)]">🧤</span>
-                  </div>
-                  <div className={cn('absolute inset-0 flex flex-col items-center justify-center z-30', lastAnim.goal ? 'bg-green-500/20' : 'bg-red-500/20')}>
-                    <p className="text-7xl mb-2 animate-bounce">{lastAnim.goal ? '⚽' : '🧤'}</p>
-                    <p className={cn('font-display font-black text-5xl uppercase tracking-widest drop-shadow-2xl', lastAnim.goal ? 'text-green-400' : 'text-red-400')}>
-                      {resultMsg}
-                    </p>
-                  </div>
-                </>
+                <div className="absolute inset-0 flex flex-col items-center justify-end pb-6 z-30" style={{ animation: 'penalty-result-in 2.2s ease forwards', opacity: 0 }}>
+                  <p className={cn(
+                    'font-display font-black text-4xl uppercase tracking-widest drop-shadow-2xl px-4 py-1 rounded-xl',
+                    lastAnim.goal ? 'text-primary-300 bg-black/40' : 'text-red-400 bg-black/40'
+                  )}>
+                    {resultMsg}
+                  </p>
+                </div>
               )}
             </div>
 

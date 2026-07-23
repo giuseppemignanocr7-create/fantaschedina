@@ -146,28 +146,35 @@
   @apply bg-primary-500/40;
 }
 
-@keyframes shot-ball {
-  from {
-    left: 50%;
-    top: 92%;
-    transform: translate(-50%, -50%) scale(0.6);
-  }
-  to {
-    left: var(--tx);
-    top: var(--ty);
-    transform: translate(-50%, -50%) scale(1);
-  }
+/* Penalty duel: crossfade tra le foto reali della sequenza (preparazione/tiro/volo/parata) */
+@keyframes penalty-idle-out {
+  0%, 12% { opacity: 1; }
+  28% { opacity: 0; }
+  100% { opacity: 0; }
 }
 
-@keyframes keeper-dive {
-  from {
-    left: 50%;
-    top: 12%;
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-  to {
-    left: var(--kx);
-    top: var(--ky);
-    transform: translate(-50%, -50%) rotate(var(--kr, 0deg));
-  }
+@keyframes penalty-shot-flash {
+  0%, 10% { opacity: 0; }
+  20%, 38% { opacity: 1; }
+  50% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+@keyframes penalty-dive-hold-save {
+  0%, 30% { opacity: 0; }
+  42%, 62% { opacity: 1; }
+  74% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+@keyframes penalty-dive-hold-goal {
+  0%, 30% { opacity: 0; }
+  42% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+@keyframes penalty-result-in {
+  0%, 70% { opacity: 0; }
+  84% { opacity: 1; }
+  100% { opacity: 1; }
 }
