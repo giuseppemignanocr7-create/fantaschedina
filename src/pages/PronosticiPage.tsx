@@ -371,7 +371,10 @@ export function PronosticiPage() {
   const currentBetDef = BET_TYPES.find(b => b.key === selectedBetType)!;
 
   const availableCompetitions = useMemo(() => {
-    const codes = new Set((currentMatchday?.matches ?? []).map(m => m.competition));
+    // m.competition può mancare per partite sincronizzate prima che il campo fosse
+    // popolato lato server: le si mostra comunque sotto "Tutti i campionati", ma
+    // non genera un bottone filtro rotto (key vuota / label vuota).
+    const codes = new Set((currentMatchday?.matches ?? []).map(m => m.competition).filter(Boolean));
     return [...codes];
   }, [currentMatchday?.matches]);
 
