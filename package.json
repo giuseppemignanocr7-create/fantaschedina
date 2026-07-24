@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "tsc --noEmit && eslint . && vitest run",
+    "test:e2e": "playwright test",
     "seed:quiz": "node scripts/seed-quiz.mjs",
     "preview": "vite preview"
   },
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
     "@types/canvas-confetti": "^1.9.0",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",

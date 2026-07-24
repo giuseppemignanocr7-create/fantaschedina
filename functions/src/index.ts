@@ -821,6 +821,7 @@ export const cancelSchedina = onCall({ region: REGION, enforceAppCheck: false },
 export const seedQuizQuestions = onCall({ region: REGION }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireAdmin(uid);
 
   const batch = db.batch();
   for (let i = 0; i < ALL_QUIZ_QUESTIONS.length; i++) {
