@@ -55,7 +55,7 @@ export function QuizCalcioPage() {
         const r = await submitQuiz(finalAnswers);
         setResult(r);
         setPhase('done');
-        refreshProfile();
+        void refreshProfile().catch(err => console.error('[QuizCalcioPage] refreshProfile:', err));
         if (!celebrated.current) {
           celebrated.current = true;
           if (r.correct >= 9) jackpotCelebration();

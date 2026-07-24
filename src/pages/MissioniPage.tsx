@@ -37,15 +37,20 @@ export function MissioniPage() {
     setClaiming(missionId);
     try {
       await claimMissionFn(missionId);
-      await refreshProfile();
-      vibrate([50, 30, 80]);
-      burstConfetti();
-      coinRain(1200);
     } catch (e) {
       setError(callableErrorMessage(e));
-    } finally {
       setClaiming(null);
+      return;
     }
+    // Il claim è già andato a buon fine lato server a questo punto: festeggia
+    // subito e non far dipendere l'esito percepito dal refresh del profilo,
+    // altrimenti un fallimento di rete qui mostrerebbe un errore fuorviante
+    // su un premio già assegnato (e un retry darebbe "già riscossa").
+    vibrate([50, 30, 80]);
+    burstConfetti();
+    coinRain(1200);
+    setClaiming(null);
+    refreshProfile().catch(err => console.error('[MissioniPage] refreshProfile:', err));
   };
 
   return (

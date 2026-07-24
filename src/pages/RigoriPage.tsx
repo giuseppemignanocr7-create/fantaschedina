@@ -47,7 +47,7 @@ export function RigoriPage() {
       setPhase('reveal');
       setGamesPlayed(g => g + 1);
       setTotalEarned(t => t + r.reward);
-      refreshProfile();
+      void refreshProfile().catch(err => console.error('[RigoriPage] refreshProfile:', err));
     } catch (e) {
       setError(callableErrorMessage(e));
       setPhase('intro');

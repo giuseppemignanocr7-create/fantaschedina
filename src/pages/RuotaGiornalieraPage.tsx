@@ -49,7 +49,7 @@ export function RuotaGiornalieraPage() {
         setSpinning(false);
         setResult(segmentIndex);
         setAlreadySpun(true);
-        refreshProfile();
+        void refreshProfile().catch(err => console.error('[RuotaGiornalieraPage] refreshProfile:', err));
         const pts = SEGMENTS[segmentIndex].pts;
         vibrate([50, 30, 80]);
         if (pts >= 150) jackpotCelebration();
