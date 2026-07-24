@@ -847,9 +847,12 @@ export const seedQuizQuestions = onCall({ region: REGION }, async request => {
 export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
-  await enforceRateLimit(uid, 'playMinigame', 10, 60_000);
 
   const action = request.data?.action as string;
+  // Bucket per singola azione (non condiviso tra quiz/ruota/rigori/memoria/sfide):
+  // altrimenti giocare a più minigiochi diversi nella stessa sessione esaurisce
+  // in fretta un budget pensato per una sola azione ripetuta.
+  await enforceRateLimit(uid, `playMinigame_${action}`, 10, 60_000);
   const today = romeDateString();
   const profileRef = db.collection('profiles').doc(uid);
 
@@ -1022,11 +1025,11 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
           session.data()?.date === today &&
           session.data()?.submitted === false
         ) {
-          return session.data()?.questions as { id: string; options: string[]; answerIndex: number }[];
+          return session.data()?.questions as { id: string; question: string; options: string[]; answerIndex: number }[];
         }
         tx.set(sessionRef, {
           userId: uid,
-          questions: questionsData.map(q => ({ id: q.id, options: q.options, answerIndex: q.answerIndex })),
+          questions: questionsData.map(q => ({ id: q.id, question: q.question, options: q.options, answerIndex: q.answerIndex })),
           date: today,
           submitted: false,
           createdAt: FieldValue.serverTimestamp(),
