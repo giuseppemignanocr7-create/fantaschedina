@@ -22,9 +22,14 @@ export default defineConfig({
   webServer: [
     {
       command: 'npx firebase emulators:start --only auth,firestore --project fantaschedina-4a1b2',
-      port: 8080,
+      // L'emulatore Auth (9099) è pronto dopo Firestore (8080): controllare
+      // Firestore da solo crea una race condition in cui il primo test che
+      // chiama signIn/signUp riceve ERR_CONNECTION_REFUSED su Auth.
+      port: 9099,
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
     {
       command: 'npm run dev',
@@ -32,6 +37,8 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
       env: { VITE_USE_FIREBASE_EMULATORS: 'true' },
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
   ],
 });
