@@ -16,6 +16,7 @@ import {
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { vibrate, burstConfetti } from '@/lib/juice';
+import { Penalty3DScene } from '@/components/games/Penalty3DScene';
 
 type GamePhase = 'menu' | 'create' | 'join' | 'game' | 'finished';
 
@@ -25,17 +26,8 @@ const TARGETS: { value: PenaltyTarget; label: string; x: number; y: number }[] =
   { value: 'right', label: 'DESTRA', x: 80, y: 50 },
 ];
 
-/* Sequenza fotografica reale del rigore (vedi public/rigori) */
-const PENALTY_PHOTO = {
-  idle: '/rigori/ref3.jpg', // 1. Preparazione
-  shot: '/rigori/ref1.jpg', // 3. Tiro
-  dive: '/rigori/ref2.jpg', // 4. Volo del portiere
-  save: '/rigori/ref5.jpg', // 6. Esito: Parata
-};
-
 /* Durata della rivelazione: deve combaciare con il timeout che resetta shotAnim (vedi useEffect lastRound) */
 const PENALTY_REVEAL_MS = 2200;
-const penaltyAnim = (name: string) => `${name} ${PENALTY_REVEAL_MS}ms ease forwards`;
 
 export function RigoriDuelPage() {
   const { profile } = useAuthContext();
@@ -65,16 +57,6 @@ export function RigoriDuelPage() {
   }, []);
 
   useEffect(() => cleanup, [cleanup]);
-
-  // Precarica shot/dive/save: idle è già a schermo e si carica da sé, ma senza
-  // questo le altre 3 foto verrebbero richieste solo al primo tiro, in corsa
-  // con l'animazione a tempo fisso (rischio di frame vuoto a cache fredda).
-  useEffect(() => {
-    [PENALTY_PHOTO.shot, PENALTY_PHOTO.dive, PENALTY_PHOTO.save].forEach(src => {
-      const img = new Image();
-      img.src = src;
-    });
-  }, []);
 
   useEffect(() => {
     if (!duelId) return;
@@ -204,7 +186,7 @@ export function RigoriDuelPage() {
   if (phase === 'create') {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('/rigori/ref3.jpg')] bg-cover bg-center opacity-15" />
+        <div className="absolute inset-0 bg-gradient-to-b from-primary-900/25 via-transparent to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/90 to-background" />
         <div className="glass-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in relative z-10">
           <div className="text-6xl animate-bounce">⚽</div>
@@ -237,7 +219,7 @@ export function RigoriDuelPage() {
     const isDraw = duel.winner === 'draw';
     return (
       <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('/rigori/ref5.jpg')] bg-cover bg-center opacity-20" />
+        <div className="absolute inset-0 bg-gradient-to-b from-primary-900/25 via-transparent to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/90 to-background" />
         <div className="glass-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in relative z-10">
           <div className="text-7xl animate-heartbeat">{iWon ? '🏆' : isDraw ? '🤝' : '😢'}</div>
@@ -277,17 +259,10 @@ export function RigoriDuelPage() {
     const myScore = iAmP1 ? duel.p1.score : duel.p2.score;
     const oppScore = iAmP1 ? duel.p2.score : duel.p1.score;
     const showResult = shotAnim !== null;
-    const resultMsg = lastAnim ? (lastAnim.goal ? 'GOAL!' : 'PARATA!') : '';
-    const diveAnim = lastAnim?.goal ? 'penalty-dive-hold-goal' : 'penalty-dive-hold-save';
-    const revealLayers = lastAnim ? [
-      { src: PENALTY_PHOTO.shot, anim: penaltyAnim('penalty-shot-flash') },
-      { src: PENALTY_PHOTO.dive, anim: penaltyAnim(diveAnim) },
-      ...(lastAnim.goal ? [] : [{ src: PENALTY_PHOTO.save, anim: penaltyAnim('penalty-result-in') }]),
-    ] : [];
 
     return (
       <div className={cn('min-h-screen relative overflow-hidden', shake && 'animate-shake')}>
-        <div className="absolute inset-0 bg-[url('/rigori/ref3.jpg')] bg-cover bg-center opacity-15" />
+        <div className="absolute inset-0 bg-gradient-to-b from-primary-900/20 via-transparent to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent" />
 
         <div className="relative z-10 min-h-screen flex flex-col px-4 py-6">
@@ -344,63 +319,39 @@ export function RigoriDuelPage() {
               </div>
             </div>
 
-            {/* Scena rigore: sequenza fotografica reale */}
-            <div className="relative flex-1 min-h-[360px] rounded-3xl border-4 border-white/20 overflow-hidden shadow-2xl bg-black">
-              {/* Frame idle: preparazione, visibile finché non parte la rivelazione */}
-              <div
-                className="absolute inset-0 bg-cover bg-center"
-                style={{
-                  backgroundImage: `url('${PENALTY_PHOTO.idle}')`,
-                  animation: showResult ? penaltyAnim('penalty-idle-out') : undefined,
-                  opacity: showResult ? undefined : 1,
-                }}
-              />
-
-              {showResult && lastAnim && (
-                <div key={`seq-${lastAnim.round}`} className="absolute inset-0">
-                  {revealLayers.map(layer => (
-                    <div
-                      key={layer.src}
-                      className="absolute inset-0 bg-cover bg-center"
-                      style={{ backgroundImage: `url('${layer.src}')`, animation: layer.anim }}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Mirini di scelta (allineati ai reticoli verdi già presenti nella foto) */}
-              {!showResult && TARGETS.map(t => {
-                const disabled = myChoice !== null || duel.phase !== 'playing';
-                const isSelected = myChoice === t.value;
-                return (
-                  <button
-                    key={t.value}
-                    onClick={() => handleChoice(t.value)}
-                    disabled={disabled}
-                    aria-label={`Tira a ${t.label.toLowerCase()}`}
-                    className={cn(
-                      'absolute w-20 h-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 transition-all active:scale-90',
-                      isSelected
-                        ? 'bg-primary-500/40 border-primary-300 scale-110 shadow-[0_0_30px_rgba(132,216,12,0.6)]'
-                        : 'bg-transparent border-transparent hover:bg-primary-500/20 hover:border-primary-300/70 hover:scale-105'
-                    )}
-                    style={{ left: `${t.x}%`, top: `${t.y}%` }}
-                  >
-                    <span className="sr-only">{t.label}</span>
-                  </button>
-                );
-              })}
-
-              {showResult && lastAnim && (
-                <div className="absolute inset-0 flex flex-col items-center justify-end pb-6 z-30" style={{ animation: penaltyAnim('penalty-result-in'), opacity: 0 }}>
-                  <p className={cn(
-                    'font-display font-black text-4xl uppercase tracking-widest drop-shadow-2xl px-4 py-1 rounded-xl',
-                    lastAnim.goal ? 'text-primary-300 bg-black/40' : 'text-red-400 bg-black/40'
-                  )}>
-                    {resultMsg}
-                  </p>
-                </div>
-              )}
+            {/* Scena rigore in pseudo-3D */}
+            <div className="relative flex-1 min-h-[360px] flex items-center">
+              <Penalty3DScene
+                revealShot={showResult && lastAnim ? {
+                  shot: (lastAnim.attacker === 1 ? lastAnim.p1Choice : lastAnim.p2Choice) ?? 'center',
+                  keeper: (lastAnim.attacker === 1 ? lastAnim.p2Choice : lastAnim.p1Choice) ?? 'center',
+                  goal: lastAnim.goal,
+                } : null}
+                revealKey={lastAnim?.round ?? 'idle'}
+              >
+                {/* Mirini di scelta (overlay dentro la porta) */}
+                {!showResult && TARGETS.map(t => {
+                  const disabled = myChoice !== null || duel.phase !== 'playing';
+                  const isSelected = myChoice === t.value;
+                  return (
+                    <button
+                      key={t.value}
+                      onClick={() => handleChoice(t.value)}
+                      disabled={disabled}
+                      aria-label={`Tira a ${t.label.toLowerCase()}`}
+                      className={cn(
+                        'absolute w-16 h-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 transition-all active:scale-90 z-20',
+                        isSelected
+                          ? 'bg-primary-500/40 border-primary-300 scale-110 shadow-[0_0_30px_rgba(132,216,12,0.6)]'
+                          : 'bg-transparent border-white/20 hover:bg-primary-500/20 hover:border-primary-300/70 hover:scale-105'
+                      )}
+                      style={{ left: `${t.x}%`, top: `${t.y}%` }}
+                    >
+                      <span className="sr-only">{t.label}</span>
+                    </button>
+                  );
+                })}
+              </Penalty3DScene>
             </div>
 
             {/* Instruction */}
@@ -418,7 +369,7 @@ export function RigoriDuelPage() {
   // Menu
   return (
     <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
-      <div className="absolute inset-0 bg-[url('/rigori/ref4.jpg')] bg-cover bg-center opacity-15" />
+      <div className="absolute inset-0 bg-gradient-to-b from-primary-900/25 via-transparent to-transparent" />
       <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/95 to-background" />
       <div className="glass-card p-8 max-w-sm w-full space-y-5 animate-pop-in relative z-10">
         <div className="text-center space-y-2">
