@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
-import { getPrizes } from '@/lib/db';
-import type { Schedina, SchedinaResult } from '@/types';
+import { getPrizes, getMatchday } from '@/lib/db';
+import type { Schedina, SchedinaResult, Match } from '@/types';
 import { SkeletonList, EmptyState } from '@/components/ui';
 
 type FilterType = 'tutti' | 'vinte' | 'perse';
@@ -24,6 +24,7 @@ export function StoricoPage() {
   const [filter, setFilter] = useState<FilterType>('tutti');
   const [expandedMatchday, setExpandedMatchday] = useState<number | null>(null);
   const [winnerMatchdays, setWinnerMatchdays] = useState<Set<number>>(new Set());
+  const [matchesById, setMatchesById] = useState<Map<string, Match>>(new Map());
 
   useEffect(() => {
     if (!currentUser) return;
@@ -40,6 +41,20 @@ export function StoricoPage() {
       )
       .catch(() => setWinnerMatchdays(new Set()));
   }, [currentUser, loadSchedinaHistory]);
+
+  useEffect(() => {
+    const matchdayNumbers = [...new Set(schedinaHistory.map(s => s.matchday))];
+    if (matchdayNumbers.length === 0) return;
+    Promise.all(matchdayNumbers.map(n => getMatchday(n)))
+      .then(matchdays => {
+        const map = new Map<string, Match>();
+        for (const md of matchdays) {
+          md?.matches.forEach(m => map.set(m.id, m));
+        }
+        setMatchesById(map);
+      })
+      .catch(() => {});
+  }, [schedinaHistory]);
 
   const items = useMemo(() => {
     return schedinaHistory.map(s => {
@@ -61,16 +76,22 @@ export function StoricoPage() {
         isWinner: settled && winnerMatchdays.has(s.matchday),
         settled,
         predictions: settled
-          ? s.predictions.map(p => ({
-              matchId: p.matchId,
-              prediction: String(p.outcome),
-              odds: p.odds,
-              correct: p.isCorrect,
-            }))
+          ? s.predictions.map(p => {
+              const match = matchesById.get(p.matchId);
+              return {
+                matchId: p.matchId,
+                matchLabel: match
+                  ? `${match.homeTeam.shortName || match.homeTeam.name} - ${match.awayTeam.shortName || match.awayTeam.name}`
+                  : p.matchId,
+                prediction: String(p.outcome),
+                odds: p.odds,
+                correct: p.isCorrect,
+              };
+            })
           : [],
       };
     });
-  }, [schedinaHistory, winnerMatchdays]);
+  }, [schedinaHistory, winnerMatchdays, matchesById]);
 
   const filtered = items.filter(s => {
     if (filter === 'vinte') return s.isWinner;
@@ -296,7 +317,7 @@ export function StoricoPage() {
                                 )}
                               </div>
                               <p className="text-sm font-mono text-white/70 truncate">
-                                {pred.matchId}
+                                {pred.matchLabel}
                               </p>
                             </div>
                             <div className="col-span-3 text-center">
