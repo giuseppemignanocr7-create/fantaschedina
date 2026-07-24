@@ -12,6 +12,10 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: process.env.CI ? 'github' : 'list',
+  // Su CI il primo test paga la compilazione a richiesta di Vite (dev server
+  // a freddo su runner condivisi lenti): il timeout di default (30s) basta
+  // in locale ma non sempre lì, specialmente sul primissimo page.goto.
+  timeout: process.env.CI ? 90_000 : 30_000,
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'retain-on-failure',
