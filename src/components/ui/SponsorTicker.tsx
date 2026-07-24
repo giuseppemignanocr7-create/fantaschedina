@@ -22,6 +22,18 @@ interface SponsorTickerProps {
 // il consumer passa un array di sponsor reali.
 const DEFAULT_SPONSORS: Sponsor[] = [];
 
+// Sponsor demo mostrati SOLO come segnaposto quando non ci sono ancora
+// sponsor reali attivi su Firestore (collezione `sponsors`, gestita da
+// AdminPage). Non linkano da nessuna parte: nessun href, quindi nessun
+// link morto. Da rimuovere quando arrivano i primi sponsor veri.
+const DEMO_SPONSORS: Sponsor[] = [
+  { name: 'SportBet Pro', tagline: 'Scommesse sportive', accent: '#84d80c' },
+  { name: 'GoalZone', tagline: 'Abbigliamento sportivo', accent: '#3b82f6' },
+  { name: 'MaxEnergy', tagline: 'Energy drink ufficiale', accent: '#f59e0b' },
+  { name: 'FastBet', tagline: 'Il tuo bookmaker', accent: '#ef4444' },
+  { name: 'ProKit', tagline: 'Equipaggiamento da gioco', accent: '#8b5cf6' },
+];
+
 function SponsorPill({ s }: { s: Sponsor }) {
   const accent = s.accent ?? '#84d80c';
   const content = (
@@ -75,7 +87,7 @@ export function SponsorTicker({ sponsors = DEFAULT_SPONSORS, className }: Sponso
  * a prominent scrolling marquee bar. Auto-updates in realtime.
  */
 export function SponsorBanner() {
-  const [sponsors, setSponsors] = useState<Sponsor[]>([]);
+  const [sponsors, setSponsors] = useState<Sponsor[]>(DEMO_SPONSORS);
 
   useEffect(() => {
     const q = query(collection(db, 'sponsors'), where('active', '==', true));
@@ -89,7 +101,8 @@ export function SponsorBanner() {
           href: data.href as string | undefined,
         };
       });
-      setSponsors(list);
+      // Finché non ci sono sponsor reali attivi, resta il placeholder demo.
+      setSponsors(list.length > 0 ? list : DEMO_SPONSORS);
     });
     return () => unsub();
   }, []);
