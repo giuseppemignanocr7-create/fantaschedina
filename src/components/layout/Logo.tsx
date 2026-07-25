@@ -17,10 +17,14 @@ const WORD_SIZE: Record<NonNullable<LogoProps['size']>, string> = {
 };
 
 const BADGE_SIZE: Record<NonNullable<LogoProps['size']>, string> = {
-  sm: 'w-8 h-8 text-[13px] rounded-lg',
-  md: 'w-10 h-10 text-base rounded-xl',
-  lg: 'w-14 h-14 text-2xl rounded-2xl',
+  sm: 'w-8 h-8 text-[13px]',
+  md: 'w-10 h-10 text-base',
+  lg: 'w-14 h-14 text-2xl',
 };
+
+// Taglio diagonale a parallelogramma sui due lati, come nel marchio FS
+// ufficiale (vedi public/logo-full.png), invece del badge quadrato bordato.
+const BADGE_CLIP = 'polygon(20% 0%, 100% 0%, 80% 100%, 0% 100%)';
 
 /**
  * Logo ufficiale FantaSchedina.
@@ -32,16 +36,17 @@ export function Logo({ badge = true, tagline = false, size = 'sm', className }: 
       {badge && (
         <div
           className={cn(
-            'flex items-center justify-center flex-shrink-0 bg-background border border-primary-500/40 font-display font-black italic tracking-tighter shadow-lg shadow-primary-500/20',
+            'flex items-center justify-center flex-shrink-0 bg-background font-display font-black italic tracking-tighter shadow-lg shadow-primary-500/20',
             BADGE_SIZE[size]
           )}
+          style={{ clipPath: BADGE_CLIP }}
         >
           <span className="text-white">F</span>
           <span className="text-primary-500">S</span>
         </div>
       )}
       <div className="leading-tight">
-        <h1 className={cn('font-display font-black tracking-widest uppercase leading-none', WORD_SIZE[size])}>
+        <h1 className={cn('font-display font-black tracking-widest uppercase leading-none italic', WORD_SIZE[size])}>
           <span className="text-white">FANTA</span>
           <span className="text-primary-500">SCHEDINA</span>
         </h1>

@@ -4,7 +4,6 @@ import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Trophy, Users, Target, Alert
 import { useAuthContext } from '@/contexts/AuthContext';
 import { burstConfetti, sideCannons } from '@/lib/juice';
 import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
-import { Logo } from '@/components/layout/Logo';
 
 type AuthMode = 'login' | 'register';
 
@@ -144,10 +143,13 @@ export function LoginPage() {
         
         <div className="relative z-10">
           <Link to="/">
-            <Logo badge tagline size="lg" />
+            <img src="/logo-full.png" alt="FantaSchedina" className="h-16 w-auto" />
+            <p className="text-[10px] text-white/35 tracking-[0.3em] uppercase mt-2 ml-1">
+              PREDICI. SFIDA. VINCI.
+            </p>
           </Link>
         </div>
-        
+
         <div className="relative z-10 space-y-8">
           <h2 className="text-5xl font-display font-black text-white leading-none uppercase italic tracking-tight">
             Il calcio è <br />
@@ -188,7 +190,7 @@ export function LoginPage() {
           {/* Mobile Logo */}
           <div className="lg:hidden mb-8 flex justify-center">
             <Link to="/">
-              <Logo badge size="md" />
+              <img src="/logo-full.png" alt="FantaSchedina" className="h-10 w-auto" />
             </Link>
           </div>
           

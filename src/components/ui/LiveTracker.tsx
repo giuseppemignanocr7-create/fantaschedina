@@ -38,6 +38,8 @@ export function LiveTracker({ matches, predictions, liveScores = {}, className }
       predictions.find(p => p.matchId === matchId)
     );
 
+  const anyMatchLive = matches.some(m => m.status === 'live');
+
   const stats = {
     winning: matches.filter(m => getPredictionStatus(m.id) === 'winning').length,
     losing: matches.filter(m => getPredictionStatus(m.id) === 'losing').length,
@@ -53,10 +55,12 @@ export function LiveTracker({ matches, predictions, liveScores = {}, className }
   return (
     <div className={cn('glass-card overflow-hidden border border-white/5', className)}>
       <div className="bg-surface px-4 py-3 border-b border-white/5 flex items-center justify-center relative">
-        <div className="absolute left-4 flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-live animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-          <span className="text-xs font-bold text-live uppercase tracking-wider">In Diretta</span>
-        </div>
+        {anyMatchLive && (
+          <div className="absolute left-4 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-live animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+            <span className="text-xs font-bold text-live uppercase tracking-wider">In Diretta</span>
+          </div>
+        )}
         <h3 className="font-display font-bold text-white uppercase tracking-wide text-sm">
           Tracker Partite
         </h3>
