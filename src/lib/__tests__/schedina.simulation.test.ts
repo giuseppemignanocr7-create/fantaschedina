@@ -64,8 +64,7 @@ function oracleEvaluate(betType: string, outcome: string, r: Result): boolean | 
 
 function oracleBetPoints(odds: number, won: boolean): number {
   if (!won) return 0;
-  if (odds < 1.25) return 5;
-  return Math.min(odds * 10, 50);
+  return Math.min(odds, 5);
 }
 
 interface Sim {
@@ -132,8 +131,9 @@ describe('Simulazione 200 schedine casuali (2000 pronostici) — confronto con o
   it.each(SIMULATIONS.map(s => ({ seed: s.seed, sim: s })))('schedina seed $seed', ({ sim }) => {
     const r = evaluateSchedina(sim.schedina, sim.matches);
 
-    // Oracle indipendente
-    let expectedBase = 0;
+    // Oracle indipendente: le quote delle giocate corrette si moltiplicano
+    // tra loro invece di sommarsi (una persa/void contribuisce ×1, neutro).
+    let expectedCombo = 1;
     let expectedCorrect = 0;
     let penaltyBets = 0;
     sim.schedina.predictions.forEach((pred, i) => {
@@ -141,13 +141,13 @@ describe('Simulazione 200 schedine casuali (2000 pronostici) — confronto con o
       let pts: number;
       let correct: boolean;
       if (evalRes === null) {
-        pts = 10; // void: rimborso quota 1.00
+        pts = 1; // void: quota 1.00 → contributo neutro
         correct = true;
       } else {
         pts = oracleBetPoints(pred.odds, evalRes);
         correct = evalRes;
       }
-      expectedBase += pts;
+      if (correct) expectedCombo *= pts;
       if (correct) expectedCorrect++;
       if (pred.odds >= 1.25 && pred.odds < 1.30) penaltyBets++;
 
@@ -155,30 +155,36 @@ describe('Simulazione 200 schedine casuali (2000 pronostici) — confronto con o
       expect(r.predictions[i].pointsEarned).toBeCloseTo(pts, 8);
       expect(r.predictions[i].isCorrect).toBe(correct);
     });
+    if (expectedCorrect === 0) expectedCombo = 0;
 
-    const expectedBonus = expectedCorrect === 10 ? 50 : expectedCorrect === 9 ? 20 : 0;
-    const expectedPenalty = Math.floor(penaltyBets / 3) * -15;
+    const expectedBonusMultiplier = expectedCorrect === 10 ? 1.5 : expectedCorrect === 9 ? 1.2 : 1;
+    const expectedPenaltyMultiplier = Math.pow(0.9, Math.floor(penaltyBets / 3));
+    // Arrotondamento progressivo: vedi lo stesso schema in calculateSchedinaScore.
+    const expectedBase = Math.round(expectedCombo * 100) / 100;
+    const expectedAfterBonus = Math.round(expectedBase * expectedBonusMultiplier * 100) / 100;
+    const expectedBonus = Math.round((expectedAfterBonus - expectedBase) * 100) / 100;
+    const expectedAfterPenalty = Math.round(expectedAfterBonus * expectedPenaltyMultiplier * 100) / 100;
+    const expectedPenalty = Math.round((expectedAfterPenalty - expectedAfterBonus) * 100) / 100;
 
     expect(r.correctPredictions).toBe(expectedCorrect);
-    expect(r.totalPoints).toBeCloseTo(Math.round(expectedBase * 100) / 100, 6);
-    expect(r.bonusPoints).toBe(expectedBonus);
-    expect(r.penaltyPoints).toBe(expectedPenalty);
-    expect(r.finalPoints).toBeCloseTo(Math.round((expectedBase + expectedBonus + expectedPenalty) * 100) / 100, 6);
+    expect(r.totalPoints).toBeCloseTo(expectedBase, 6);
+    expect(r.bonusPoints).toBeCloseTo(expectedBonus, 6);
+    expect(r.penaltyPoints).toBeCloseTo(expectedPenalty, 6);
+    expect(r.finalPoints).toBeCloseTo(expectedAfterPenalty, 6);
   });
 });
 
 describe('Simulazione — proprietà globali', () => {
-  it('nessuna schedina produce punti negativi oltre le penalità possibili', () => {
+  it('nessuna schedina produce punti negativi: il combo moltiplicativo è sempre ≥ 0', () => {
     SIMULATIONS.forEach(sim => {
       const r = evaluateSchedina(sim.schedina, sim.matches);
-      // Minimo teorico: 0 punti base + penalità massima (-45 con 9+ giocate in fascia)
-      expect(r.finalPoints).toBeGreaterThanOrEqual(-45);
+      expect(r.finalPoints).toBeGreaterThanOrEqual(0);
     });
   });
-  it('nessun pronostico supera i 50 punti (cap regolamento)', () => {
+  it('nessun pronostico contribuisce oltre oddsCap (5.00) al combo', () => {
     SIMULATIONS.forEach(sim => {
       const r = evaluateSchedina(sim.schedina, sim.matches);
-      r.predictions.forEach(p => expect(p.pointsEarned).toBeLessThanOrEqual(50));
+      r.predictions.forEach(p => expect(p.pointsEarned).toBeLessThanOrEqual(5));
     });
   });
   it('i punti finali sono sempre base + bonus + penalità', () => {

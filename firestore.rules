@@ -15,7 +15,8 @@ service cloud.firestore {
     }
 
     function validAvatar(value) {
-      return value == null || (value is string && value.size() <= 2048);
+      return value == null
+        || (value is string && value.size() <= 2048 && value.matches('^https://.*'));
     }
 
     // ============================================

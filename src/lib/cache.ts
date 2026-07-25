@@ -26,7 +26,6 @@ export function invalidatePrefix(prefix: string): void {
 
 export const CACHE_TTL = {
   rankings: 60_000,
-  arcadeRankings: 60_000,
   weeklyRanking: 30_000,
   matchday: 15_000,
   schedinaHistory: 30_000,

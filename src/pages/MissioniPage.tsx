@@ -5,9 +5,11 @@ import { MISSIONS } from '@/lib/economy';
 import { claimMissionFn, callableErrorMessage } from '@/lib/gameApi';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { burstConfetti, coinRain, vibrate } from '@/lib/juice';
+import { useSilentProfileRefresh } from '@/hooks/useSilentProfileRefresh';
 
 export function MissioniPage() {
-  const { profile, refreshProfile } = useAuthContext();
+  const { profile } = useAuthContext();
+  const refreshProfileSilently = useSilentProfileRefresh('MissioniPage');
   const [claiming, setClaiming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,7 +52,7 @@ export function MissioniPage() {
     burstConfetti();
     coinRain(1200);
     setClaiming(null);
-    refreshProfile().catch(err => console.error('[MissioniPage] refreshProfile:', err));
+    refreshProfileSilently();
   };
 
   return (

@@ -6,8 +6,6 @@ import { useAuthContext } from '@/contexts/AuthContext';
 
 const PRIZE_LABELS: Record<PrizeDoc['type'], { label: string; icon: string }> = {
   weekly_winner: { label: 'Vincitore di Giornata', icon: '🏆' },
-  highest_odds: { label: 'Quota Più Alta', icon: '🎯' },
-  poker: { label: 'Quota Poker', icon: '🃏' },
 };
 
 export function PremiPage() {
@@ -71,29 +69,49 @@ export function PremiPage() {
           </div>
         </div>
 
-        {/* Struttura premi (dal regolamento) */}
-        <div className="glass-card p-4">
-          <p className="section-title mb-3">Struttura Premi</p>
-          <div className="space-y-3">
-            {[
-              { icon: '🥇', label: '1° Classificato finale', value: `€${cfg.firstPlacePrize}` },
-              { icon: '🥈', label: '1° Girone d\'andata', value: `€${cfg.firstHalfPrize}` },
-              { icon: '🏆', label: 'Vincitore settimanale', value: `${cfg.weeklyWinnerShare * 100}% pool settimanale` },
-              { icon: '🎯', label: 'Quota più alta (>2.00)', value: `€${cfg.highestOddsPrize}` },
-              { icon: '🃏', label: 'Quota Poker (4 vinte >2.00)', value: `€${cfg.pokerPrize}` },
-            ].map((row, ri) => (
-              <div
-                key={row.label}
-                className="flex justify-between items-center animate-slide-up rounded-xl px-2 py-1.5 -mx-2 hover:bg-white/5 transition-colors"
-                style={{ animationDelay: `${ri * 60}ms`, animationFillMode: 'backwards' }}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{row.icon}</span>
-                  <span className="text-sm font-bold text-white">{row.label}</span>
+        {/* Struttura premi (dal regolamento), divisa fine stagione / settimanali */}
+        <div className="glass-card p-4 space-y-4">
+          <div>
+            <p className="section-title mb-3">Premi Fine Stagione</p>
+            <div className="space-y-3">
+              {[
+                { icon: '🥇', label: '1° Classificato finale', value: `€${cfg.firstPlacePrize}` },
+                { icon: '🥈', label: '1° Girone d\'andata', value: `€${cfg.firstHalfPrize}` },
+              ].map((row, ri) => (
+                <div
+                  key={row.label}
+                  className="flex justify-between items-center animate-slide-up rounded-xl px-2 py-1.5 -mx-2 hover:bg-white/5 transition-colors"
+                  style={{ animationDelay: `${ri * 60}ms`, animationFillMode: 'backwards' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{row.icon}</span>
+                    <span className="text-sm font-bold text-white">{row.label}</span>
+                  </div>
+                  <span className="font-black text-accent-400 text-sm">{row.value}</span>
                 </div>
-                <span className="font-black text-accent-400 text-sm">{row.value}</span>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="section-title mb-3">Premi Settimanali</p>
+            <div className="space-y-3">
+              {[
+                { icon: '🏆', label: 'Vincitore settimanale', value: `${cfg.weeklyWinnerShare * 100}% pool settimanale` },
+              ].map((row, ri) => (
+                <div
+                  key={row.label}
+                  className="flex justify-between items-center animate-slide-up rounded-xl px-2 py-1.5 -mx-2 hover:bg-white/5 transition-colors"
+                  style={{ animationDelay: `${ri * 60}ms`, animationFillMode: 'backwards' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{row.icon}</span>
+                    <span className="text-sm font-bold text-white">{row.label}</span>
+                  </div>
+                  <span className="font-black text-accent-400 text-sm">{row.value}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -130,7 +148,6 @@ export function PremiPage() {
                     <p className="text-[11px] text-white/40">
                       {info.label} · Giornata {p.matchday}
                       {p.points != null && ` · ${p.points.toFixed(1)} pt`}
-                      {p.odds != null && ` · quota ${p.odds.toFixed(2)}`}
                     </p>
                   </div>
                 </div>

@@ -22,34 +22,29 @@ export const DEFAULT_TOURNAMENT_CONFIG: TournamentConfig = {
   weeklyFeeToPool: 5,
   weeklyFeeToOrganizer: 5,
   minValidOdds: 1.30,
-  maxPointsPerBet: 50,      // quota 5.00 × 10 = 50 pt max
-  lowOddsThreshold: 1.25,
-  lowOddsMaxPoints: 5,       // 0.5 × 10 = 5 pt (quota < 1.25)
+  oddsCap: 5.00,             // tetto al contributo di una singola giocata nel combo
   penaltyOddsMin: 1.25,
-  penaltyOddsMax: 1.29,
-  penaltyPerThree: -15,      // -1.5 × 10 scaled
-  bonus9Correct: 20,         // 2 × 10 scaled
-  bonus10Correct: 50,        // 5 × 10 scaled
+  penaltyMultiplierPerThree: 0.9, // ogni 3 giocate in fascia 1.25-1.29
+  bonus9Multiplier: 1.2,
+  bonus10Multiplier: 1.5,
   maxJoinMatchday: 10,
   lateJoinFeePerMatchday: 5,
   minParticipantsForGuarantee: 30,
   guaranteedPrize: 500,
   firstPlacePrize: 300,
   firstHalfPrize: 200,
-  highestOddsPrize: 10,
-  pokerPrize: 20,
-  minOddsForPoker: 2.00,
-  minOddsForHighestOddsPrize: 2.00,
   weeklyWinnerShare: 0.40,
   weeklyAllShare: 0.40,
   weeklyToFinalShare: 0.20,
 };
 
 /**
- * Calcola i punti per una singola scommessa vinta
- * Formula ufficiale: Punti = Quota × 10
- * - Se quota < 1.25: vale solo 5 punti (0.5 × 10)
- * - Se quota >= 1.25: Quota × 10 (max 50 pt = quota 5.00)
+ * Contributo al moltiplicatore combo di una singola giocata.
+ * Formula ufficiale: le quote delle giocate corrette si MOLTIPLICANO tra
+ * loro (stile schedina reale) invece di sommarsi — ogni giocata vinta
+ * contribuisce la propria quota (cappata a oddsCap) come fattore
+ * moltiplicativo; una giocata persa non contribuisce (viene esclusa dal
+ * prodotto, non conta come fattore 0).
  */
 export function calculateBetPoints(
   odds: number,
@@ -57,14 +52,7 @@ export function calculateBetPoints(
   config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG
 ): number {
   if (!isCorrect) return 0;
-
-  // Quote inferiori a 1.25: vale solo 5 punti
-  if (odds < config.lowOddsThreshold) {
-    return config.lowOddsMaxPoints;
-  }
-
-  // Punti = Quota × 10, con massimo 50
-  return Math.min(odds * 10, config.maxPointsPerBet);
+  return Math.min(odds, config.oddsCap);
 }
 
 /**
@@ -99,74 +87,80 @@ export function countPenaltyRangeBets(
 }
 
 /**
- * Calcola i punti di penalità per le quote nella fascia 1.25-1.29
- * Ogni 3 giocate di questo tipo = -1.5 punti
+ * Moltiplicatore di penalità per le giocate con quota nella fascia 1.25-1.29
+ * (indipendentemente dall'esito): ogni 3 giocate di questo tipo → ×0.9,
+ * si compone (6 giocate → ×0.81, ecc).
  */
 export function calculatePenaltyPoints(
   penaltyRangeBetsCount: number,
   config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG
 ): number {
   const penaltySets = Math.floor(penaltyRangeBetsCount / 3);
-  return penaltySets * config.penaltyPerThree;
+  return Math.pow(config.penaltyMultiplierPerThree, penaltySets);
 }
 
 /**
- * Calcola i bonus per esiti corretti
- * - 9 esiti corretti su 10: +2 punti extra
- * - 10 esiti corretti su 10: +5 punti extra
+ * Moltiplicatore bonus per esiti corretti.
+ * - 9 esiti corretti su 10: ×1.2
+ * - 10 esiti corretti su 10: ×1.5
  */
 export function calculateBonusPoints(
   correctPredictions: number,
   config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG
 ): number {
-  if (correctPredictions === 10) {
-    return config.bonus10Correct;
+  if (correctPredictions >= 10) {
+    return config.bonus10Multiplier;
   }
   if (correctPredictions === 9) {
-    return config.bonus9Correct;
+    return config.bonus9Multiplier;
   }
-  return 0;
+  return 1;
 }
 
 /**
- * Calcola il punteggio completo di una schedina
+ * Calcola il punteggio completo di una schedina.
+ * Il combo di base è il PRODOTTO delle quote (cappate) delle giocate
+ * corrette (0 se nessuna corretta) — non la somma. Bonus e penalità restano
+ * espressi come impatto assoluto in punti (non moltiplicatori grezzi), così
+ * `finalPoints` resta sempre `basePoints + bonusPoints + penaltyPoints` e i
+ * totali cumulativi di profilo (bonusPointsTotal/penaltyPointsTotal) restano
+ * sommabili nel tempo.
  */
 export function calculateSchedinaScore(
   predictions: PredictionResult[],
   config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG
 ): ScoreCalculation {
-  // Conta pronostici corretti
   const correctPredictions = predictions.filter(p => p.isCorrect).length;
-  
-  // Calcola punti base: somma dei punti già valutati (incluso rimborso void)
-  const basePoints = predictions.reduce((sum, pred) => sum + pred.pointsEarned, 0);
 
-  // Conta quote nella fascia penalità
+  const comboMultiplier = correctPredictions === 0
+    ? 0
+    : predictions.reduce((product, pred) => pred.isCorrect ? product * pred.pointsEarned : product, 1);
+
+  // Conta quote nella fascia penalità (composizione della schedina, a prescindere dall'esito)
   const penaltyRangeBets = countPenaltyRangeBets(predictions, config);
-  
-  // Conta quote sotto soglia minima
-  const lowOddsBets = predictions.filter(p => p.odds < config.lowOddsThreshold).length;
-  
-  // Conta giocate cappate al massimo (quota × 10 > maxPointsPerBet)
-  const cappedBets = predictions.filter(p => p.odds * 10 > config.maxPointsPerBet).length;
 
-  // Calcola bonus
-  const bonusPoints = calculateBonusPoints(correctPredictions, config);
-  
-  // Calcola penalità
-  const penaltyPoints = calculatePenaltyPoints(penaltyRangeBets, config);
+  // Conta giocate cappate (quota oltre il tetto oddsCap)
+  const cappedBets = predictions.filter(p => p.odds > config.oddsCap).length;
 
-  // Punteggio finale
-  const finalPoints = basePoints + bonusPoints + penaltyPoints;
+  const bonusMultiplier = calculateBonusPoints(correctPredictions, config);
+  const penaltyMultiplier = calculatePenaltyPoints(penaltyRangeBets, config);
+
+  // Arrotonda ogni passaggio in modo progressivo (non i 4 valori indipendentemente
+  // dai loro grezzi non arrotondati): altrimenti basePoints+bonusPoints+penaltyPoints
+  // può divergere di qualche centesimo da finalPoints per arrotondamenti scorrelati.
+  const basePoints = Math.round(comboMultiplier * 100) / 100;
+  const afterBonus = Math.round(basePoints * bonusMultiplier * 100) / 100;
+  const bonusPoints = Math.round((afterBonus - basePoints) * 100) / 100;
+  const afterPenalty = Math.round(afterBonus * penaltyMultiplier * 100) / 100;
+  const penaltyPoints = Math.round((afterPenalty - afterBonus) * 100) / 100;
 
   return {
-    basePoints: Math.round(basePoints * 100) / 100,
+    basePoints,
     bonusPoints,
     penaltyPoints,
-    finalPoints: Math.round(finalPoints * 100) / 100,
+    finalPoints: afterPenalty,
     details: {
       correctPredictions,
-      lowOddsBets,
       penaltyRangeBets,
       cappedBets,
     },
@@ -236,8 +230,8 @@ export function evaluateSchedina(
     }
     const evalResult = evaluateBet(pred.betType, pred.outcome, match.result);
     if (evalResult === null) {
-      // Void: rimborso a quota 1.00
-      return { ...pred, isCorrect: true, pointsEarned: 10 };
+      // Void: quota 1.00 → contributo neutro (×1) al moltiplicatore combo
+      return { ...pred, isCorrect: true, pointsEarned: 1 };
     }
     const pointsEarned = calculateBetPoints(pred.odds, evalResult, config);
     
@@ -312,51 +306,3 @@ export function calculateWeeklyPrizeDistribution(
   };
 }
 
-/**
- * Verifica se un partecipante ha diritto al premio "Quota Poker"
- * Servono 4 quote vincenti superiori a 2.00
- */
-export function checkPokerPrize(
-  predictions: PredictionResult[],
-  config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG
-): { eligible: boolean; qualifyingBets: PredictionResult[]; totalOdds: number } {
-  const qualifyingBets = predictions.filter(
-    p => p.isCorrect && p.odds > config.minOddsForPoker
-  );
-
-  return {
-    eligible: qualifyingBets.length >= 4,
-    qualifyingBets,
-    totalOdds: qualifyingBets.reduce((sum, p) => sum + p.odds, 0),
-  };
-}
-
-/**
- * Trova la quota vincente più alta della giornata
- * Deve essere superiore a 2.00 per vincere il premio
- */
-export function findHighestWinningOdds(
-  allSchedinaResults: SchedinaResult[],
-  config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG
-): { winnerId: string | null; highestOdds: number; prediction: PredictionResult | null } {
-  let highestOdds = 0;
-  let winnerId: string | null = null;
-  let winningPrediction: PredictionResult | null = null;
-
-  for (const schedina of allSchedinaResults) {
-    for (const pred of schedina.predictions) {
-      if (pred.isCorrect && pred.odds > highestOdds) {
-        highestOdds = pred.odds;
-        winnerId = schedina.participantId;
-        winningPrediction = pred;
-      }
-    }
-  }
-
-  // Il premio viene assegnato solo se la quota è >= 2.00
-  if (highestOdds < config.minOddsForHighestOddsPrize) {
-    return { winnerId: null, highestOdds: 0, prediction: null };
-  }
-
-  return { winnerId, highestOdds, prediction: winningPrediction };
-}

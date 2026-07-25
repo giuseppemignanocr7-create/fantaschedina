@@ -4,9 +4,9 @@ import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { spinWheel, callableErrorMessage } from '@/lib/gameApi';
 import { COINS } from '@/lib/economy';
-import { useAuthContext } from '@/contexts/AuthContext';
 import { CountUp } from '@/components/ui/CountUp';
 import { jackpotCelebration, coinRain, burstConfetti, vibrate } from '@/lib/juice';
+import { useSilentProfileRefresh } from '@/hooks/useSilentProfileRefresh';
 
 const COLORS = ['#1a44cc', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#f97316', '#06b6d4', '#facc15'];
 const TEXTS = ['#fff', '#fff', '#000', '#fff', '#fff', '#000', '#000', '#000'];
@@ -23,7 +23,7 @@ const N = SEGMENTS.length;
 const SEG_DEG = 360 / N;
 
 export function RuotaGiornalieraPage() {
-  const { refreshProfile } = useAuthContext();
+  const refreshProfileSilently = useSilentProfileRefresh('RuotaGiornalieraPage');
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [result, setResult] = useState<number | null>(null);
@@ -49,7 +49,7 @@ export function RuotaGiornalieraPage() {
         setSpinning(false);
         setResult(segmentIndex);
         setAlreadySpun(true);
-        void refreshProfile().catch(err => console.error('[RuotaGiornalieraPage] refreshProfile:', err));
+        refreshProfileSilently();
         const pts = SEGMENTS[segmentIndex].pts;
         vibrate([50, 30, 80]);
         if (pts >= 150) jackpotCelebration();

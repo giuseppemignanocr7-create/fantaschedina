@@ -58,7 +58,7 @@ export const POWERUPS: Record<PowerUpId, PowerUpInfo> = {
     name: 'Assicurazione',
     emoji: '⭐',
     cost: 120,
-    description: 'Con 8/10 corretti ricevi comunque il bonus del 9/10 (+20 pt)',
+    description: 'Con 8/10 corretti ricevi comunque il bonus del 9/10 (×1.2)',
   },
   lastminute: {
     id: 'lastminute',

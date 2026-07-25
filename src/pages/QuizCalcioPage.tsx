@@ -1,19 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Clock, CheckCircle2, Loader2, XCircle } from 'lucide-react';
+import { ArrowLeft, Clock, CheckCircle2, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { startQuiz, submitQuiz, callableErrorMessage, type QuizQuestionPublic } from '@/lib/gameApi';
 import { COINS } from '@/lib/economy';
-import { useAuthContext } from '@/contexts/AuthContext';
 import { CountUp } from '@/components/ui/CountUp';
 import { sideCannons, jackpotCelebration, coinRain, vibrate } from '@/lib/juice';
+import { useSilentProfileRefresh } from '@/hooks/useSilentProfileRefresh';
 
 const TIMER = 15;
 
 type Phase = 'intro' | 'loading' | 'playing' | 'done';
 
 export function QuizCalcioPage() {
-  const { refreshProfile } = useAuthContext();
+  const refreshProfileSilently = useSilentProfileRefresh('QuizCalcioPage');
   const [phase, setPhase] = useState<Phase>('intro');
   const [questions, setQuestions] = useState<QuizQuestionPublic[]>([]);
   const [idx, setIdx] = useState(0);
@@ -22,7 +22,6 @@ export function QuizCalcioPage() {
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<number | null>(null);
   const [locked, setLocked] = useState(false);
-  const [liveScore, setLiveScore] = useState(0);
   const [result, setResult] = useState<{
     correct: number;
     total: number;
@@ -39,7 +38,6 @@ export function QuizCalcioPage() {
       setQuestions(qs);
       setIdx(0);
       setAnswers({});
-      setLiveScore(0);
       setTimer(TIMER);
       setPhase('playing');
     } catch (e) {
@@ -55,7 +53,7 @@ export function QuizCalcioPage() {
         const r = await submitQuiz(finalAnswers);
         setResult(r);
         setPhase('done');
-        void refreshProfile().catch(err => console.error('[QuizCalcioPage] refreshProfile:', err));
+        refreshProfileSilently();
         if (!celebrated.current) {
           celebrated.current = true;
           if (r.correct >= 9) jackpotCelebration();
@@ -67,7 +65,7 @@ export function QuizCalcioPage() {
         setPhase('intro');
       }
     },
-    [refreshProfile]
+    [refreshProfileSilently]
   );
 
   const commit = useCallback(
@@ -77,16 +75,13 @@ export function QuizCalcioPage() {
       setPicked(choice);
       setLocked(true);
       const q = questions[idx];
-      const isCorrect = choice === q.answerIndex;
-      if (isCorrect) {
-        setLiveScore(s => s + 1);
-        vibrate([30, 20, 40]);
-      } else {
-        vibrate(80);
-      }
+      // Il server non invia più la risposta esatta insieme alle domande (per
+      // evitare che un client possa leggerla prima di rispondere), quindi qui
+      // si può solo confermare la scelta: correttezza e revisione arrivano
+      // dal risultato di submitQuiz, mostrato nella schermata finale.
+      vibrate([30, 20, 40]);
       const updated = { ...answers, [q.id]: choice };
       setAnswers(updated);
-      // Mostra feedback per 1.6s poi avanza
       setTimeout(() => {
         setPicked(null);
         setLocked(false);
@@ -96,7 +91,7 @@ export function QuizCalcioPage() {
           setIdx(i => i + 1);
           setTimer(TIMER);
         }
-      }, 1600);
+      }, 900);
     },
     [phase, questions, idx, answers, finish, locked]
   );
@@ -148,6 +143,27 @@ export function QuizCalcioPage() {
             <p className="font-black text-5xl text-yellow-400 animate-coin-pop">
               +<CountUp to={reward} durationMs={1400} /> 🪙
             </p>
+          </div>
+
+          {/* Revisione risposte */}
+          <div className="text-left space-y-2 max-h-56 overflow-y-auto pr-1">
+            <p className="text-xs font-black text-white/80 uppercase tracking-widest mb-1">📋 Revisione risposte</p>
+            {questions.map((rq, i) => {
+              const userAnswer = answers[rq.id];
+              const correctAnswer = result.corrections[rq.id];
+              const wasCorrect = userAnswer === correctAnswer;
+              return (
+                <div key={rq.id} className="bg-white/5 rounded-lg p-2.5 text-xs">
+                  <p className="text-white/70 font-medium mb-1">{i + 1}. {rq.question}</p>
+                  <p className={wasCorrect ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
+                    {wasCorrect ? '✓' : '✗'} {rq.options[userAnswer] ?? 'Nessuna risposta'}
+                  </p>
+                  {!wasCorrect && (
+                    <p className="text-green-400/80 mt-0.5">Corretta: {rq.options[correctAnswer]}</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Come usare i gettoni */}
@@ -247,17 +263,13 @@ export function QuizCalcioPage() {
             <p className="text-[10px] text-primary-400 uppercase tracking-widest font-bold">
               Domanda {idx + 1} / {questions.length}
             </p>
-            <span className="text-[10px] font-black text-primary-400 bg-primary-500/15 px-2 py-0.5 rounded-full">
-              ✅ {liveScore} pt
-            </span>
           </div>
           <p className="font-bold text-lg text-white leading-snug">{q.question}</p>
         </div>
 
-        {/* Options con feedback immediato */}
+        {/* Options: la scelta si blocca subito, il verdetto arriva solo a fine quiz */}
         <div className="grid grid-cols-1 gap-2.5">
           {q.options.map((opt, i) => {
-            const isCorrectAnswer = i === q.answerIndex;
             const isPicked = picked === i;
             const showFeedback = locked && picked !== null;
             return (
@@ -269,47 +281,31 @@ export function QuizCalcioPage() {
                   'w-full flex items-center gap-3 p-4 rounded-xl border text-left font-medium text-sm transition-all animate-slide-up',
                   !showFeedback && !locked && 'bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/25 hover:scale-[1.01] active:scale-[0.98]',
                   !showFeedback && locked && 'bg-white/5 border-white/10 text-white/80',
-                  showFeedback && isCorrectAnswer && 'bg-green-500/30 border-green-400 text-white scale-[1.02] shadow-lg shadow-green-500/30',
-                  showFeedback && isPicked && !isCorrectAnswer && 'bg-red-500/30 border-red-400 text-white',
-                  showFeedback && !isCorrectAnswer && !isPicked && 'bg-white/5 border-white/10 text-white/30'
+                  showFeedback && isPicked && 'bg-primary-500/30 border-primary-400 text-white scale-[1.02] shadow-lg shadow-primary-500/30',
+                  showFeedback && !isPicked && 'bg-white/5 border-white/10 text-white/30'
                 )}
                 style={{ animationDelay: `${i * 60}ms` }}
               >
                 <span className={cn(
                   'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black flex-shrink-0',
-                  showFeedback && isCorrectAnswer && 'bg-green-400 text-black',
-                  showFeedback && isPicked && !isCorrectAnswer && 'bg-red-400 text-black',
+                  showFeedback && isPicked && 'bg-primary-400 text-black',
                   !showFeedback && 'bg-white/10'
                 )}>
-                  {showFeedback && isCorrectAnswer ? '✓' : showFeedback && isPicked && !isCorrectAnswer ? '✗' : String.fromCharCode(65 + i)}
+                  {showFeedback && isPicked ? '✓' : String.fromCharCode(65 + i)}
                 </span>
                 <span className="flex-1">{opt}</span>
-                {showFeedback && isCorrectAnswer && <CheckCircle2 size={18} className="text-green-400 flex-shrink-0" />}
-                {showFeedback && isPicked && !isCorrectAnswer && <XCircle size={18} className="text-red-400 flex-shrink-0" />}
+                {showFeedback && isPicked && <CheckCircle2 size={18} className="text-primary-400 flex-shrink-0" />}
               </button>
             );
           })}
         </div>
 
-        {/* Feedback banner */}
+        {/* Feedback banner: conferma solo che la risposta è stata registrata */}
         {locked && picked !== null && (
-          <div className={cn(
-            'glass-card p-3 text-center animate-pop-in',
-            picked === q.answerIndex
-              ? 'bg-green-500/15 border-green-500/30'
-              : 'bg-red-500/15 border-red-500/30'
-          )}>
-            <p className={cn(
-              'font-black text-sm uppercase',
-              picked === q.answerIndex ? 'text-green-400' : 'text-red-400'
-            )}>
-              {picked === q.answerIndex ? '✓ RISPOSTA CORRETTA! +1 punto' : '✗ Risposta sbagliata!'}
+          <div className="glass-card p-3 text-center animate-pop-in bg-primary-500/15 border-primary-500/30">
+            <p className="font-black text-sm uppercase text-primary-300">
+              {picked === -1 ? '⏱ Tempo scaduto' : '✓ Risposta registrata'}
             </p>
-            {picked !== q.answerIndex && (
-              <p className="text-xs text-white/50 mt-1">
-                La risposta corretta era: <span className="text-green-400 font-bold">{q.options[q.answerIndex]}</span>
-              </p>
-            )}
           </div>
         )}
       </div>

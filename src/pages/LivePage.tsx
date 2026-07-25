@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   Play,
   Calendar,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { calculateBetPoints, calculateSchedinaScore } from '@/lib/scoring';
 import { LiveTracker, CountdownTimer, WinSimulator, SkeletonList } from '@/components/ui';
 
 export function LivePage() {
@@ -44,7 +45,16 @@ export function LivePage() {
     return () => unsubscribe();
   }, [matchdayNumber, subscribeMatchday]);
 
-  const predictions = currentSchedina?.predictions || [];
+  const predictions = useMemo(() => currentSchedina?.predictions || [], [currentSchedina?.predictions]);
+  const potentialScore = useMemo(() => {
+    if (predictions.length === 0) return 0;
+    const previewResults = predictions.map(p => ({
+      ...p,
+      isCorrect: true,
+      pointsEarned: calculateBetPoints(p.odds, true),
+    }));
+    return calculateSchedinaScore(previewResults).finalPoints;
+  }, [predictions]);
   const userPosition =
     rankings.findIndex(r => r.participantId === currentUser?.id) + 1 || rankings.length;
 
@@ -253,10 +263,7 @@ export function LivePage() {
                     <div className="pt-3 border-t border-white/10">
                       <p className="text-xs text-white/50 mb-1">Punti potenziali:</p>
                       <p className="text-2xl font-bold gradient-text">
-                        {predictions
-                          .reduce((sum, p) => sum + Math.min(p.odds * 10, 50), 0)
-                          .toFixed(0)}{' '}
-                        pt
+                        {potentialScore.toFixed(0)} pt
                       </p>
                     </div>
                   </div>

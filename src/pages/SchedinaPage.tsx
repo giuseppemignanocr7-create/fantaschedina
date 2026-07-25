@@ -141,10 +141,6 @@ export function SchedinaPage() {
     });
   };
 
-  const totalPoints = useMemo(() => {
-    if (predictions.length === 0) return 0;
-    return predictions.reduce((sum, p) => sum + p.odds * 10, 0);
-  }, [predictions]);
 
   const getPrediction = (matchId: string): Prediction | undefined =>
     predictions.find(p => p.matchId === matchId);
@@ -363,7 +359,6 @@ export function SchedinaPage() {
                           const isSelected = prediction?.outcome === opt.value && prediction?.betType === selectedBetType;
                           const isValid = isValidOdds(outcomeOdds);
                           const isPenalty = isInPenaltyRange(outcomeOdds);
-                          const pts = Math.round(outcomeOdds * 10);
 
                           return (
                             <button
@@ -391,12 +386,6 @@ export function SchedinaPage() {
                                 isPenalty && !isSelected && 'text-yellow-400'
                               )}>
                                 {outcomeOdds.toFixed(2)}
-                              </span>
-                              <span className={cn(
-                                'text-[9px] font-bold mt-0.5',
-                                isSelected ? 'text-white/60' : 'text-white/25 group-hover:text-white/40'
-                              )}>
-                                {pts}pt
                               </span>
                               {isSelected && (
                                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
@@ -479,7 +468,7 @@ export function SchedinaPage() {
                   <div className="border-t border-white/10 pt-3 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-white/60">Punti totali (se esatti):</span>
-                      <span className="font-bold text-accent-400">{Math.round(totalPoints)} pt</span>
+                      <span className="font-bold text-accent-400">{Math.round(scorePreview?.basePoints ?? 0)} pt</span>
                     </div>
                     {scorePreview && scorePreview.bonusPoints > 0 && (
                       <div className="flex justify-between text-sm">
@@ -600,12 +589,12 @@ export function SchedinaPage() {
                   <div className="text-xs text-white/60">
                     <p className="mb-2 font-bold text-white text-sm">Formula Punteggio</p>
                     <ul className="space-y-1">
-                      <li>• <span className="text-primary-400 font-bold">Punti = Quota × 10</span></li>
-                      <li>• Es: quota 2.20 → 22 pt</li>
-                      <li>• Quote &lt;1.25: 5 pt fissi</li>
+                      <li>• <span className="text-primary-400 font-bold">Le quote corrette si moltiplicano tra loro</span></li>
+                      <li>• Es: 3 esatti a quota 2.00 → 2×2×2 = 8 pt</li>
+                      <li>• Ogni quota cappata a 5.00</li>
                       <li>• Quote &lt;1.30: non valide</li>
-                      <li>• 9/10 esatti: +20 pt bonus</li>
-                      <li>• 10/10 esatti: +50 pt bonus</li>
+                      <li>• 9/10 esatti: bonus ×1.2</li>
+                      <li>• 10/10 esatti: bonus ×1.5</li>
                     </ul>
                   </div>
                 </div>

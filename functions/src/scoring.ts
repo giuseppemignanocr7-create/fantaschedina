@@ -86,19 +86,26 @@ export function evaluateBet(
   }
 }
 
-/** Punti per singola giocata vinta: Quota × 10 (cap 50, quote basse 5pt). */
+/**
+ * Contributo al moltiplicatore combo di una singola giocata vinta: la quota
+ * stessa (cappata a oddsCap), non più quota×10 sommata alle altre — le quote
+ * corrette si moltiplicano tra loro (stile schedina reale).
+ */
 export function calculateBetPoints(odds: number, isCorrect: boolean): number {
   if (!isCorrect) return 0;
-  if (odds < TOURNAMENT.lowOddsThreshold) return TOURNAMENT.lowOddsMaxPoints;
-  return Math.min(odds * 10, TOURNAMENT.maxPointsPerBet);
+  return Math.min(odds, TOURNAMENT.oddsCap);
 }
 
 /**
  * Valuta una schedina completa contro i risultati.
- * - void (mercato non valutabile) = quota 1.00 → 10 punti, conta come corretto
- * - jolly power-up: raddoppia i punti del pronostico selezionato
- * - shield: annulla le penalità quote basse
- * - insurance: con 8/10 corretti applica comunque il bonus del 9/10
+ * - combo = prodotto delle quote (cappate) delle giocate corrette, 0 se nessuna corretta
+ * - void (mercato non valutabile) = quota 1.00 → contributo neutro, conta come corretto
+ * - jolly power-up: raddoppia il contributo della giocata selezionata (se vinta)
+ * - shield: annulla il moltiplicatore di penalità quote basse
+ * - insurance: con 8/10 corretti applica comunque il moltiplicatore bonus del 9/10
+ * Bonus e penalità restano espressi come impatto assoluto in punti (non come
+ * moltiplicatori grezzi), arrotondati in modo progressivo, così finalPoints
+ * resta sempre totalPoints + bonusPoints + penaltyPoints.
  */
 export function evaluateSchedina(
   predictions: Prediction[],
@@ -108,12 +115,12 @@ export function evaluateSchedina(
   const predictionResults: PredictionResult[] = predictions.map(pred => {
     const r = results.get(pred.matchId);
     if (!r) {
-      return { ...pred, isCorrect: false, isVoid: true, pointsEarned: 10 };
+      return { ...pred, isCorrect: false, isVoid: true, pointsEarned: 0 };
     }
     const evalResult = evaluateBet(pred.betType, pred.outcome, r);
     if (evalResult === null) {
-      // Mercato non valutabile → rimborso (quota 1.00)
-      return { ...pred, isCorrect: true, isVoid: true, pointsEarned: 10 };
+      // Mercato non valutabile → rimborso (quota 1.00), contributo neutro
+      return { ...pred, isCorrect: true, isVoid: true, pointsEarned: 1 };
     }
     let points = calculateBetPoints(pred.odds, evalResult);
     if (evalResult && powerups.jolly === pred.matchId) {
@@ -128,30 +135,37 @@ export function evaluateSchedina(
   });
 
   const correctPredictions = predictionResults.filter(p => p.isCorrect).length;
-  const basePoints = predictionResults.reduce((s, p) => s + p.pointsEarned, 0);
+  const comboMultiplier = correctPredictions === 0
+    ? 0
+    : predictionResults.reduce((product, p) => p.isCorrect ? product * p.pointsEarned : product, 1);
 
   // Bonus 9/10 e 10/10 (insurance: 8 corretti → bonus 9)
-  let bonusPoints = 0;
-  if (correctPredictions >= 10) bonusPoints = TOURNAMENT.bonus10Correct;
-  else if (correctPredictions === 9) bonusPoints = TOURNAMENT.bonus9Correct;
+  let bonusMultiplier = 1;
+  if (correctPredictions >= 10) bonusMultiplier = TOURNAMENT.bonus10Multiplier;
+  else if (correctPredictions === 9) bonusMultiplier = TOURNAMENT.bonus9Multiplier;
   else if (correctPredictions === 8 && powerups.insurance) {
-    bonusPoints = TOURNAMENT.bonus9Correct;
+    bonusMultiplier = TOURNAMENT.bonus9Multiplier;
   }
 
-  // Penalità quote 1.25-1.29 (ogni 3 giocate → -15), annullata dallo shield
+  // Penalità quote 1.25-1.29 (composizione della schedina, a prescindere
+  // dall'esito), ogni 3 giocate → ×0.9, annullata dallo shield
   const penaltyRange = predictions.filter(
-    p => p.odds >= TOURNAMENT.lowOddsThreshold - 0.001 && p.odds < TOURNAMENT.minValidOdds
+    p => p.odds >= TOURNAMENT.penaltyOddsMin - 0.001 && p.odds < TOURNAMENT.minValidOdds
   ).length;
-  let penaltyPoints = Math.floor(penaltyRange / 3) * TOURNAMENT.penaltyPerThree;
-  if (powerups.shield) penaltyPoints = 0;
+  let penaltyMultiplier = Math.pow(TOURNAMENT.penaltyMultiplierPerThree, Math.floor(penaltyRange / 3));
+  if (powerups.shield) penaltyMultiplier = 1;
 
-  const finalPoints = Math.round((basePoints + bonusPoints + penaltyPoints) * 100) / 100;
+  const totalPoints = Math.round(comboMultiplier * 100) / 100;
+  const afterBonus = Math.round(totalPoints * bonusMultiplier * 100) / 100;
+  const bonusPoints = Math.round((afterBonus - totalPoints) * 100) / 100;
+  const afterPenalty = Math.round(afterBonus * penaltyMultiplier * 100) / 100;
+  const penaltyPoints = Math.round((afterPenalty - afterBonus) * 100) / 100;
 
   return {
-    totalPoints: Math.round(basePoints * 100) / 100,
+    totalPoints,
     bonusPoints,
     penaltyPoints,
-    finalPoints,
+    finalPoints: afterPenalty,
     correctPredictions,
     predictionResults,
   };

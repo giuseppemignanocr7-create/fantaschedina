@@ -22,7 +22,7 @@ import { logger } from 'firebase-functions/v2';
 import { randomInt } from 'node:crypto';
 
 import {
-  COINS, MISSIONS, POWERUPS, PowerUpSelection, TOURNAMENT,
+  COINS, MISSIONS, POWERUPS, PowerUpSelection,
   COMPETITIONS, DEFAULT_ACTIVE_COMPETITIONS, MAX_PICKS_PER_SCHEDINA,
 } from './config';
 import { ALL_QUIZ_QUESTIONS } from './quizData';
@@ -127,7 +127,15 @@ async function adjustCoins(
   }
 }
 
-/** Rate limiting per-callable usando Firestore come store. */
+/**
+ * Rate limiting per-callable usando Firestore come store.
+ * Transazionale: un check-then-act non atomico permetterebbe a chiamate
+ * parallele (stesso uid/azione) di leggere tutte lo stesso conteggio
+ * pre-incremento e superare il limite prima che nessun incremento sia
+ * ancora committato. La transazione fa sì che Firestore riprovi
+ * automaticamente se un'altra chiamata concorrente scrive lo stesso
+ * documento nel frattempo, così il conteggio riletto è sempre aggiornato.
+ */
 async function enforceRateLimit(
   uid: string,
   action: string,
@@ -135,28 +143,30 @@ async function enforceRateLimit(
   windowMs: number
 ): Promise<void> {
   const ref = db.collection('rate_limits').doc(`${uid}_${action}`);
-  const now = Date.now();
-  const snap = await ref.get();
-  const data = snap.data();
-  if (data && data.expiresAt?.toMillis() > now) {
-    const count = (data.count ?? 0) as number;
-    if (count >= maxCalls) {
-      throw new HttpsError(
-        'resource-exhausted',
-        'Troppe richieste. Riprova tra poco.'
-      );
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    const data = snap.data();
+    const now = Date.now();
+    if (data && data.expiresAt?.toMillis() > now) {
+      const count = (data.count ?? 0) as number;
+      if (count >= maxCalls) {
+        throw new HttpsError(
+          'resource-exhausted',
+          'Troppe richieste. Riprova tra poco.'
+        );
+      }
+      tx.update(ref, {
+        count: FieldValue.increment(1),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      tx.set(ref, {
+        count: 1,
+        expiresAt: Timestamp.fromMillis(now + windowMs),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     }
-    await ref.update({
-      count: FieldValue.increment(1),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  } else {
-    await ref.set({
-      count: 1,
-      expiresAt: Timestamp.fromMillis(now + windowMs),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  }
+  });
 }
 
 /** Legge i campionati attivi (scelti dall'admin) da Firestore, con fallback a Serie A. */
@@ -428,8 +438,6 @@ async function settleSchedine(
 
   let bestPoints = -Infinity;
   let bestUserId: string | null = null;
-  let highestWinningOdds = 0;
-  let highestOddsUserId: string | null = null;
 
   interface UserOutcome {
     finalPoints: number;
@@ -438,7 +446,6 @@ async function settleSchedine(
     penalty: number;
     perfect: boolean;
     coins: number;
-    pokerEligible: boolean;
   }
 
   const evaluations = schedineSnap.docs.map(sSnap => {
@@ -454,10 +461,6 @@ async function settleSchedine(
     if (score.correctPredictions === 9) coins += COINS.bonus9Correct;
     if (score.correctPredictions >= 10) coins += COINS.bonus10Correct;
 
-    // Poker: 4 quote vincenti > 2.00
-    const pokerBets = score.predictionResults.filter(
-      p => p.isCorrect && !p.isVoid && p.odds > TOURNAMENT.minOddsForPoker
-    );
     const outcome: UserOutcome = {
       finalPoints: score.finalPoints,
       correct: score.correctPredictions,
@@ -465,26 +468,15 @@ async function settleSchedine(
       penalty: score.penaltyPoints,
       perfect: score.correctPredictions >= 10,
       coins,
-      pokerEligible: pokerBets.length >= 4,
     };
 
     if (score.finalPoints > bestPoints) {
       bestPoints = score.finalPoints;
       bestUserId = schedina.userId;
     }
-    for (const p of score.predictionResults) {
-      if (p.isCorrect && !p.isVoid && p.odds > highestWinningOdds) {
-        highestWinningOdds = p.odds;
-        highestOddsUserId = schedina.userId;
-      }
-    }
 
     return { sSnap, schedina, score, outcome };
   });
-
-  const outcomes = new Map(
-    evaluations.map(({ schedina, outcome }) => [schedina.userId, outcome])
-  );
 
   // Aggiorna profili in transaction (uno per utente)
   for (const { sSnap, schedina, score, outcome } of evaluations) {
@@ -577,28 +569,6 @@ async function settleSchedine(
       createdAt: FieldValue.serverTimestamp(),
     });
   }
-  if (
-    highestOddsUserId &&
-    highestWinningOdds >= TOURNAMENT.minOddsForHighestOddsPrize
-  ) {
-    await prizes.doc(`highest_odds_${matchdayNumber}`).set({
-      type: 'highest_odds',
-      matchday: matchdayNumber,
-      winnerId: highestOddsUserId,
-      odds: highestWinningOdds,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-  }
-  for (const [uid, o] of outcomes) {
-    if (o.pokerEligible) {
-      await prizes.doc(`poker_${matchdayNumber}_${uid}`).set({
-        type: 'poker',
-        matchday: matchdayNumber,
-        winnerId: uid,
-        createdAt: FieldValue.serverTimestamp(),
-      });
-    }
-  }
 }
 
 // ---------- 3. SUBMIT SCHEDINA (callable) ----------
@@ -607,6 +577,7 @@ export const submitSchedina = onCall({ region: REGION, enforceAppCheck: false },
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'submitSchedina', 3, 60_000);
+  logger.info('submitSchedina:start', { uid });
 
   const predictions = request.data?.predictions as Prediction[] | undefined;
   const powerups = (request.data?.powerups ?? {}) as PowerUpSelection;
@@ -724,6 +695,7 @@ export const submitSchedina = onCall({ region: REGION, enforceAppCheck: false },
     });
   });
 
+  logger.info('submitSchedina:ok', { uid, matchday: md.number, coinsSpent: cost });
   return { ok: true, matchday: md.number, coinsSpent: cost };
 });
 
@@ -733,6 +705,7 @@ export const changePrediction = onCall({ region: REGION, enforceAppCheck: false 
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'changePrediction', 5, 60_000);
+  logger.info('changePrediction:start', { uid });
 
   const { matchId, betType, outcome } = (request.data ?? {}) as {
     matchId?: string;
@@ -771,6 +744,7 @@ export const changePrediction = onCall({ region: REGION, enforceAppCheck: false 
     tx.update(schedinaRef, { predictions: updated });
   });
 
+  logger.info('changePrediction:ok', { uid, matchId });
   return { ok: true, coinsSpent: 0 };
 });
 
@@ -779,6 +753,8 @@ export const changePrediction = onCall({ region: REGION, enforceAppCheck: false 
 export const cancelSchedina = onCall({ region: REGION, enforceAppCheck: false }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await enforceRateLimit(uid, 'cancelSchedina', 5, 60_000);
+  logger.info('cancelSchedina:start', { uid });
 
   const md = await getCurrentMatchday();
   if (!md) throw new HttpsError('unavailable', 'Nessuna giornata disponibile');
@@ -812,6 +788,7 @@ export const cancelSchedina = onCall({ region: REGION, enforceAppCheck: false },
     tx.delete(schedinaRef);
   });
 
+  logger.info('cancelSchedina:ok', { uid, matchday: md.number });
   return { ok: true, refund: true };
 });
 
@@ -854,6 +831,7 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
   // altrimenti giocare a più minigiochi diversi nella stessa sessione esaurisce
   // in fretta un budget pensato per una sola azione ripetuta.
   await enforceRateLimit(uid, `playMinigame_${action}`, 10, 60_000);
+  logger.info('playMinigame', { uid, action });
   const today = romeDateString();
   const profileRef = db.collection('profiles').doc(uid);
 
@@ -971,21 +949,15 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
   switch (action) {
     // --- QUIZ ---
     case 'quiz_start': {
-      let pool = await db.collection('quiz_questions').get();
+      const pool = await db.collection('quiz_questions').get();
       if (pool.empty) {
-        // Auto-seed questions on first use, no admin needed
-        const batch = db.batch();
-        for (let i = 0; i < ALL_QUIZ_QUESTIONS.length; i++) {
-          const q = ALL_QUIZ_QUESTIONS[i];
-          batch.set(db.collection('quiz_questions').doc(`q_${i}`), {
-            question: q.question,
-            options: q.options,
-            answerIndex: q.answerIndex,
-            category: q.category,
-          });
-        }
-        await batch.commit();
-        pool = await db.collection('quiz_questions').get();
+        // Seeding va fatto solo dall'admin (vedi seedQuizQuestions): un
+        // auto-seed qui duplicherebbe quel percorso di scrittura senza il
+        // controllo di ruolo.
+        throw new HttpsError(
+          'failed-precondition',
+          'Quiz non ancora disponibile, riprova più tardi'
+        );
       }
       // Get user's seen questions to avoid repeats
       const seenDoc = await db.collection('quiz_seen').doc(uid).get();
@@ -1037,7 +1009,11 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
         });
         return questionsData;
       });
-      return { questions: savedQuestions };
+      // Non inviare mai answerIndex al client prima della submission: un utente
+      // potrebbe leggerlo dalla risposta di rete e rispondere sempre corretto.
+      return {
+        questions: savedQuestions.map(q => ({ id: q.id, question: q.question, options: q.options })),
+      };
     }
     case 'quiz_submit': {
       const answers = (request.data?.answers ?? {}) as Record<string, number>;
@@ -1313,7 +1289,9 @@ export const getPublicProfiles = onCall({ region: REGION, enforceAppCheck: false
 export const manageLeague = onCall({ region: REGION, enforceAppCheck: false }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await enforceRateLimit(uid, 'manageLeague', 10, 60_000);
   const action = request.data?.action as string;
+  logger.info('manageLeague', { uid, action });
 
   if (action === 'create') {
     const name = typeof request.data?.name === 'string' ? request.data.name.trim() : '';
@@ -1831,21 +1809,28 @@ export const managePenaltyDuel = onCall({ region: REGION, enforceAppCheck: false
     if (!code || code.length !== 6) throw new HttpsError('invalid-argument', 'Codice non valido');
     const username = await getUsername();
 
-    const query = await duelsRef.where('code', '==', code).where('phase', '==', 'waiting').limit(1).get();
-    if (query.empty) throw new HttpsError('not-found', 'Partita non trovata o già iniziata');
-    const doc = query.docs[0];
-    const data = doc.data() as PenaltyDuelDoc;
-    if (data.p1.uid === uid) throw new HttpsError('failed-precondition', 'Non puoi unire la tua partita');
+    // Transazione: due giocatori che uniscono lo stesso codice nello stesso
+    // istante non devono poter sovrascrivere entrambi p2. Il commit ottimistico
+    // di Firestore riprova automaticamente se il documento letto qui viene
+    // scritto da un'altra transazione prima di questa.
+    return db.runTransaction(async tx => {
+      const query = duelsRef.where('code', '==', code).where('phase', '==', 'waiting').limit(1);
+      const snap = await tx.get(query);
+      if (snap.empty) throw new HttpsError('not-found', 'Partita non trovata o già iniziata');
+      const doc = snap.docs[0];
+      const data = doc.data() as PenaltyDuelDoc;
+      if (data.p1.uid === uid) throw new HttpsError('failed-precondition', 'Non puoi unire la tua partita');
 
-    const now = Date.now();
-    await doc.ref.update({
-      'p2.uid': uid,
-      'p2.username': username,
-      phase: 'playing',
-      startedAt: now,
-      deadlineAt: now + 5000,
+      const now = Date.now();
+      tx.update(doc.ref, {
+        'p2.uid': uid,
+        'p2.username': username,
+        phase: 'playing',
+        startedAt: now,
+        deadlineAt: now + 5000,
+      });
+      return { duelId: doc.id };
     });
-    return { duelId: doc.id };
   }
 
   // --- CREATE VS BOT ---
@@ -1981,8 +1966,13 @@ export const managePenaltyDuel = onCall({ region: REGION, enforceAppCheck: false
         const reward = winner === 'draw' ? 25 : 50;
         const winnerUid = winner === 1 ? duel.p1.uid : winner === 2 ? duel.p2.uid : null;
 
+        // Va accreditato il profilo del vincitore, non quello di chi ha
+        // effettuato questa chiamata: in una sfida PvP la transazione che
+        // chiude il round può essere quella dell'uno o dell'altro giocatore
+        // (dipende da chi arriva per ultimo), indipendentemente da chi vince.
         if (winnerUid && winnerUid !== 'bot') {
-          tx.update(profileRef, {
+          const winnerProfileRef = db.collection('profiles').doc(winnerUid);
+          tx.update(winnerProfileRef, {
             coins: FieldValue.increment(reward),
             coinsEarned: FieldValue.increment(reward),
             updatedAt: FieldValue.serverTimestamp(),
@@ -1996,6 +1986,27 @@ export const managePenaltyDuel = onCall({ region: REGION, enforceAppCheck: false
               createdAt: FieldValue.serverTimestamp(),
             }
           );
+        } else if (winner === 'draw') {
+          // Pareggio: entrambi i giocatori umani ricevono un premio di
+          // consolazione, altrimenti il client mostra "+25 monete" senza che
+          // nessuno riceva davvero nulla (vedi fix pareggio fantasma).
+          for (const [role, playerUid] of [['p1', duel.p1.uid], ['p2', duel.p2.uid]] as const) {
+            if (!playerUid || playerUid === 'bot') continue;
+            tx.update(db.collection('profiles').doc(playerUid), {
+              coins: FieldValue.increment(reward),
+              coinsEarned: FieldValue.increment(reward),
+              updatedAt: FieldValue.serverTimestamp(),
+            });
+            tx.set(
+              db.collection('wallet_transactions').doc(`${playerUid}_penaltyduel_${duelId}_${role}`),
+              {
+                userId: playerUid,
+                amount: reward,
+                reason: 'penalty_duel_draw',
+                createdAt: FieldValue.serverTimestamp(),
+              }
+            );
+          }
         }
 
         tx.update(duelRef, {

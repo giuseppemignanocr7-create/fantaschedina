@@ -120,27 +120,27 @@ describe('calculateBetPoints — griglia quote 1.00→6.00 (step 0.05)', () => {
   const oddsGrid: number[] = [];
   for (let o = 100; o <= 600; o += 5) oddsGrid.push(o / 100);
 
-  it.each(oddsGrid.map(o => ({ o })))('quota $o vinta → punti da regolamento', ({ o }) => {
-    // Regolamento: <1.25 → 5pt; altrimenti quota×10 cappata a 50
-    const expected = o < 1.25 ? 5 : Math.min(o * 10, 50);
+  it.each(oddsGrid.map(o => ({ o })))('quota $o vinta → contributo da regolamento (cappato a 5.00)', ({ o }) => {
+    // Regolamento: le quote corrette si moltiplicano tra loro, cappate a oddsCap
+    const expected = Math.min(o, 5);
     expect(calculateBetPoints(o, true)).toBeCloseTo(expected, 10);
   });
 
-  it.each(oddsGrid.map(o => ({ o })))('quota $o persa → 0 punti', ({ o }) => {
+  it.each(oddsGrid.map(o => ({ o })))('quota $o persa → 0 (esclusa dal prodotto)', ({ o }) => {
     expect(calculateBetPoints(o, false)).toBe(0);
   });
 });
 
 describe('calculateBonusPoints — tutti i conteggi 0→10', () => {
   it.each(Array.from({ length: 11 }, (_, n) => ({ n })))('%s corrette', ({ n }) => {
-    const expected = n === 10 ? 50 : n === 9 ? 20 : 0;
+    const expected = n === 10 ? 1.5 : n === 9 ? 1.2 : 1;
     expect(calculateBonusPoints(n)).toBe(expected);
   });
 });
 
 describe('calculatePenaltyPoints — tutti i conteggi 0→12', () => {
   it.each(Array.from({ length: 13 }, (_, n) => ({ n })))('%s giocate in fascia penalità', ({ n }) => {
-    const expected = Math.floor(n / 3) * -15;
-    expect(calculatePenaltyPoints(n)).toBe(expected);
+    const expected = Math.pow(0.9, Math.floor(n / 3));
+    expect(calculatePenaltyPoints(n)).toBeCloseTo(expected, 10);
   });
 });

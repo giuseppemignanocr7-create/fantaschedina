@@ -1,23 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ArrowLeft, Flame } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { playRigori, callableErrorMessage, type RigoriShot, type PenaltyShotInput } from '@/lib/gameApi';
 import { COINS } from '@/lib/economy';
-import { useAuthContext } from '@/contexts/AuthContext';
 import { CountUp } from '@/components/ui/CountUp';
 import { burstConfetti, sideCannons, jackpotCelebration, coinRain, vibrate } from '@/lib/juice';
 import { playPenaltySound } from '@/lib/penaltySound';
 import { PenaltyStadium } from '@/components/games/PenaltyStadium';
 import { PenaltyZoneGrid, PenaltyPowerMeter } from '@/components/games/PenaltyAimer';
 import type { PenaltyZone } from '@/lib/penalty';
+import { useSequentialReveal } from '@/hooks/useSequentialReveal';
+import { useSilentProfileRefresh } from '@/hooks/useSilentProfileRefresh';
 
 const TOTAL_KICKS = COINS.rigoriMaxShots;
 
 type Phase = 'intro' | 'aiming' | 'loading' | 'reveal' | 'done';
 
 export function RigoriPage() {
-  const { refreshProfile } = useAuthContext();
+  const refreshProfileSilently = useSilentProfileRefresh('RigoriPage');
   const [phase, setPhase] = useState<Phase>('intro');
   const [shots, setShots] = useState<PenaltyShotInput[]>([]);
   const [aimZone, setAimZone] = useState<PenaltyZone | null>(null);
@@ -47,7 +48,7 @@ export function RigoriPage() {
       setPhase('reveal');
       setGamesPlayed(g => g + 1);
       setTotalEarned(t => t + r.reward);
-      void refreshProfile().catch(err => console.error('[RigoriPage] refreshProfile:', err));
+      refreshProfileSilently();
     } catch (e) {
       setError(callableErrorMessage(e));
       setPhase('intro');
@@ -55,41 +56,38 @@ export function RigoriPage() {
     }
   };
 
-  useEffect(() => {
-    if (phase !== 'reveal') return;
-    if (revealed >= results.length) {
-      const t = setTimeout(() => {
-        setPhase('done');
-        const goals = results.filter(r => r.goal).length;
-        if (goals >= TOTAL_KICKS) { playPenaltySound('whistle'); jackpotCelebration(); }
-        else if (goals >= 3) { playPenaltySound('whistle'); sideCannons(); coinRain(1200); }
-        else if (goals >= 1) { playPenaltySound('whistle'); coinRain(800); }
-        else playPenaltySound('miss');
-      }, 900);
-      return () => clearTimeout(t);
+  useSequentialReveal(
+    results,
+    revealed,
+    setRevealed,
+    phase === 'reveal',
+    1400,
+    900,
+    shot => {
+      if (shot?.goal) {
+        playPenaltySound('goal');
+        vibrate([40, 30, 60]);
+        burstConfetti({ x: 0.5, y: 0.35 });
+        setStreak(s => {
+          const ns = s + 1;
+          setBestStreak(b => Math.max(b, ns));
+          return ns;
+        });
+      } else {
+        playPenaltySound('save');
+        vibrate(80);
+        setStreak(0);
+      }
+    },
+    () => {
+      setPhase('done');
+      const goals = results.filter(r => r.goal).length;
+      if (goals >= TOTAL_KICKS) { playPenaltySound('whistle'); jackpotCelebration(); }
+      else if (goals >= 3) { playPenaltySound('whistle'); sideCannons(); coinRain(1200); }
+      else if (goals >= 1) { playPenaltySound('whistle'); coinRain(800); }
+      else playPenaltySound('miss');
     }
-    const t = setTimeout(() => {
-      setRevealed(n => {
-        const shot = results[n];
-        if (shot?.goal) {
-          playPenaltySound('goal');
-          vibrate([40, 30, 60]);
-          burstConfetti({ x: 0.5, y: 0.35 });
-          setStreak(s => {
-            const ns = s + 1;
-            setBestStreak(b => Math.max(b, ns));
-            return ns;
-          });
-        } else {
-          playPenaltySound('save');
-          vibrate(80);
-          setStreak(0);
-        }
-        return n + 1;
-      });
-    }, 1400);
-    return () => clearTimeout(t);
-  }, [phase, revealed, results]);
+  );
 
   const score = results.slice(0, revealed).filter(r => r.goal).length;
   const finalScore = results.filter(r => r.goal).length;

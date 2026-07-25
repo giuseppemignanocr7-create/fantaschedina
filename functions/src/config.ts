@@ -6,14 +6,11 @@
 
 export const TOURNAMENT = {
   minValidOdds: 1.3,
-  maxPointsPerBet: 50,
-  lowOddsThreshold: 1.25,
-  lowOddsMaxPoints: 5,
-  penaltyPerThree: -15,
-  bonus9Correct: 20,
-  bonus10Correct: 50,
-  minOddsForPoker: 2.0,
-  minOddsForHighestOddsPrize: 2.0,
+  oddsCap: 5.0,
+  penaltyOddsMin: 1.25,
+  penaltyMultiplierPerThree: 0.9,
+  bonus9Multiplier: 1.2,
+  bonus10Multiplier: 1.5,
 } as const;
 
 // --- CAMPIONATI / COMPETIZIONI ---

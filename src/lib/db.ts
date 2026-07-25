@@ -33,7 +33,7 @@ import type {
   SchedinaResult,
 } from '@/types';
 import type { MatchOdds } from '@/data/mockData';
-import { computeRankings, computeArcadeRankings, computeWeeklyRanking } from './rankings';
+import { computeRankings, computeWeeklyRanking } from './rankings';
 import { getPublicProfilesFn, type PublicProfileData } from './gameApi';
 import type { WeeklyRanking } from '@/types';
 
@@ -339,11 +339,10 @@ export async function getWalletTransactions(
 }
 
 export interface PrizeDoc {
-  type: 'weekly_winner' | 'highest_odds' | 'poker';
+  type: 'weekly_winner';
   matchday: number;
   winnerId: string;
   points?: number;
-  odds?: number;
   createdAt: Timestamp | null;
 }
 
@@ -365,14 +364,6 @@ export async function getRecentSettledSchedine(max = 20): Promise<SchedinaDoc[]>
     )
   );
   return snap.docs.map(d => d.data() as SchedinaDoc);
-}
-
-/** Classifica arcade: gettoni totali guadagnati. */
-export async function getArcadeRankings(): Promise<
-  { participantId: string; username: string; coinsEarned: number; coins: number; rank: number }[]
-> {
-  const profiles = await getAllProfiles();
-  return computeArcadeRankings(profiles);
 }
 
 /** Classifica di giornata dalle schedine valutate della giornata corrente. */

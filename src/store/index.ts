@@ -30,21 +30,12 @@ import {
   getWeeklyRanking,
   schedinaDocToResult,
   profileToParticipant,
-  getArcadeRankings,
   type ProfileDoc,
 } from '@/lib/db';
 import { submitSchedinaFn, cancelSchedinaFn, callableErrorMessage } from '@/lib/gameApi';
 import { MAX_PICKS_PER_SCHEDINA, type PowerUpSelection } from '@/lib/economy';
 import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
 import { getCached, setCached, invalidate, invalidatePrefix, CACHE_TTL } from '@/lib/cache';
-
-export interface ArcadeRankingEntry {
-  rank: number;
-  participantId: string;
-  username: string;
-  coinsEarned: number;
-  coins: number;
-}
 
 interface AppStore {
   // Auth state (sincronizzato da AuthContext)
@@ -56,7 +47,6 @@ interface AppStore {
   matchOdds: Record<string, MatchOdds>;
   liveScores: Record<string, LiveScore>;
   rankings: RankingEntry[];
-  arcadeRankings: ArcadeRankingEntry[];
   weeklyRankings: WeeklyRanking[];
   prizePool: PrizePool;
 
@@ -90,7 +80,6 @@ interface AppStore {
   // Tournament actions
   setCurrentMatchday: (matchday: Matchday) => void;
   loadRankings: () => Promise<void>;
-  loadArcadeRankings: () => Promise<void>;
   loadWeeklyRanking: () => Promise<void>;
   loadMatchday: () => Promise<void>;
   refreshOdds: () => Promise<void>;
@@ -108,8 +97,6 @@ const initialPrizePool: PrizePool = {
   totalPool: 0,
   weeklyPool: 0,
   finalPool: DEFAULT_TOURNAMENT_CONFIG.firstPlacePrize + DEFAULT_TOURNAMENT_CONFIG.firstHalfPrize,
-  accumulatedPoker: 0,
-  accumulatedHighestOdds: 0,
 };
 
 function emptyDraft(matchday: number, userId?: string): Partial<Schedina> {
@@ -129,7 +116,6 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   matchOdds: {},
   liveScores: {},
   rankings: [],
-  arcadeRankings: [],
   weeklyRankings: [],
   prizePool: initialPrizePool,
   currentSchedina: null,
@@ -349,28 +335,11 @@ export const useAppStore = create<AppStore>()((set, get) => ({
           totalPool: n * cfg.participationFee,
           weeklyPool: Math.round(n * cfg.weeklyFeeToPool * cfg.weeklyWinnerShare),
           finalPool: cfg.firstPlacePrize + cfg.firstHalfPrize,
-          accumulatedPoker: 0,
-          accumulatedHighestOdds: 0,
         },
       });
     } catch (e) {
       console.warn('[Store] loadRankings:', e);
       set({ isLoadingRankings: false, error: 'Impossibile caricare la classifica. Riprova.' });
-    }
-  },
-
-  loadArcadeRankings: async () => {
-    const cached = getCached<ReturnType<typeof getArcadeRankings> extends Promise<infer T> ? T : never>('arcadeRankings');
-    if (cached) {
-      set({ arcadeRankings: cached });
-      return;
-    }
-    try {
-      const ranks = await getArcadeRankings();
-      setCached('arcadeRankings', ranks, CACHE_TTL.arcadeRankings);
-      set({ arcadeRankings: ranks });
-    } catch (e) {
-      console.warn('[Store] loadArcadeRankings:', e);
     }
   },
 

@@ -97,14 +97,14 @@ const sections: Section[] = [
     id: 'calcolo',
     title: 'Calcolo Punti',
     icon: Zap,
-    intro: 'Formula ufficiale:',
+    intro: 'Formula ufficiale: le quote dei pronostici corretti si moltiplicano tra loro, come una schedina reale — non si sommano.',
     highlight: [
-      { label: 'Formula', value: 'Punti = Quota × 10' },
+      { label: 'Formula', value: 'Punti = Quota₁ × Quota₂ × … (cap 5.00 a giocata)' },
     ],
     items: [
-      { label: 'Quota 1.50', desc: '→ 15 punti' },
-      { label: 'Quota 2.20', desc: '→ 22 punti' },
-      { label: 'Quota 4.00', desc: '→ 40 punti' },
+      { label: '3 corretti a quota 2.00', desc: '→ 8 punti (2×2×2)' },
+      { label: '5 corretti a quota 2.00', desc: '→ 32 punti' },
+      { label: '9-10 corretti su 10', desc: '→ bonus ×1.2 / ×1.5 sul totale' },
     ],
     warning: 'I punti non hanno valore economico e non sono convertibili in denaro.',
   },
@@ -220,7 +220,7 @@ export function RegolamentoPage() {
             <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">No Scommesse</p>
           </div>
           <div className="glass-card p-4 text-center border-t-2 border-accent-500 bg-surface/50">
-            <p className="text-3xl font-mono font-bold text-accent-400">×10</p>
+            <p className="text-3xl font-mono font-bold text-accent-400">Combo</p>
             <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Formula Punti</p>
           </div>
           <div className="glass-card p-4 text-center border-t-2 border-primary-500 bg-surface/50">

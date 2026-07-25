@@ -14,6 +14,7 @@ import { CountdownTimer, TeamLogo } from '@/components/ui';
 import { useToast } from '@/contexts/ToastContext';
 import { useSchedinaEditWindow } from '@/hooks';
 import { MAX_PICKS_PER_SCHEDINA } from '@/lib/economy';
+import { calculateBetPoints, calculateSchedinaScore } from '@/lib/scoring';
 import { competitionName } from '@/lib/competitions';
 
 const BET_TYPES: {
@@ -144,7 +145,6 @@ const SlipPanel = memo(function SlipPanel({
                   <span className="w-6 h-6 rounded font-black text-[11px] flex items-center justify-center bg-primary-500/25 text-primary-300">{pred.outcome}</span>
                   <div className="text-right">
                     <div className="text-[10px] font-mono text-accent-400 font-bold leading-none">{pred.odds.toFixed(2)}</div>
-                    <div className="text-[9px] text-primary-400 font-bold leading-none mt-0.5">{Math.round(pred.odds * 10)}pt</div>
                   </div>
                 </div>
               ) : (
@@ -285,7 +285,6 @@ const MatchCard = memo(function MatchCard({
             <CheckCircle2 size={11} className="text-green-400" />
             <span className="font-black px-1.5 py-0.5 rounded text-[11px] bg-primary-500/20 text-primary-300">{pred.outcome}</span>
             <span className="text-accent-400 font-mono font-bold">@{pred.odds.toFixed(2)}</span>
-            <span className="text-primary-400 font-bold">={Math.round(pred.odds * 10)}pt</span>
           </div>
         )}
       </div>
@@ -365,8 +364,15 @@ export function PronosticiPage() {
   const getPrediction = (matchId: string): Prediction | undefined =>
     predictions.find(p => p.matchId === matchId);
 
-  const totalPotential = useMemo(() =>
-    predictions.reduce((sum, p) => sum + p.odds * 10, 0), [predictions]);
+  const totalPotential = useMemo(() => {
+    if (predictions.length === 0) return 0;
+    const previewResults = predictions.map(p => ({
+      ...p,
+      isCorrect: true,
+      pointsEarned: calculateBetPoints(p.odds, true),
+    }));
+    return calculateSchedinaScore(previewResults).finalPoints;
+  }, [predictions]);
 
   const currentBetDef = BET_TYPES.find(b => b.key === selectedBetType)!;
 

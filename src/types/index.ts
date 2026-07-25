@@ -132,21 +132,10 @@ export interface WeeklyRanking {
 }
 
 // === PREMI ===
-export interface Prize {
-  id: string;
-  type: 'weekly_winner' | 'final_first' | 'first_half_first' | 'highest_odds' | 'poker';
-  amount: number;
-  matchday?: number;
-  winnerId?: string;
-  status: 'pending' | 'awarded' | 'accumulated';
-}
-
 export interface PrizePool {
   totalPool: number;
   weeklyPool: number;
   finalPool: number;
-  accumulatedPoker: number;
-  accumulatedHighestOdds: number;
 }
 
 // === CONFIGURAZIONE TORNEO ===
@@ -157,24 +146,17 @@ export interface TournamentConfig {
   weeklyFeeToPool: number; // 5€
   weeklyFeeToOrganizer: number; // 5€
   minValidOdds: number; // 1.30
-  maxPointsPerBet: number; // 3.5
-  lowOddsThreshold: number; // 1.25
-  lowOddsMaxPoints: number; // 0.5
+  oddsCap: number; // 5.00 — tetto al contributo di una singola giocata nel combo
   penaltyOddsMin: number; // 1.25
-  penaltyOddsMax: number; // 1.29
-  penaltyPerThree: number; // -1.5
-  bonus9Correct: number; // +2
-  bonus10Correct: number; // +5
+  penaltyMultiplierPerThree: number; // ×0.9 ogni 3 giocate in fascia 1.25-1.29
+  bonus9Multiplier: number; // ×1.2
+  bonus10Multiplier: number; // ×1.5
   maxJoinMatchday: number; // 10
   lateJoinFeePerMatchday: number; // 5€
   minParticipantsForGuarantee: number; // 30
   guaranteedPrize: number; // 500€
   firstPlacePrize: number; // 300€
   firstHalfPrize: number; // 200€
-  highestOddsPrize: number; // 10€
-  pokerPrize: number; // 20€
-  minOddsForPoker: number; // 2.00
-  minOddsForHighestOddsPrize: number; // 2.00
   weeklyWinnerShare: number; // 0.40
   weeklyAllShare: number; // 0.40
   weeklyToFinalShare: number; // 0.20
@@ -188,7 +170,6 @@ export interface ScoreCalculation {
   finalPoints: number;
   details: {
     correctPredictions: number;
-    lowOddsBets: number;
     penaltyRangeBets: number;
     cappedBets: number;
   };

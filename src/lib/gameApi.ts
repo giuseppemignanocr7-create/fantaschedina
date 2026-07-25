@@ -55,7 +55,6 @@ export interface QuizQuestionPublic {
   id: string;
   question: string;
   options: string[];
-  answerIndex: number;
 }
 
 export async function startQuiz(): Promise<{ questions: QuizQuestionPublic[] }> {

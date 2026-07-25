@@ -20,6 +20,7 @@ import { playPenaltySound } from '@/lib/penaltySound';
 import { PenaltyStadium } from '@/components/games/PenaltyStadium';
 import { PenaltyZoneGrid, PenaltyPowerMeter } from '@/components/games/PenaltyAimer';
 import type { PenaltyZone } from '@/lib/penalty';
+import { useSequentialReveal } from '@/hooks/useSequentialReveal';
 
 type Phase = 'select' | 'aiming' | 'loading' | 'reveal' | 'result';
 interface RevealEntry { who: 'me' | 'opp'; shot: RigoriShot }
@@ -93,34 +94,31 @@ export function Sfide1v1Page() {
     }
   };
 
-  useEffect(() => {
-    if (phase !== 'reveal') return;
-    if (revealed >= revealSeq.length) {
-      const t = setTimeout(() => {
-        setPhase('result');
-        refreshProfile();
-        if (result?.won) { sideCannons(); coinRain(1500); vibrate([60, 40, 60]); }
-        else if (result?.draw) { burstConfetti(); vibrate(40); }
-        else vibrate(80);
-      }, 700);
-      return () => clearTimeout(t);
+  useSequentialReveal(
+    revealSeq,
+    revealed,
+    setRevealed,
+    phase === 'reveal',
+    1300,
+    700,
+    entry => {
+      if (entry.shot.goal) {
+        playPenaltySound('goal');
+        vibrate(entry.who === 'me' ? [40, 30, 60] : 30);
+        if (entry.who === 'me') burstConfetti({ x: 0.5, y: 0.35 });
+      } else {
+        playPenaltySound('save');
+        if (entry.who === 'me') vibrate(80);
+      }
+    },
+    () => {
+      setPhase('result');
+      refreshProfile();
+      if (result?.won) { sideCannons(); coinRain(1500); vibrate([60, 40, 60]); }
+      else if (result?.draw) { burstConfetti(); vibrate(40); }
+      else vibrate(80);
     }
-    const t = setTimeout(() => {
-      setRevealed(n => {
-        const entry = revealSeq[n];
-        if (entry.shot.goal) {
-          playPenaltySound('goal');
-          vibrate(entry.who === 'me' ? [40, 30, 60] : 30);
-          if (entry.who === 'me') burstConfetti({ x: 0.5, y: 0.35 });
-        } else {
-          playPenaltySound('save');
-          if (entry.who === 'me') vibrate(80);
-        }
-        return n + 1;
-      });
-    }, 1300);
-    return () => clearTimeout(t);
-  }, [phase, revealed, revealSeq, refreshProfile, result]);
+  );
 
   if (phase === 'result' && result) {
     return (

@@ -15,7 +15,7 @@ import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
 import type { RankingEntry } from '@/types';
 import { SkeletonList, EmptyState, ErrorState } from '@/components/ui';
 
-type TabType = 'generale' | 'settimanale' | 'arcade';
+type TabType = 'generale' | 'settimanale';
 
 const RankingRow = memo(function RankingRow({
   player,
@@ -141,7 +141,6 @@ const RankingRow = memo(function RankingRow({
 export function ClassificaPage() {
   const {
     rankings,
-    arcadeRankings,
     weeklyRankings,
     prizePool,
     currentUser,
@@ -150,7 +149,6 @@ export function ClassificaPage() {
     error,
     clearError,
     loadRankings,
-    loadArcadeRankings,
     loadWeeklyRanking,
   } = useAppStore();
   const [activeTab, setActiveTab] = useState<TabType>('generale');
@@ -158,9 +156,8 @@ export function ClassificaPage() {
 
   useEffect(() => {
     loadRankings();
-    loadArcadeRankings();
     loadWeeklyRanking();
-  }, [loadRankings, loadArcadeRankings, loadWeeklyRanking]);
+  }, [loadRankings, loadWeeklyRanking]);
 
   const weekly = weeklyRankings[0];
   const cfg = DEFAULT_TOURNAMENT_CONFIG;
@@ -190,7 +187,7 @@ export function ClassificaPage() {
           </div>
 
           {/* Prize Pool Summary */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="glass-card p-4 text-center border-t-2 border-accent-500 bg-surface/80">
               <p className="text-xl sm:text-2xl font-mono font-bold text-accent-400">{formatCurrency(prizePool.finalPool)}</p>
               <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Montepremi Finale</p>
@@ -198,10 +195,6 @@ export function ClassificaPage() {
             <div className="glass-card p-4 text-center border-t-2 border-primary-500 bg-surface/80">
               <p className="text-xl sm:text-2xl font-mono font-bold text-white">{formatCurrency(prizePool.weeklyPool)}</p>
               <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Vincita Settimanale</p>
-            </div>
-            <div className="glass-card p-4 text-center border-t-2 border-live bg-surface/80">
-              <p className="text-xl sm:text-2xl font-mono font-bold text-live">{formatCurrency(prizePool.accumulatedPoker)}</p>
-              <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Jackpot Poker</p>
             </div>
             <div className="glass-card p-4 text-center border-t-2 border-slate-500 bg-surface/80">
               <p className="text-xl sm:text-2xl font-mono font-bold text-white">{rankings.length}</p>
@@ -240,58 +233,7 @@ export function ClassificaPage() {
             <Calendar size={16} />
             Giornata {currentMatchday?.number || 1}
           </button>
-          <button
-            onClick={() => setActiveTab('arcade')}
-            role="tab"
-            aria-selected={activeTab === 'arcade'}
-            className={cn(
-              'flex-1 py-3 px-4 rounded-lg font-bold text-sm uppercase tracking-wide transition-all flex items-center justify-center gap-2',
-              activeTab === 'arcade'
-                ? 'bg-yellow-600 text-white shadow-lg shadow-yellow-900/50'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            )}
-          >
-            🪙 Arcade
-          </button>
         </div>
-
-        {/* Classifica Arcade: gettoni guadagnati (minigiochi + missioni + bonus) */}
-        {activeTab === 'arcade' && (
-          <div className="glass-card overflow-hidden border border-white/5 shadow-2xl mb-8">
-            <div className="grid grid-cols-12 gap-2 px-4 py-4 bg-surface border-b border-white/10 text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">
-              <div className="col-span-2 text-center">Rank</div>
-              <div className="col-span-6">Giocatore</div>
-              <div className="col-span-4 text-right">🪙 Guadagnati</div>
-            </div>
-            <div className="divide-y divide-white/5">
-              {arcadeRankings.length === 0 ? (
-                <p className="text-center text-sm text-white/40 py-8">
-                  Nessun gettone guadagnato ancora: gioca ai minigiochi!
-                </p>
-              ) : (
-                arcadeRankings.map(r => (
-                  <div
-                    key={r.participantId}
-                    className={cn(
-                      'grid grid-cols-12 gap-2 px-4 py-3 items-center',
-                      currentUser?.id === r.participantId ? 'bg-primary-900/20' : ''
-                    )}
-                  >
-                    <div className="col-span-2 text-center font-mono font-bold text-sm">
-                      {r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}
-                    </div>
-                    <div className="col-span-6 font-bold text-sm text-white truncate">
-                      {r.username}
-                    </div>
-                    <div className="col-span-4 text-right font-mono font-bold text-yellow-400">
-                      {r.coinsEarned.toLocaleString('it-IT')}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Top 3 Podium */}
         {activeTab === 'generale' && displayed.length >= 3 && (
@@ -342,7 +284,6 @@ export function ClassificaPage() {
         )}
 
         {/* Rankings List */}
-        {activeTab !== 'arcade' && (
         <div className="glass-card overflow-hidden border border-white/5 shadow-2xl" role="table" aria-label="Classifica">
           {/* Header */}
           <div className="grid grid-cols-12 gap-2 px-4 py-4 bg-surface border-b border-white/10 text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider" role="row">
@@ -389,7 +330,6 @@ export function ClassificaPage() {
             ))}
           </div>
         </div>
-        )}
 
         {/* Legend */}
         <div className="mt-8 glass-card p-6 border-t-4 border-t-accent-500">

@@ -9,8 +9,6 @@ import {
   evaluateSchedina,
   isInPenaltyRange,
   isValidOdds,
-  checkPokerPrize,
-  findHighestWinningOdds,
 } from '../scoring';
 import type { Match, Prediction, PredictionResult, Schedina } from '@/types';
 
@@ -19,17 +17,17 @@ describe('calculateBetPoints', () => {
   it('quota persa vale 0', () => {
     expect(calculateBetPoints(2.5, false)).toBe(0);
   });
-  it('quota vinta = quota × 10', () => {
-    expect(calculateBetPoints(2.2, true)).toBeCloseTo(22);
+  it('quota vinta contribuisce la quota stessa al combo', () => {
+    expect(calculateBetPoints(2.2, true)).toBeCloseTo(2.2);
   });
-  it('cap a 50 punti (quota 5.00)', () => {
-    expect(calculateBetPoints(8.0, true)).toBe(50);
+  it('cap a oddsCap (5.00)', () => {
+    expect(calculateBetPoints(8.0, true)).toBe(5);
   });
-  it('quota < 1.25 vale solo 5 punti', () => {
-    expect(calculateBetPoints(1.1, true)).toBe(5);
+  it('quota bassa (1.1) contribuisce comunque la quota reale, nessun floor', () => {
+    expect(calculateBetPoints(1.1, true)).toBeCloseTo(1.1);
   });
-  it('quota 1.25 (fascia penalità) vale quota × 10', () => {
-    expect(calculateBetPoints(1.25, true)).toBeCloseTo(12.5);
+  it('quota 1.25 (fascia penalità) contribuisce la quota stessa', () => {
+    expect(calculateBetPoints(1.25, true)).toBeCloseTo(1.25);
   });
 });
 
@@ -45,23 +43,23 @@ describe('odds ranges', () => {
     expect(isInPenaltyRange(1.3)).toBe(false);
     expect(isInPenaltyRange(1.24)).toBe(false);
   });
-  it('ogni 3 giocate in fascia penalità → -15', () => {
-    expect(calculatePenaltyPoints(2)).toBeCloseTo(0);
-    expect(calculatePenaltyPoints(3)).toBe(-15);
-    expect(calculatePenaltyPoints(6)).toBe(-30);
+  it('ogni 3 giocate in fascia penalità → ×0.9 (si compone)', () => {
+    expect(calculatePenaltyPoints(2)).toBeCloseTo(1);
+    expect(calculatePenaltyPoints(3)).toBeCloseTo(0.9);
+    expect(calculatePenaltyPoints(6)).toBeCloseTo(0.81);
   });
 });
 
 // ---------- bonus ----------
 describe('calculateBonusPoints', () => {
-  it('9 corretti → +20', () => {
-    expect(calculateBonusPoints(9)).toBe(20);
+  it('9 corretti → ×1.2', () => {
+    expect(calculateBonusPoints(9)).toBe(1.2);
   });
-  it('10 corretti → +50', () => {
-    expect(calculateBonusPoints(10)).toBe(50);
+  it('10 corretti → ×1.5', () => {
+    expect(calculateBonusPoints(10)).toBe(1.5);
   });
-  it('8 corretti → 0', () => {
-    expect(calculateBonusPoints(8)).toBe(0);
+  it('8 corretti → ×1 (nessun bonus)', () => {
+    expect(calculateBonusPoints(8)).toBe(1);
   });
 });
 
@@ -141,7 +139,7 @@ function makeSchedina(predictions: Prediction[]): Schedina {
 }
 
 describe('evaluateSchedina', () => {
-  it('10/10 corretti include bonus +50', () => {
+  it('10/10 corretti: le quote si moltiplicano e il bonus è ×1.5', () => {
     const matches = Array.from({ length: 10 }, (_, i) => makeMatch(`m${i}`, 2, 0));
     const predictions: Prediction[] = matches.map(m => ({
       matchId: m.id,
@@ -151,12 +149,12 @@ describe('evaluateSchedina', () => {
     }));
     const r = evaluateSchedina(makeSchedina(predictions), matches);
     expect(r.correctPredictions).toBe(10);
-    expect(r.totalPoints).toBeCloseTo(200);
-    expect(r.bonusPoints).toBe(50);
-    expect(r.finalPoints).toBeCloseTo(250);
+    expect(r.totalPoints).toBeCloseTo(1024); // 2.0^10
+    expect(r.bonusPoints).toBeCloseTo(512); // 1024 × (1.5 - 1)
+    expect(r.finalPoints).toBeCloseTo(1536); // 1024 × 1.5
   });
 
-  it('valuta correttamente mercati misti', () => {
+  it('valuta correttamente mercati misti: le quote corrette si moltiplicano tra loro', () => {
     const matches = [makeMatch('m1', 2, 1), makeMatch('m2', 0, 0)];
     const predictions: Prediction[] = [
       { matchId: 'm1', betType: 'over_under', outcome: 'OVER', odds: 1.85 },
@@ -164,10 +162,10 @@ describe('evaluateSchedina', () => {
     ];
     const r = evaluateSchedina(makeSchedina(predictions), matches);
     expect(r.correctPredictions).toBe(2);
-    expect(r.totalPoints).toBeCloseTo(18.5 + 20);
+    expect(r.totalPoints).toBeCloseTo(1.85 * 2.0);
   });
 
-  it('penalità applicata con 3 quote in fascia 1.25-1.29', () => {
+  it('penalità applicata con 3 quote in fascia 1.25-1.29 (moltiplicatore ×0.9)', () => {
     const matches = Array.from({ length: 3 }, (_, i) => makeMatch(`m${i}`, 1, 0));
     const predictions: Prediction[] = matches.map(m => ({
       matchId: m.id,
@@ -176,60 +174,46 @@ describe('evaluateSchedina', () => {
       odds: 1.27,
     }));
     const r = evaluateSchedina(makeSchedina(predictions), matches);
-    expect(r.penaltyPoints).toBe(-15);
+    const combo = 1.27 ** 3;
+    expect(r.penaltyPoints).toBeCloseTo(Math.round((combo * 0.9 - combo) * 100) / 100, 2);
   });
 
-  it('mercato 1T senza dato HT → void = 10 punti', () => {
+  it('mercato 1T senza dato HT → void = contributo neutro (1)', () => {
     const matches = [makeMatch('m1', 2, 1)];
     const predictions: Prediction[] = [
       { matchId: 'm1', betType: 'esito_1t', outcome: '1', odds: 2.5 },
     ];
     const r = evaluateSchedina(makeSchedina(predictions), matches);
-    expect(r.predictions[0].pointsEarned).toBe(10);
+    expect(r.predictions[0].pointsEarned).toBe(1);
     expect(r.predictions[0].isCorrect).toBe(true);
   });
-});
 
-// ---------- premi speciali ----------
-describe('premi speciali', () => {
-  const pr = (odds: number, isCorrect: boolean): PredictionResult => ({
-    matchId: 'm',
-    betType: 'esito',
-    outcome: '1',
-    odds,
-    isCorrect,
-    pointsEarned: isCorrect ? odds * 10 : 0,
-  });
-
-  it('poker: 4 quote vinte > 2.00', () => {
-    const preds = [pr(2.1, true), pr(2.5, true), pr(3.0, true), pr(2.2, true)];
-    expect(checkPokerPrize(preds).eligible).toBe(true);
-  });
-  it('poker: quote a 2.00 esatto non contano', () => {
-    const preds = [pr(2.0, true), pr(2.5, true), pr(3.0, true), pr(2.2, true)];
-    expect(checkPokerPrize(preds).eligible).toBe(false);
-  });
-  it('quota più alta assegnata solo se >= 2.00', () => {
-    const low = [{ ...makeSchedina([]), predictions: [pr(1.8, true)], totalPoints: 0, correctPredictions: 1, bonusPoints: 0, penaltyPoints: 0, finalPoints: 18 }];
-    expect(findHighestWinningOdds(low).winnerId).toBeNull();
-    const high = [{ ...makeSchedina([]), predictions: [pr(3.5, true)], totalPoints: 0, correctPredictions: 1, bonusPoints: 0, penaltyPoints: 0, finalPoints: 35 }];
-    expect(findHighestWinningOdds(high).winnerId).toBe('u1');
+  it('0 corretti su 10 → punteggio 0 (non 1, anche se il prodotto di fattori neutri sarebbe 1)', () => {
+    const matches = Array.from({ length: 10 }, (_, i) => makeMatch(`m${i}`, 2, 0));
+    const predictions: Prediction[] = matches.map(m => ({
+      matchId: m.id,
+      betType: 'esito',
+      outcome: '2', // sempre sbagliato: il risultato è sempre 2-0 (home vince)
+      odds: 3.0,
+    }));
+    const r = evaluateSchedina(makeSchedina(predictions), matches);
+    expect(r.correctPredictions).toBe(0);
+    expect(r.finalPoints).toBe(0);
   });
 });
 
 // ---------- calcolo aggregato ----------
 describe('calculateSchedinaScore', () => {
-  it('conta correttamente low odds e penalty range', () => {
+  it('combo = prodotto delle sole giocate corrette (cappate a oddsCap)', () => {
     const preds: PredictionResult[] = [
-      { matchId: 'a', betType: 'esito', outcome: '1', odds: 1.1, isCorrect: true, pointsEarned: 5 },
+      { matchId: 'a', betType: 'esito', outcome: '1', odds: 1.1, isCorrect: true, pointsEarned: 1.1 },
       { matchId: 'b', betType: 'esito', outcome: '1', odds: 1.27, isCorrect: false, pointsEarned: 0 },
-      { matchId: 'c', betType: 'esito', outcome: '1', odds: 6.0, isCorrect: true, pointsEarned: 50 },
+      { matchId: 'c', betType: 'esito', outcome: '1', odds: 6.0, isCorrect: true, pointsEarned: 5 },
     ];
     const score = calculateSchedinaScore(preds);
-    expect(score.details.lowOddsBets).toBe(1);
     expect(score.details.penaltyRangeBets).toBe(1);
     expect(score.details.cappedBets).toBe(1);
-    expect(score.basePoints).toBeCloseTo(55);
+    expect(score.basePoints).toBeCloseTo(1.1 * 5); // 'b' è sbagliata, esclusa dal prodotto
   });
   it('countPenaltyRangeBets', () => {
     const preds: Prediction[] = [
