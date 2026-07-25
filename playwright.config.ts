@@ -40,7 +40,20 @@ export default defineConfig({
       port: 3000,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
-      env: { VITE_USE_FIREBASE_EMULATORS: 'true' },
+      // Valori fittizi ma con lo stesso projectId dell'emulatore: firebase.ts
+      // richiede queste variabili per inizializzarsi (vedi assertConfig), ma
+      // dato che tutto passa per gli emulatori locali non serve un progetto
+      // reale. Sovrascrivono di proposito eventuali .env/.env.local locali,
+      // così i test E2E restano isolati dal progetto Firebase reale.
+      env: {
+        VITE_USE_FIREBASE_EMULATORS: 'true',
+        VITE_FIREBASE_API_KEY: 'demo-e2e-api-key',
+        VITE_FIREBASE_AUTH_DOMAIN: 'fantaschedina-4a1b2.firebaseapp.com',
+        VITE_FIREBASE_PROJECT_ID: 'fantaschedina-4a1b2',
+        VITE_FIREBASE_STORAGE_BUCKET: 'fantaschedina-4a1b2.appspot.com',
+        VITE_FIREBASE_MESSAGING_SENDER_ID: '000000000000',
+        VITE_FIREBASE_APP_ID: '1:000000000000:web:0000000000000000000000',
+      },
       stdout: 'pipe',
       stderr: 'pipe',
     },
