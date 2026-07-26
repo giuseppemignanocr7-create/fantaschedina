@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Clock, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Clock, CheckCircle2, Loader2, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { startQuiz, submitQuiz, callableErrorMessage, type QuizQuestionPublic } from '@/lib/gameApi';
@@ -281,20 +281,20 @@ export function QuizCalcioPage() {
                   'w-full flex items-center gap-3 p-4 rounded-xl border text-left font-medium text-sm transition-all animate-slide-up',
                   !showFeedback && !locked && 'bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/25 hover:scale-[1.01] active:scale-[0.98]',
                   !showFeedback && locked && 'bg-white/5 border-white/10 text-white/80',
-                  showFeedback && isPicked && 'bg-primary-500/30 border-primary-400 text-white scale-[1.02] shadow-lg shadow-primary-500/30',
+                  showFeedback && isPicked && 'bg-white/15 border-white/40 text-white scale-[1.01]',
                   showFeedback && !isPicked && 'bg-white/5 border-white/10 text-white/30'
                 )}
                 style={{ animationDelay: `${i * 60}ms` }}
               >
                 <span className={cn(
                   'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black flex-shrink-0',
-                  showFeedback && isPicked && 'bg-primary-400 text-black',
+                  showFeedback && isPicked && 'bg-white/30 text-white',
                   !showFeedback && 'bg-white/10'
                 )}>
-                  {showFeedback && isPicked ? '✓' : String.fromCharCode(65 + i)}
+                  {String.fromCharCode(65 + i)}
                 </span>
                 <span className="flex-1">{opt}</span>
-                {showFeedback && isPicked && <CheckCircle2 size={18} className="text-primary-400 flex-shrink-0" />}
+                {showFeedback && isPicked && <Lock size={16} className="text-white/50 flex-shrink-0" />}
               </button>
             );
           })}
@@ -302,9 +302,12 @@ export function QuizCalcioPage() {
 
         {/* Feedback banner: conferma solo che la risposta è stata registrata */}
         {locked && picked !== null && (
-          <div className="glass-card p-3 text-center animate-pop-in bg-primary-500/15 border-primary-500/30">
-            <p className="font-black text-sm uppercase text-primary-300">
-              {picked === -1 ? '⏱ Tempo scaduto' : '✓ Risposta registrata'}
+          <div className="glass-card p-3 text-center animate-pop-in bg-white/5 border-white/15">
+            <p className="font-black text-sm uppercase text-white/60">
+              {picked === -1 ? '⏱ Tempo scaduto' : '🔒 Risposta bloccata'}
+            </p>
+            <p className="text-[10px] text-white/35 mt-0.5">
+              Scoprirai le risposte corrette alla fine del quiz
             </p>
           </div>
         )}

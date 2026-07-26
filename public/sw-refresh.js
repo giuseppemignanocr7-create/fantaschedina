@@ -1,22 +1,24 @@
-// Aggiornamento del Service Worker a ogni caricamento.
+// Force unregister ALL service workers and clear ALL caches on every load.
 //
-// Con skipWaiting + clientsClaim il nuovo SW prende il controllo subito, ma la
-// tab già aperta continua a usare il bundle JS vecchio: al primo cambio pagina
-// i lazy chunk non esistono più e la navigazione fallisce. Il reload su
-// `controllerchange` risolve la discrepanza.
-//
-// File esterno e non inline: la CSP usa `script-src 'self'` senza
-// 'unsafe-inline', quindi uno script inline verrebbe bloccato.
+// The old SW precached JS bundles with quiz code that used answerIndex
+// from the client. NetworkFirst for JS in the new workbox config only
+// works AFTER the new SW takes control — but the old SW serves stale
+// JS before that happens. Unregistering everything and hard-reloading
+// guarantees the freshest bundle is fetched from the network.
 if ('serviceWorker' in navigator) {
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
-  });
-  navigator.serviceWorker.getRegistrations().then(regs => {
-    regs.forEach(r => {
-      r.update();
-    });
+  navigator.serviceWorker.getRegistrations().then(async function (regs) {
+    var hadSW = regs.length > 0;
+    for (var i = 0; i < regs.length; i++) {
+      await regs[i].unregister();
+    }
+    if ('caches' in window) {
+      var keys = await caches.keys();
+      for (var j = 0; j < keys.length; j++) {
+        await caches.delete(keys[j]);
+      }
+    }
+    if (hadSW) {
+      window.location.reload();
+    }
   });
 }

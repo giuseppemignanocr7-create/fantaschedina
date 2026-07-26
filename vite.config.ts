@@ -48,8 +48,24 @@ export default defineConfig({
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globPatterns: ['**/*.{svg,png,woff2,ico}'],
         runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.endsWith('.js') || url.pathname.endsWith('.css'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'app-bundles',
+              expiration: { maxAgeSeconds: 86400, maxEntries: 60 },
+            },
+          },
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'app-html',
+              expiration: { maxAgeSeconds: 300 },
+            },
+          },
           {
             urlPattern: ({ url }) => url.origin === 'https://site.api.espn.com',
             handler: 'NetworkFirst',
