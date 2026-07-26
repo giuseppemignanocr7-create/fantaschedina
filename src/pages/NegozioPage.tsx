@@ -1,5 +1,19 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ShoppingBag, Clock, Sparkles } from 'lucide-react';
+import { ArrowLeft, ShoppingBag, Clock, Sparkles, Shirt } from 'lucide-react';
+
+import magliaGara from '@/assets/store/maglia-gara.jpg';
+import tshirtTraining from '@/assets/store/tshirt-training.jpg';
+import felpaCappuccio from '@/assets/store/felpa-cappuccio.jpg';
+import tutaCompleta from '@/assets/store/tuta-completa.jpg';
+import cappellinoSnapback from '@/assets/store/cappellino-snapback.jpg';
+import cappellinoBaseball from '@/assets/store/cappellino-baseball.jpg';
+import cuffiaInvernale from '@/assets/store/cuffia-invernale.jpg';
+import sciarpa from '@/assets/store/sciarpa.jpg';
+import borsone from '@/assets/store/borsone.jpg';
+import zaino from '@/assets/store/zaino.jpg';
+import sacca from '@/assets/store/sacca.jpg';
+import borraccia from '@/assets/store/borraccia.jpg';
+import tazza from '@/assets/store/tazza.jpg';
 
 /**
  * Negozio — anteprima, non operativo.
@@ -15,34 +29,103 @@ import { ArrowLeft, ShoppingBag, Clock, Sparkles } from 'lucide-react';
  */
 
 interface PreviewItem {
-  emoji: string;
+  img: string;
   name: string;
   desc: string;
+  alt: string;
 }
 
 const PREVIEW: { category: string; items: PreviewItem[] }[] = [
   {
-    category: 'Magliette',
+    category: 'Abbigliamento',
     items: [
-      { emoji: '👕', name: 'Classic', desc: 'Cotone biologico, logo ricamato.' },
-      { emoji: '👕', name: 'Gold Edition', desc: 'Edizione limitata con stampa dorata.' },
-      { emoji: '👕', name: 'Away Kit', desc: 'Bianca con dettagli lime.' },
+      {
+        img: tshirtTraining,
+        name: 'T-shirt Training',
+        desc: 'Girocollo tecnica, grafica a pennellate.',
+        alt: 'T-shirt da allenamento nera con grafica verde lime e logo FS',
+      },
+      {
+        img: felpaCappuccio,
+        name: 'Felpa con Cappuccio',
+        desc: 'Cappuccio foderato lime e tasca a marsupio.',
+        alt: 'Felpa nera con cappuccio, logo FS e scritta Fantaschedina',
+      },
+      {
+        img: tutaCompleta,
+        name: 'Tuta Completa',
+        desc: 'Giacca full zip e pantalone coordinato.',
+        alt: 'Tuta sportiva nera composta da giacca e pantaloni con dettagli verdi',
+      },
     ],
   },
   {
-    category: 'Gadget',
+    category: 'Cappelli',
     items: [
-      { emoji: '☕', name: 'Tazza', desc: 'Ceramica 350ml, logo sui due lati.' },
-      { emoji: '🧣', name: 'Sciarpa', desc: 'In pile, due colori.' },
-      { emoji: '⚽', name: 'Pallone', desc: 'Riproduzione ufficiale, taglia 5.' },
+      {
+        img: cappellinoSnapback,
+        name: 'Snapback',
+        desc: 'Visiera piatta lime, chiusura regolabile.',
+        alt: 'Cappellino snapback nero con visiera piatta verde e logo FS',
+      },
+      {
+        img: cappellinoBaseball,
+        name: 'Baseball',
+        desc: 'Visiera curva, grafica laterale.',
+        alt: 'Cappellino da baseball nero con visiera curva e grafica verde',
+      },
+      {
+        img: cuffiaInvernale,
+        name: 'Cuffia Invernale',
+        desc: 'Berretto a maglia con pon-pon.',
+        alt: 'Cuffia invernale nera con pon-pon verde e logo FS',
+      },
+    ],
+  },
+  {
+    category: 'Borse',
+    items: [
+      {
+        img: borsone,
+        name: 'Borsone',
+        desc: 'Manici e tracolla removibile.',
+        alt: 'Borsone sportivo nero con manici verdi e scritta Fantaschedina',
+      },
+      {
+        img: zaino,
+        name: 'Zaino',
+        desc: 'Scomparto imbottito e tasca frontale.',
+        alt: 'Zaino nero con grafica verde e logo FS',
+      },
+      {
+        img: sacca,
+        name: 'Sacca',
+        desc: 'Sacca a coulisse, leggera.',
+        alt: 'Sacca a coulisse nera con logo FS e scritta Fantaschedina',
+      },
     ],
   },
   {
     category: 'Accessori',
     items: [
-      { emoji: '🧢', name: 'Cappellino', desc: 'Snapback regolabile, logo ricamato.' },
-      { emoji: '🍶', name: 'Borraccia', desc: 'Acciaio inox 750ml.' },
-      { emoji: '📱', name: 'Cover', desc: 'Rigida, iPhone e Samsung.' },
+      {
+        img: sciarpa,
+        name: 'Sciarpa',
+        desc: 'Doppio lato, con frange.',
+        alt: 'Sciarpa da stadio nera e verde con scritta Fantaschedina',
+      },
+      {
+        img: borraccia,
+        name: 'Borraccia',
+        desc: 'Tappo a pressione, uso sportivo.',
+        alt: 'Borraccia sportiva nera con logo FS',
+      },
+      {
+        img: tazza,
+        name: 'Tazza',
+        desc: 'Ceramica, logo su entrambi i lati.',
+        alt: 'Tazza in ceramica nera con logo FS e braccialetto abbinato',
+      },
     ],
   },
 ];
@@ -87,7 +170,36 @@ export function NegozioPage() {
           </p>
         </section>
 
-        <section aria-labelledby="anteprima-titolo" className="space-y-4">
+        <section
+          aria-labelledby="maglia-titolo"
+          className="overflow-hidden rounded-2xl border border-white/8 bg-white/[0.03]"
+        >
+          <div className="bg-white p-3">
+            <img
+              src={magliaGara}
+              alt="Maglia da gara nera e verde, fronte con logo Fantaschedina e retro personalizzabile con nome e numero"
+              className="mx-auto h-auto w-full max-w-md object-contain"
+              width={699}
+              height={568}
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <div className="flex items-start gap-3 p-4">
+            <Shirt size={18} className="mt-0.5 flex-shrink-0 text-primary-400" strokeWidth={2} />
+            <div>
+              <h3 id="maglia-titolo" className="font-display text-base font-black text-white">
+                Maglia da Gara
+              </h3>
+              <p className="mt-1 text-[13px] leading-relaxed text-white/55">
+                Il pezzo principale della collezione. Sul retro potrai far
+                stampare il tuo nome e il tuo numero.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="anteprima-titolo" className="space-y-5">
           <div className="flex items-center gap-2">
             <Sparkles size={15} className="text-primary-400" strokeWidth={2} />
             <h3
@@ -103,19 +215,32 @@ export function NegozioPage() {
               <p className="text-[10px] font-bold uppercase tracking-widest text-white/30">
                 {group.category}
               </p>
-              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {group.items.map(item => (
                   <li
                     key={item.name}
-                    className="rounded-xl border border-white/8 bg-white/[0.03] p-3"
+                    className="overflow-hidden rounded-xl border border-white/8 bg-white/[0.03]"
                   >
-                    <div className="mb-1.5 text-2xl leading-none opacity-70" aria-hidden>
-                      {item.emoji}
+                    {/* Le foto prodotto hanno sfondo bianco: su fondo scuro
+                        sembrerebbero riquadri sbagliati. La tile chiara le
+                        rende una scelta grafica invece che un difetto. */}
+                    <div className="flex aspect-square items-center justify-center bg-white p-2">
+                      <img
+                        src={item.img}
+                        alt={item.alt}
+                        className="max-h-full max-w-full object-contain"
+                        loading="lazy"
+                        decoding="async"
+                      />
                     </div>
-                    <p className="text-[13px] font-bold text-white/85">{item.name}</p>
-                    <p className="mt-0.5 text-[11px] leading-snug text-white/40">
-                      {item.desc}
-                    </p>
+                    <div className="p-2.5">
+                      <p className="text-[12px] font-bold leading-tight text-white/85">
+                        {item.name}
+                      </p>
+                      <p className="mt-0.5 text-[10px] leading-snug text-white/40">
+                        {item.desc}
+                      </p>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -123,8 +248,9 @@ export function NegozioPage() {
           ))}
 
           <p className="text-[11px] leading-relaxed text-white/35">
-            Immagini e descrizioni sono indicative. Prezzi, disponibilità e
-            modalità di consegna verranno pubblicati all'apertura del negozio.
+            Le immagini sono rendering di anteprima e il prodotto finale può
+            differire. Prezzi, taglie disponibili e modalità di consegna
+            verranno pubblicati all'apertura del negozio.
           </p>
         </section>
 
