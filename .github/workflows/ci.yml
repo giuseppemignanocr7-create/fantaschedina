@@ -66,8 +66,13 @@ jobs:
       - name: Install functions dependencies
         run: npm --prefix functions ci
 
-      - name: Typecheck
-        run: npx tsc --noEmit
+      # Due programmi distinti: il build di produzione non compila i test,
+      # che importano da functions/src. Vedi il commento in tsconfig.json.
+      - name: Typecheck applicazione
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Typecheck test
+        run: npx tsc --noEmit -p tsconfig.test.json
 
       # Zero tolleranza: un warning ignorato oggi è un warning permanente.
       - name: Lint
@@ -85,10 +90,39 @@ jobs:
           retention-days: 7
 
       - name: Build
-        run: npx vite build
+        run: npm run build
 
       - name: Verifica budget bundle
         run: node scripts/check-bundle-size.mjs
+
+  # Il job "frontend" installa anche le dipendenze delle functions, quindi non
+  # rappresenta l'ambiente di Vercel, che esegue solo `npm ci` alla radice.
+  # Questa differenza ha gia' lasciato passare un build rotto in produzione:
+  # un test importava da functions/src e trascinava firebase-functions nel
+  # programma di tsc. Qui il build gira isolato, esattamente come su Vercel.
+  build-produzione:
+    name: Build di produzione (ambiente Vercel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies (solo root, come Vercel)
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: placeholder
+          VITE_FIREBASE_AUTH_DOMAIN: placeholder
+          VITE_FIREBASE_PROJECT_ID: placeholder
+          VITE_FIREBASE_STORAGE_BUCKET: placeholder
+          VITE_FIREBASE_MESSAGING_SENDER_ID: placeholder
+          VITE_FIREBASE_APP_ID: placeholder
 
   functions:
     name: Cloud Functions (typecheck, build)

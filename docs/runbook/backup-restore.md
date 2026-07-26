@@ -4,43 +4,72 @@
 > Questo runbook non è completo finché non hai eseguito **almeno un restore**
 > e compilato il verbale in fondo.
 
+## 0. Stato attuale
+
+*Configurato il 26 luglio 2026 tramite Firebase CLI.*
+
+| Protezione | Stato | Valore |
+|---|---|---|
+| Point-in-time recovery | ✅ attivo | retention 7 giorni (`604800s`) |
+| Delete protection | ✅ attiva | il database non è cancellabile |
+| Backup gestiti | ✅ attivi | giornalieri, retention 7 giorni |
+| Export offsite su GCS | ❌ non configurato | vedi §1.2, opzionale |
+| Restore provato | ❌ **mai eseguito** | vedi §2 |
+
+Database: `(default)`, location **`eur3`** (multi-region Europa), edition
+STANDARD, free tier.
+
+Verifica rapida:
+
+```bash
+firebase firestore:databases:get "(default)"
+firebase firestore:backups:schedules:list
+firebase firestore:backups:list
+```
+
+> **`eur3`, non `europe-west1`.** Le Cloud Functions girano in
+> `europe-west1`, il database no. Un bucket di export creato nella region
+> sbagliata fa fallire l'export con un errore poco chiaro.
+
 ## 1. Configurazione iniziale (una tantum)
 
-Prerequisiti: `gcloud` autenticato sul progetto, ruolo `Owner` o
-`Datastore Import Export Admin`.
+### 1.1 PITR, delete protection e backup gestiti — già fatto
+
+PITR riporta il database a un istante qualsiasi degli ultimi 7 giorni: è la
+difesa contro l'errore umano (una migrazione sbagliata, una cancellazione di
+massa). I backup gestiti sono snapshot giornalieri indipendenti.
+
+Comandi usati, riportati per poterli rieseguire su un altro progetto:
+
+```bash
+firebase firestore:databases:update "(default)" \
+  --point-in-time-recovery ENABLED \
+  --delete-protection ENABLED
+
+firebase firestore:backups:schedules:create \
+  --database "(default)" --recurrence DAILY --retention 7d
+```
+
+> Con delete protection attiva, `firebase firestore:databases:delete` viene
+> rifiutato. Per cancellare davvero il database bisogna prima disattivarla:
+> è esattamente l'attrito che serve.
+
+### 1.2 Export offsite su GCS (opzionale, non configurato)
+
+I backup gestiti vivono dentro lo stesso progetto Google Cloud. Proteggono da
+errore umano sui dati, **non** dalla perdita o sospensione del progetto. Per
+coprire anche quel caso serve un export su un bucket, idealmente in un altro
+progetto.
+
+Richiede `gcloud`. Rimandabile per la beta chiusa; necessario prima
+dell'apertura al pubblico.
 
 ```bash
 gcloud config set project fantaschedina-4a1b2
-```
 
-### 1.1 Point-in-time recovery
-
-PITR consente di riportare il database a un istante qualsiasi degli ultimi
-7 giorni. È la difesa contro l'errore umano (una migrazione sbagliata, una
-cancellazione di massa), non contro la perdita del progetto.
-
-```bash
-gcloud firestore databases update --database='(default)' \
-  --enable-pitr
-```
-
-Verifica:
-
-```bash
-gcloud firestore databases describe --database='(default)' \
-  --format='value(pointInTimeRecoveryEnablement)'
-# atteso: POINT_IN_TIME_RECOVERY_ENABLED
-```
-
-### 1.2 Bucket per gli export
-
-Il bucket deve stare nella **stessa region** del database, altrimenti
-l'export fallisce. Versioning e retention policy proteggono da una
-cancellazione accidentale o dolosa dei backup stessi.
-
-```bash
+# La location deve corrispondere a quella del database: eur3.
 gcloud storage buckets create gs://fantaschedina-backups \
-  --location=europe-west1 \
+  --location=eur3 \
   --uniform-bucket-level-access
 
 gcloud storage buckets update gs://fantaschedina-backups --versioning
@@ -85,6 +114,48 @@ gcloud scheduler jobs run firestore-daily-export --location=europe-west1
 sleep 120
 gcloud storage ls gs://fantaschedina-backups/daily/
 ```
+
+## 1bis. Restore dai backup gestiti (metodo attuale)
+
+Il restore di un backup gestito **crea sempre un database nuovo**: non
+sovrascrive `(default)`. È una proprietà utile, perché permette di verificare i
+dati prima di spostare il traffico.
+
+```bash
+# 1. Elenca i backup disponibili
+firebase firestore:backups:list
+
+# 2. Ripristina in un database nuovo
+firebase firestore:databases:restore \
+  --backup projects/fantaschedina-4a1b2/locations/eur3/backups/<BACKUP_ID> \
+  --database restore-test
+
+# 3. Ispeziona restore-test dalla console prima di qualsiasi switch
+
+# 4. A verifica conclusa, elimina il database di prova per non pagarlo
+firebase firestore:databases:delete restore-test
+```
+
+Per far puntare l'app al database ripristinato serve modificare
+l'inizializzazione di Firestore (client e functions) indicando il database ID:
+non è un'operazione istantanea. Se l'obiettivo è tornare indietro nel tempo su
+`(default)`, usa PITR.
+
+### Restore PITR su `(default)`
+
+Copre gli ultimi 7 giorni con granularità al minuto. Anche qui l'output è un
+database nuovo:
+
+```bash
+firebase firestore:databases:restore \
+  --source-database "(default)" \
+  --snapshot-time 2026-07-26T09:30:00Z \
+  --database recovery-20260726
+```
+
+> `--snapshot-time` deve essere successivo a `earliestVersionTime`, leggibile
+> con `firebase firestore:databases:get "(default)"`. Prima di quell'istante i
+> dati non esistono più.
 
 ## 2. Prova di restore
 
