@@ -993,15 +993,17 @@ export const playMinigame = onCall(callableOpts, async request => {
         );
       }
       // Get user's seen questions to avoid repeats
-      const seenDoc = await db.collection('quiz_seen').doc(uid).get();
+      const seenRef = db.collection('quiz_seen').doc(uid);
+      const seenDoc = await seenRef.get();
       const seenIds = new Set<string>((seenDoc.data()?.questionIds ?? []) as string[]);
       // Filter unseen, fallback to all if everything seen
-      let available = pool.docs.filter(d => !seenIds.has(d.id));
-      if (available.length < COINS.quizMaxQuestions) {
-        // Reset seen if not enough unseen questions
-        available = [...pool.docs];
-        seenIds.clear();
-      }
+      const unseen = pool.docs.filter(d => !seenIds.has(d.id));
+      // Quando le domande non viste scendono sotto una partita intera il ciclo
+      // riparte dall'intero pool: il reset va PERSISTITO, altrimenti la lista
+      // "viste" cresce all'infinito, resta sempre sotto soglia e l'anti-ripetizione
+      // smette di filtrare per sempre.
+      const mustResetSeen = unseen.length < COINS.quizMaxQuestions;
+      const available = mustResetSeen ? [...pool.docs] : unseen;
       const shuffled = fyShuffle(available);
       const picked = shuffled.slice(0, COINS.quizMaxQuestions);
       // Pre-shuffle options for each question and save mapping in session
@@ -1025,13 +1027,10 @@ export const playMinigame = onCall(callableOpts, async request => {
         if (last === today) {
           throw new HttpsError('failed-precondition', 'Hai già giocato oggi, torna domani!');
         }
-        const session = await tx.get(sessionRef);
-        if (
-          session.exists &&
-          session.data()?.date === today &&
-          session.data()?.submitted === false
-        ) {
-          return session.data()?.questions as { id: string; question: string; options: string[]; answerIndex: number }[];
+        // Always create a fresh session with new questions.
+        // Reusing old sessions caused the same questions to appear after refresh.
+        if (mustResetSeen) {
+          tx.set(seenRef, { questionIds: [], updatedAt: FieldValue.serverTimestamp() });
         }
         tx.set(sessionRef, {
           userId: uid,
@@ -1066,6 +1065,13 @@ export const playMinigame = onCall(callableOpts, async request => {
         if (last === today) {
           throw new HttpsError('failed-precondition', 'Hai già giocato oggi, torna domani!');
         }
+        // Firestore impone TUTTE le letture prima di qualsiasi scrittura: questa
+        // get va tenuta qui, non accanto alla scrittura di quiz_seen più sotto,
+        // altrimenti l'intera transazione fallisce con INTERNAL e il quiz non
+        // viene mai registrato (niente riepilogo, niente limite giornaliero).
+        const seenRef = db.collection('quiz_seen').doc(uid);
+        const seenSnap = await tx.get(seenRef);
+
         let correct = 0;
         const corrections: Record<string, number> = {};
         for (const q of sessQuestions) {
@@ -1083,9 +1089,7 @@ export const playMinigame = onCall(callableOpts, async request => {
         }
         tx.update(sessionRef, { submitted: true, correct });
         tx.update(profileRef, updates);
-        // Track seen questions
-        const seenRef = db.collection('quiz_seen').doc(uid);
-        const seenSnap = await tx.get(seenRef);
+        // Track seen questions (la lettura di seenSnap è stata fatta sopra)
         const existingSeen = (seenSnap.data()?.questionIds ?? []) as string[];
         const newSeen = [...new Set([...existingSeen, ...sessQuestions.map(q => q.id)])];
         tx.set(seenRef, { questionIds: newSeen, updatedAt: FieldValue.serverTimestamp() });
