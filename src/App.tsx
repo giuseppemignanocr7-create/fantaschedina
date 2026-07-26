@@ -28,6 +28,7 @@ const RuotaGiornalieraPage = lazy(() => import('@/pages/RuotaGiornalieraPage').t
 const RigoriDuelPage = lazy(() => import('@/pages/RigoriDuelPage').then(m => ({ default: m.RigoriDuelPage })));
 const MemoriaCalcioPage = lazy(() => import('@/pages/MemoriaCalcioPage').then(m => ({ default: m.MemoriaCalcioPage })));
 const PrivacyPage = lazy(() => import('@/pages/PrivacyPage').then(m => ({ default: m.PrivacyPage })));
+const NegozioPage = lazy(() => import('@/pages/NegozioPage').then(m => ({ default: m.NegozioPage })));
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 const AdminPage = lazy(() => import('@/pages/AdminPage').then(m => ({ default: m.AdminPage })));
 
@@ -90,6 +91,7 @@ function App() {
         <Route path="/minigiochi/memoria" element={<MemoriaCalcioPage />} />
         <Route path="/missioni" element={<MissioniPage />} />
         <Route path="/premi" element={<PremiPage />} />
+        <Route path="/negozio" element={<NegozioPage />} />
         <Route path="/calendario" element={<CalendarioPage />} />
         <Route path="/statistiche" element={<StatistichePage />} />
         <Route path="/match" element={<MatchPage />} />

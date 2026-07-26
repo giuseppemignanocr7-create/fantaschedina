@@ -22,5 +22,6 @@ export { RuotaGiornalieraPage } from './RuotaGiornalieraPage';
 export { RigoriDuelPage } from './RigoriDuelPage';
 export { MemoriaCalcioPage } from './MemoriaCalcioPage';
 export { PrivacyPage } from './PrivacyPage';
+export { NegozioPage } from './NegozioPage';
 export { NotFoundPage } from './NotFoundPage';
 export { AdminPage } from './AdminPage';
