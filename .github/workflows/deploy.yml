@@ -97,7 +97,9 @@ jobs:
     name: Deploy (richiede approvazione)
     needs: gates
     runs-on: ubuntu-latest
-    environment: production
+    # Environment dedicato, distinto da "Production" usato dall'integrazione
+    # Vercel: le protection rules qui devono valere solo per questo workflow.
+    environment: production-deploy
     steps:
       - uses: actions/checkout@v4
 
