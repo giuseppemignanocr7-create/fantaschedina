@@ -261,7 +261,16 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
     status: m.status,
   }));
 
-  // Le quote non si rigenerano mai una volta pubblicate (a meno di forceOdds)
+  // Le partite già pubblicate non si rimuovono mai (i pronostici già fatti le
+  // referenziano), ma le partite di un campionato appena attivato dall'admin
+  // vengono aggiunte al pool della giornata già aperta invece di essere ignorate.
+  const prevMatches = prev?.matches ?? [];
+  const prevIds = new Set(prevMatches.map(m => m.id));
+  const newMatches = matches.filter(m => !prevIds.has(m.id));
+  const mergedMatches = prevMatches.length ? [...prevMatches, ...newMatches] : matches;
+
+  // Le quote non si rigenerano mai una volta pubblicate (a meno di forceOdds),
+  // ma le partite nuove aggiunte al pool hanno comunque bisogno delle loro quote.
   let odds = (!forceOdds ? prev?.odds ?? null : null);
   if (!odds) {
     const apiKey = ODDS_API_KEY.value();
@@ -273,6 +282,11 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
       logger.info('syncMatchday: using algorithmic odds (real odds unavailable or no API key)');
       odds = generateMatchdayOdds(api.matches);
     }
+  } else if (newMatches.length > 0) {
+    const apiKey = ODDS_API_KEY.value();
+    const newApiMatches = api.matches.filter(m => !prevIds.has(m.id));
+    const realOdds = await fetchRealMatchdayOdds(newApiMatches, apiKey);
+    odds = { ...odds, ...(realOdds ?? generateMatchdayOdds(newApiMatches)) };
   }
 
   const docData: MatchdayDoc = {
@@ -280,7 +294,7 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
     season: api.season,
     status: prev?.status ?? 'open',
     deadline: prev?.deadline ?? Timestamp.fromDate(api.deadline),
-    matches: prev?.matches?.length ? prev.matches : matches,
+    matches: mergedMatches,
     odds,
     settled: prev?.settled ?? false,
   };
