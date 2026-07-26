@@ -31,6 +31,11 @@ export const COMPETITIONS: CompetitionDef[] = [
   { code: 'uefa.champions', name: 'Champions League', slug: 'uefa.champions' },
   { code: 'uefa.europa', name: 'Europa League', slug: 'uefa.europa' },
   { code: 'ita.coppa_italia', name: 'Coppa Italia', slug: 'ita.coppa_italia' },
+  // Campionati fuori dal calendario europeo (in corso quando i tornei sopra
+  // sono fermi in estate): utili per test reali con partite vere, restano
+  // disattivati finché l'admin non li abilita da /admin > Campionati.
+  { code: 'bra.1', name: 'Brasileirão', slug: 'bra.1' },
+  { code: 'usa.1', name: 'MLS', slug: 'usa.1' },
 ];
 
 export const DEFAULT_ACTIVE_COMPETITIONS: string[] = ['ita.1'];
