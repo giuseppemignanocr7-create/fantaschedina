@@ -87,6 +87,10 @@ export default defineConfig({
           'firebase-auth-vendor': ['firebase/auth'],
           'firebase-firestore-vendor': ['firebase/firestore'],
           'firebase-functions-vendor': ['firebase/functions'],
+          // Incluso solo se VITE_SENTRY_DSN è configurata: senza, il ramo che
+          // chiama Sentry.init() è irraggiungibile e rollup lo elimina.
+          // Chunk a parte perché cambia molto meno spesso del codice dell'app.
+          'sentry-vendor': ['@sentry/react'],
         },
       },
     },

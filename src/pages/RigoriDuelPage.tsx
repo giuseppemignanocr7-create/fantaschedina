@@ -31,7 +31,7 @@ const PENALTY_REVEAL_MS = 2200;
 
 export function RigoriDuelPage() {
   const { profile } = useAuthContext();
-  const [phase, setPhase] = useState<GamePhase>('menu');
+  const [localPhase, setPhase] = useState<GamePhase>('menu');
   const [duelId, setDuelId] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [inputCode, setInputCode] = useState('');
@@ -46,14 +46,56 @@ export function RigoriDuelPage() {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
+  const revealTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Ultimo round già animato: evita di rigiocare l'animazione a ogni snapshot
+  // successivo dello stesso round (il documento cambia anche per altri campi).
+  const animatedRoundRef = useRef<number | null>(null);
 
   const isP1 = duel?.p1.uid === profile?.id;
   const playerNum = isP1 ? 1 : 2;
   const amAttacker = duel?.attacker === playerNum;
 
+  // La fine partita la decide il server. Deriviamola in render invece di
+  // sincronizzarla con un effetto: evita un render in più e non c'è modo di
+  // restare disallineati se lo snapshot arriva mentre il componente è occupato.
+  const phase: GamePhase = duel?.phase === 'finished' ? 'finished' : localPhase;
+
   const cleanup = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (unsubRef.current) unsubRef.current();
+    revealTimersRef.current.forEach(clearTimeout);
+    revealTimersRef.current = [];
+  }, []);
+
+  /**
+   * Riproduce la sequenza gol/parata quando il server pubblica un nuovo round.
+   * Vive nella callback dello snapshot, non in un effetto: è una reazione a un
+   * evento esterno, e tenerla qui evita render a cascata.
+   */
+  const playRoundReveal = useCallback((round: NonNullable<PenaltyDuelState['lastRound']>) => {
+    if (animatedRoundRef.current === round.round) return;
+    animatedRoundRef.current = round.round;
+
+    setLastAnim(round);
+    setShotAnim(round.goal ? 'goal' : 'save');
+    setShake(true);
+    setMyChoice(null);
+    vibrate(round.goal ? 80 : 40);
+
+    revealTimersRef.current.forEach(clearTimeout);
+    revealTimersRef.current = [];
+
+    if (round.goal) {
+      revealTimersRef.current.push(
+        setTimeout(() => burstConfetti(), Math.round(PENALTY_REVEAL_MS * 0.3))
+      );
+    }
+    revealTimersRef.current.push(
+      setTimeout(() => {
+        setShotAnim(null);
+        setShake(false);
+      }, PENALTY_REVEAL_MS)
+    );
   }, []);
 
   useEffect(() => cleanup, [cleanup]);
@@ -64,9 +106,11 @@ export function RigoriDuelPage() {
     unsubRef.current = onSnapshot(doc(db, 'penalty_duels', duelId), snap => {
       if (!snap.exists()) return;
       const data = snap.data() as Omit<PenaltyDuelState, 'id'>;
-      setDuel({ id: snap.id, ...data } as PenaltyDuelState);
+      const next = { id: snap.id, ...data } as PenaltyDuelState;
+      setDuel(next);
+      if (next.lastRound) playRoundReveal(next.lastRound);
     });
-  }, [duelId]);
+  }, [duelId, playRoundReveal]);
 
   const handleTimeout = useCallback(async () => {
     if (!duelId || myChoice !== null) return;
@@ -93,25 +137,6 @@ export function RigoriDuelPage() {
     timerRef.current = setInterval(update, 100);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [duel?.round, duel?.phase, duel?.deadlineAt, myChoice, handleTimeout]);
-
-  useEffect(() => {
-    if (!duel?.lastRound) return;
-    if (lastAnim?.round === duel.lastRound.round) return;
-    setLastAnim(duel.lastRound);
-    setShotAnim(duel.lastRound.goal ? 'goal' : 'save');
-    setShake(true);
-    setMyChoice(null);
-    vibrate(duel.lastRound.goal ? 80 : 40);
-    let confettiTimer: ReturnType<typeof setTimeout> | undefined;
-    if (duel.lastRound.goal) {
-      confettiTimer = setTimeout(() => burstConfetti(), Math.round(PENALTY_REVEAL_MS * 0.3));
-    }
-    const t = setTimeout(() => {
-      setShotAnim(null);
-      setShake(false);
-    }, PENALTY_REVEAL_MS);
-    return () => { clearTimeout(t); if (confettiTimer) clearTimeout(confettiTimer); };
-  }, [duel?.lastRound, lastAnim?.round]);
 
   const handleChoice = async (target: PenaltyTarget) => {
     if (!duelId || myChoice !== null || shotAnim || duel?.phase !== 'playing') return;
@@ -176,13 +201,6 @@ export function RigoriDuelPage() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  useEffect(() => {
-    if (duel?.phase === 'finished' && phase !== 'finished') {
-      setPhase('finished');
-      setTimer(0);
-    }
-  }, [duel?.phase, phase]);
-
   if (phase === 'create') {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
@@ -244,7 +262,22 @@ export function RigoriDuelPage() {
             </div>
           )}
           <div className="flex gap-2">
-            <button onClick={() => { cleanup(); setPhase('menu'); setDuel(null); setDuelId(null); }} className="flex-1 btn-green text-sm font-black">🔄 Gioca ancora</button>
+            <button
+              onClick={() => {
+                cleanup();
+                // Senza questo reset la partita successiva non animerebbe il
+                // round 1, avendolo già "visto" nella partita precedente.
+                animatedRoundRef.current = null;
+                setLastAnim(null);
+                setShotAnim(null);
+                setPhase('menu');
+                setDuel(null);
+                setDuelId(null);
+              }}
+              className="flex-1 btn-green text-sm font-black"
+            >
+              🔄 Gioca ancora
+            </button>
             <Link to="/minigiochi" className="flex items-center justify-center flex-1 btn-secondary text-sm">← Minigiochi</Link>
           </div>
         </div>

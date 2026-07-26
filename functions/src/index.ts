@@ -9,6 +9,7 @@
 // ============================================
 
 import { initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import {
   getFirestore,
   Timestamp,
@@ -19,7 +20,9 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions/v2';
+import { defineSecret } from 'firebase-functions/params';
 import { randomInt } from 'node:crypto';
+import { secureIndex, securePick, secureShuffle } from './random';
 
 import {
   COINS, MISSIONS, POWERUPS, PowerUpSelection,
@@ -41,6 +44,35 @@ const db = getFirestore();
 
 const REGION = 'europe-west1';
 
+// Le function v2 ricevono i secret solo se dichiarati nelle loro opzioni:
+// senza `secrets: [ODDS_API_KEY]` la variabile d'ambiente resta vuota e il
+// sistema ricade silenziosamente sulle quote algoritmiche.
+const ODDS_API_KEY = defineSecret('ODDS_API_KEY');
+
+// Tetto alle istanze concorrenti: contiene il costo in caso di loop o di
+// picco anomalo di traffico.
+const MAX_INSTANCES = 10;
+
+/**
+ * App Check: verifica che la chiamata arrivi davvero dalla nostra web app e
+ * non da uno script con un token utente rubato o creato ad hoc.
+ *
+ * Richiede che `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY` sia configurata sul
+ * frontend: senza, il client non allega alcun token e ogni chiamata verrebbe
+ * respinta. Sequenza di attivazione (vedi docs/runbook/app-check.md):
+ *   1. configurare reCAPTCHA Enterprise e la site key su Vercel
+ *   2. deployare il frontend e verificare le metriche App Check in console
+ *   3. portare questa costante a `true` e ridistribuire le functions
+ */
+const ENFORCE_APP_CHECK = false;
+
+/** Opzioni condivise da tutte le callable. */
+const callableOpts = {
+  region: REGION,
+  maxInstances: MAX_INSTANCES,
+  enforceAppCheck: ENFORCE_APP_CHECK,
+} as const;
+
 // ---------- Helpers ----------
 
 function romeDateString(d = new Date()): string {
@@ -53,12 +85,7 @@ function romeDateString(d = new Date()): string {
 }
 
 function fyShuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
+  return secureShuffle(arr);
 }
 
 function generateInviteCode(): string {
@@ -237,7 +264,7 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
   // Le quote non si rigenerano mai una volta pubblicate (a meno di forceOdds)
   let odds = (!forceOdds ? prev?.odds ?? null : null);
   if (!odds) {
-    const apiKey = process.env.ODDS_API_KEY ?? '';
+    const apiKey = ODDS_API_KEY.value();
     const realOdds = await fetchRealMatchdayOdds(api.matches, apiKey);
     if (realOdds) {
       logger.info('syncMatchday: using real odds from odds-api.io');
@@ -279,7 +306,13 @@ async function getCurrentMatchday(): Promise<MatchdayDoc | null> {
 // ---------- 1. SYNC GIORNATA (scheduled ogni 6 ore) ----------
 
 export const syncMatchday = onSchedule(
-  { schedule: 'every 6 hours', region: REGION, timeZone: 'Europe/Rome' },
+  {
+    schedule: 'every 6 hours',
+    region: REGION,
+    timeZone: 'Europe/Rome',
+    secrets: [ODDS_API_KEY],
+    maxInstances: 1,
+  },
   async () => {
     const md = await syncMatchdayInternal();
     logger.info(md ? `Giornata ${md.number} sincronizzata` : 'Nessuna giornata trovata');
@@ -289,7 +322,7 @@ export const syncMatchday = onSchedule(
 // ---------- 2. SETTLEMENT AUTOMATICO (scheduled ogni ora) ----------
 
 export const settleMatchdays = onSchedule(
-  { schedule: 'every 60 minutes', region: REGION, timeZone: 'Europe/Rome' },
+  { schedule: 'every 60 minutes', region: REGION, timeZone: 'Europe/Rome', maxInstances: 1 },
   async () => {
     const now = Timestamp.now();
     const pending = await db
@@ -359,7 +392,7 @@ export const settleMatchdays = onSchedule(
 // ---------- 2b. PUNTEGGI LIVE (scheduled ogni 2 min, solo in finestra partite) ----------
 
 export const updateLiveScores = onSchedule(
-  { schedule: 'every 2 minutes', region: REGION, timeZone: 'Europe/Rome' },
+  { schedule: 'every 2 minutes', region: REGION, timeZone: 'Europe/Rome', maxInstances: 1 },
   async () => {
     const md = await getCurrentMatchday();
     if (!md || md.settled) return;
@@ -573,7 +606,7 @@ async function settleSchedine(
 
 // ---------- 3. SUBMIT SCHEDINA (callable) ----------
 
-export const submitSchedina = onCall({ region: REGION, enforceAppCheck: false }, async request => {
+export const submitSchedina = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'submitSchedina', 3, 60_000);
@@ -701,7 +734,7 @@ export const submitSchedina = onCall({ region: REGION, enforceAppCheck: false },
 
 // ---------- 4. CAMBIO LAST-MINUTE (callable) ----------
 
-export const changePrediction = onCall({ region: REGION, enforceAppCheck: false }, async request => {
+export const changePrediction = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'changePrediction', 5, 60_000);
@@ -750,7 +783,7 @@ export const changePrediction = onCall({ region: REGION, enforceAppCheck: false 
 
 // ---------- 4b. ANNULLA SCHEDINA (callable) ----------
 
-export const cancelSchedina = onCall({ region: REGION, enforceAppCheck: false }, async request => {
+export const cancelSchedina = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'cancelSchedina', 5, 60_000);
@@ -795,7 +828,7 @@ export const cancelSchedina = onCall({ region: REGION, enforceAppCheck: false },
 // ---------- 5. MINIGIOCHI (callable) ----------
 
 // --- Seed/update quiz questions into Firestore (admin callable) ---
-export const seedQuizQuestions = onCall({ region: REGION }, async request => {
+export const seedQuizQuestions = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await requireAdmin(uid);
@@ -822,7 +855,7 @@ export const seedQuizQuestions = onCall({ region: REGION }, async request => {
   return { message: 'Domande aggiornate', count: ALL_QUIZ_QUESTIONS.length };
 });
 
-export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, async request => {
+export const playMinigame = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
 
@@ -1071,7 +1104,7 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
     // --- RUOTA ---
     case 'wheel_spin': {
       const prizes = COINS.wheelPrizes;
-      const idx = Math.floor(Math.random() * prizes.length);
+      const idx = secureIndex(prizes.length);
       const reward = prizes[idx];
       await claimDailyReward('ruota', reward, 'minigame_ruota');
       return { segmentIndex: idx, reward };
@@ -1244,7 +1277,7 @@ export const playMinigame = onCall({ region: REGION, enforceAppCheck: false }, a
   }
 });
 
-export const getPublicProfiles = onCall({ region: REGION, enforceAppCheck: false }, async request => {
+export const getPublicProfiles = onCall(callableOpts, async request => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   }
@@ -1286,7 +1319,7 @@ export const getPublicProfiles = onCall({ region: REGION, enforceAppCheck: false
   };
 });
 
-export const manageLeague = onCall({ region: REGION, enforceAppCheck: false }, async request => {
+export const manageLeague = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'manageLeague', 10, 60_000);
@@ -1464,7 +1497,7 @@ export const onLeagueWritten = onDocumentWritten(
 
 // ---------- 7. MISSIONI (callable) ----------
 
-export const claimMission = onCall({ region: REGION, enforceAppCheck: false }, async request => {
+export const claimMission = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
 
@@ -1499,6 +1532,117 @@ export const claimMission = onCall({ region: REGION, enforceAppCheck: false }, a
 });
 
 // ============================================
+// 7b. DIRITTI DELL'INTERESSATO (GDPR artt. 15, 17, 20)
+// ============================================
+
+/**
+ * Portabilità (art. 20): restituisce in JSON tutti i dati riferiti
+ * all'utente autenticato. Solo i propri: l'uid arriva dal token, non
+ * dal payload, quindi non è forzabile dal client.
+ */
+export const exportMyData = onCall(callableOpts, async request => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await enforceRateLimit(uid, 'exportMyData', 3, 3_600_000);
+
+  const [profileSnap, schedineSnap, walletSnap, duelsP1, duelsP2, leaguesSnap] = await Promise.all([
+    db.collection('profiles').doc(uid).get(),
+    db.collection('schedine').where('userId', '==', uid).get(),
+    db.collection('wallet_transactions').where('userId', '==', uid).get(),
+    db.collection('penalty_duels').where('p1.uid', '==', uid).get(),
+    db.collection('penalty_duels').where('p2.uid', '==', uid).get(),
+    db.collection('leagues').where('memberIds', 'array-contains', uid).get(),
+  ]);
+
+  logger.info('exportMyData', { uid });
+
+  return {
+    exportedAt: new Date().toISOString(),
+    format: 'application/json',
+    profile: profileSnap.exists ? { id: profileSnap.id, ...profileSnap.data() } : null,
+    schedine: schedineSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+    walletTransactions: walletSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+    penaltyDuels: [...duelsP1.docs, ...duelsP2.docs].map(d => ({ id: d.id, ...d.data() })),
+    leagues: leaguesSnap.docs.map(d => ({
+      id: d.id,
+      name: d.data().name,
+      isOwner: d.data().ownerId === uid,
+    })),
+  };
+});
+
+/**
+ * Cancellazione (art. 17). Elimina in cascata tutti i dati personali e
+ * infine l'utenza di autenticazione.
+ *
+ * Scelte deliberate:
+ * - le leghe di cui l'utente è proprietario vengono eliminate: senza owner
+ *   resterebbero orfane e non più amministrabili;
+ * - i duelli vengono cancellati integralmente perché contengono lo username
+ *   di entrambi i giocatori;
+ * - l'utenza Auth è rimossa per ultima: se qualcosa fallisce prima, l'utente
+ *   può ancora autenticarsi e ripetere l'operazione.
+ */
+export const deleteAccount = onCall(callableOpts, async request => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+
+  const confirm = request.data?.confirm;
+  if (confirm !== 'ELIMINA') {
+    throw new HttpsError('failed-precondition', 'Conferma mancante');
+  }
+
+  await enforceRateLimit(uid, 'deleteAccount', 3, 3_600_000);
+  logger.info('deleteAccount:start', { uid });
+
+  const deleteAll = async (docs: FirebaseFirestore.QueryDocumentSnapshot[]): Promise<number> => {
+    for (let i = 0; i < docs.length; i += 400) {
+      const batch = db.batch();
+      for (const d of docs.slice(i, i + 400)) batch.delete(d.ref);
+      await batch.commit();
+    }
+    return docs.length;
+  };
+
+  const [schedineSnap, walletSnap, duelsP1, duelsP2, ownedLeagues, memberLeagues] =
+    await Promise.all([
+      db.collection('schedine').where('userId', '==', uid).get(),
+      db.collection('wallet_transactions').where('userId', '==', uid).get(),
+      db.collection('penalty_duels').where('p1.uid', '==', uid).get(),
+      db.collection('penalty_duels').where('p2.uid', '==', uid).get(),
+      db.collection('leagues').where('ownerId', '==', uid).get(),
+      db.collection('leagues').where('memberIds', 'array-contains', uid).get(),
+    ]);
+
+  const removed = {
+    schedine: await deleteAll(schedineSnap.docs),
+    walletTransactions: await deleteAll(walletSnap.docs),
+    penaltyDuels: await deleteAll([...duelsP1.docs, ...duelsP2.docs]),
+    ownedLeagues: await deleteAll(ownedLeagues.docs),
+  };
+
+  // Uscita dalle leghe altrui: si rimuove il membro, la lega resta agli altri.
+  const ownedIds = new Set(ownedLeagues.docs.map(d => d.id));
+  for (const league of memberLeagues.docs) {
+    if (ownedIds.has(league.id)) continue;
+    await league.ref.update({
+      memberIds: FieldValue.arrayRemove(uid),
+      memberCount: FieldValue.increment(-1),
+    });
+  }
+
+  await db.collection('profiles').doc(uid).delete();
+
+  // Le sessioni attive vanno invalidate prima di rimuovere l'utenza,
+  // altrimenti un ID token già emesso resta valido fino alla scadenza.
+  await getAuth().revokeRefreshTokens(uid);
+  await getAuth().deleteUser(uid);
+
+  logger.info('deleteAccount:done', { uid, ...removed });
+  return { ok: true, removed };
+});
+
+// ============================================
 // 8. ADMIN FUNCTIONS (callable, role-gated)
 // ============================================
 
@@ -1511,7 +1655,7 @@ async function requireAdmin(uid: string): Promise<void> {
 }
 
 /** Sync giornata manuale (admin). */
-export const adminSyncMatchday = onCall({ region: REGION }, async request => {
+export const adminSyncMatchday = onCall({ ...callableOpts, secrets: [ODDS_API_KEY] }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await requireAdmin(uid);
@@ -1521,7 +1665,7 @@ export const adminSyncMatchday = onCall({ region: REGION }, async request => {
 });
 
 /** Lista/attivazione campionati (admin): quali campionati alimentano il pool partite. */
-export const adminManageCompetitions = onCall({ region: REGION }, async request => {
+export const adminManageCompetitions = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await requireAdmin(uid);
@@ -1554,7 +1698,7 @@ export const adminManageCompetitions = onCall({ region: REGION }, async request 
 });
 
 /** Force settlement di una giornata specifica (admin). */
-export const adminForceSettle = onCall({ region: REGION }, async request => {
+export const adminForceSettle = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await requireAdmin(uid);
@@ -1592,7 +1736,7 @@ export const adminForceSettle = onCall({ region: REGION }, async request => {
 });
 
 /** CRUD sponsor (admin). */
-export const adminManageSponsor = onCall({ region: REGION }, async request => {
+export const adminManageSponsor = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await requireAdmin(uid);
@@ -1652,7 +1796,7 @@ export const adminManageSponsor = onCall({ region: REGION }, async request => {
 });
 
 /** Statistiche admin (utenti, schedine, gettoni). */
-export const adminGetStats = onCall({ region: REGION }, async request => {
+export const adminGetStats = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await requireAdmin(uid);
@@ -1680,7 +1824,7 @@ export const adminGetStats = onCall({ region: REGION }, async request => {
 });
 
 /** Ban/unban utente (admin). */
-export const adminToggleBan = onCall({ region: REGION }, async request => {
+export const adminToggleBan = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await requireAdmin(uid);
@@ -1754,16 +1898,16 @@ function totalRegularRounds(mode: DuelMode): number {
 
 function randomTarget(): PenaltyTarget {
   const targets: PenaltyTarget[] = ['left', 'center', 'right'];
-  return targets[randomInt(targets.length)];
+  return securePick(targets);
 }
 
 function botTarget(): PenaltyTarget {
   // Slight preference for center (realistic keeper dives)
   const weights: PenaltyTarget[] = ['left', 'center', 'right', 'center', 'left', 'right'];
-  return weights[randomInt(weights.length)];
+  return securePick(weights);
 }
 
-export const managePenaltyDuel = onCall({ region: REGION, enforceAppCheck: false }, async request => {
+export const managePenaltyDuel = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'managePenaltyDuel', 15, 60_000);

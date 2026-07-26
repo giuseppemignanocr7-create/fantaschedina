@@ -3,6 +3,8 @@
 // Fetch pool multi-campionato + risultati (incl. parziale 1° tempo dai linescores).
 // ============================================
 
+import { fetchJson } from './http';
+
 const ESPN_BASE = (slug: string) => `https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}`;
 
 const ESPN_TO_ID: Record<string, string> = {
@@ -53,16 +55,10 @@ export interface EspnResult {
 }
 
 async function fetchScoreboard(slug: string, dateStr?: string): Promise<ESPNScoreboard | null> {
-  try {
-    const url = dateStr
-      ? `${ESPN_BASE(slug)}/scoreboard?dates=${dateStr}&limit=50`
-      : `${ESPN_BASE(slug)}/scoreboard?limit=50`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    return (await res.json()) as ESPNScoreboard;
-  } catch {
-    return null;
-  }
+  const url = dateStr
+    ? `${ESPN_BASE(slug)}/scoreboard?dates=${dateStr}&limit=50`
+    : `${ESPN_BASE(slug)}/scoreboard?limit=50`;
+  return fetchJson<ESPNScoreboard>(url, { label: `espn:${slug}` });
 }
 
 function teamOf(c: ESPNCompetitor) {

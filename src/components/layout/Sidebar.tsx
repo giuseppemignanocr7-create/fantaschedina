@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, Target, Trophy, BarChart2, Gamepad2, Flag, Gift, User,
-  X, TrendingUp, Calendar, FileText, LogOut, Zap, ShoppingBag, type LucideIcon,
+  X, TrendingUp, Calendar, FileText, LogOut, Zap, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -21,7 +21,6 @@ const navLinks = [
   { to: '/minigiochi', label: 'Minigiochi', icon: Gamepad2 },
   { to: '/missioni', label: 'Missioni', icon: Flag },
   { to: '/premi', label: 'Premi', icon: Gift },
-  { to: '/negozio', label: 'Negozio', icon: ShoppingBag },
   { to: '/calendario', label: 'Calendario', icon: Calendar },
   { to: '/statistiche', label: 'Statistiche', icon: BarChart2 },
   { to: '/profilo', label: 'Profilo', icon: User },

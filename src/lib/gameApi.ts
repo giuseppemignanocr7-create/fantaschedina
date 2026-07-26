@@ -416,3 +416,42 @@ export async function adminManageCompetitionsFn(
   const res = await fn({ action, ...data });
   return res.data;
 }
+
+// --- DIRITTI DELL'INTERESSATO (GDPR) ---
+
+export interface MyDataExport {
+  exportedAt: string;
+  format: string;
+  profile: Record<string, unknown> | null;
+  schedine: Record<string, unknown>[];
+  walletTransactions: Record<string, unknown>[];
+  penaltyDuels: Record<string, unknown>[];
+  leagues: { id: string; name: string; isOwner: boolean }[];
+}
+
+/** Art. 20 GDPR — portabilità: scarica tutti i dati dell'utente corrente. */
+export async function exportMyDataFn(): Promise<MyDataExport> {
+  const fn = httpsCallable<Record<string, never>, MyDataExport>(functions, 'exportMyData');
+  const res = await fn({} as Record<string, never>);
+  return res.data;
+}
+
+export interface DeleteAccountResult {
+  ok: boolean;
+  removed: {
+    schedine: number;
+    walletTransactions: number;
+    penaltyDuels: number;
+    ownedLeagues: number;
+  };
+}
+
+/**
+ * Art. 17 GDPR — cancellazione. La parola di conferma è richiesta anche dal
+ * server: impedisce che una chiamata accidentale distrugga l'account.
+ */
+export async function deleteAccountFn(confirm: string): Promise<DeleteAccountResult> {
+  const fn = httpsCallable<{ confirm: string }, DeleteAccountResult>(functions, 'deleteAccount');
+  const res = await fn({ confirm });
+  return res.data;
+}

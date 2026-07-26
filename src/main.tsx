@@ -5,7 +5,11 @@ import App from './App'
 import { ToastProvider } from './contexts/ToastContext'
 import { AuthProvider } from './contexts/AuthContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { initMonitoring } from './lib/monitoring'
 import './index.css'
+
+// Prima del render: così anche un errore in fase di avvio viene registrato.
+initMonitoring()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

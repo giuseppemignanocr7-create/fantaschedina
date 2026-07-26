@@ -372,7 +372,11 @@ export function LoginPage() {
                   <Link to="/regolamento" className="text-primary-400 hover:text-primary-300 font-bold">
                     Regolamento Ufficiale
                   </Link>{' '}
-                  e confermo di essere maggiorenne (+18).
+                  e l'{' '}
+                  <Link to="/privacy" className="text-primary-400 hover:text-primary-300 font-bold">
+                    Informativa Privacy
+                  </Link>
+                  , e confermo di essere maggiorenne (+18).
                 </label>
               </div>
             )}

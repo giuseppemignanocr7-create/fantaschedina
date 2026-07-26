@@ -22,22 +22,7 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      // Forza l'aggiornamento del Service Worker a ogni caricamento per evitare cache PWA obsolete.
-      // Con skipWaiting+clientsClaim il nuovo SW prende il controllo subito: senza questo reload
-      // la tab rimane con il bundle JS vecchio e i lazy chunk falliscono al primo cambio pagina.
-      if ('serviceWorker' in navigator) {
-        let refreshing = false;
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          if (refreshing) return;
-          refreshing = true;
-          window.location.reload();
-        });
-        navigator.serviceWorker.getRegistrations().then(regs => {
-          regs.forEach(r => { r.update(); });
-        });
-      }
-    </script>
+    <script src="/sw-refresh.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

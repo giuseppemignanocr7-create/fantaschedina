@@ -5,6 +5,8 @@
 // Allineato a src/lib/penalty.ts (tipi/costanti condivise col client).
 // ============================================
 
+import { secureChance, securePick, secureUnit } from './random';
+
 export type PenaltyZone = 'TL' | 'TC' | 'TR' | 'BL' | 'BC' | 'BR';
 
 export const PENALTY_ZONES: PenaltyZone[] = ['TL', 'TC', 'TR', 'BL', 'BC', 'BR'];
@@ -30,7 +32,7 @@ const ZONE_BASE_CHANCE: Record<PenaltyZone, number> = {
 };
 
 function randomZone(): PenaltyZone {
-  return PENALTY_ZONES[Math.floor(Math.random() * PENALTY_ZONES.length)];
+  return securePick(PENALTY_ZONES);
 }
 
 export function isValidZone(z: unknown): z is PenaltyZone {
@@ -51,7 +53,7 @@ export function resolveShot(zone: PenaltyZone, power: number): ShotResult {
   let chance = base * precisionFactor;
   if (keeper === zone) chance *= 0.45; // il portiere ha indovinato la zona
   chance = Math.max(0.05, Math.min(0.95, chance));
-  const goal = Math.random() < chance;
+  const goal = secureChance(chance);
   return { shot: zone, keeper, goal, power: clampedPower };
 }
 
@@ -62,10 +64,10 @@ export function resolveShot(zone: PenaltyZone, power: number): ShotResult {
  */
 export function simulateOpponentShot(skillLevel: number): ShotInput {
   const skill = Math.max(0, Math.min(1, skillLevel));
-  const goesForCorner = Math.random() < 0.25 + skill * 0.45;
+  const goesForCorner = secureChance(0.25 + skill * 0.45);
   const pool: PenaltyZone[] = goesForCorner ? ['TL', 'TR', 'BL', 'BR'] : ['TC', 'BC'];
-  const zone = pool[Math.floor(Math.random() * pool.length)];
-  const power = Math.max(0, Math.min(100, 35 + skill * 45 + Math.random() * 20));
+  const zone = securePick(pool);
+  const power = Math.max(0, Math.min(100, 35 + skill * 45 + secureUnit() * 20));
   return { zone, power };
 }
 

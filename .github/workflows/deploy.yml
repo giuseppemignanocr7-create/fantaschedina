@@ -1,0 +1,176 @@
+name: Deploy in produzione
+
+# Il deploy non parte mai da solo: richiede un'azione esplicita e
+# l'approvazione sull'environment protetto `production`.
+#
+# Configurazione richiesta una tantum (Settings → Environments → production):
+#   - Required reviewers: almeno una persona
+#   - Secrets: FIREBASE_SERVICE_ACCOUNT, VERCEL_TOKEN, VERCEL_ORG_ID,
+#              VERCEL_PROJECT_ID
+#
+# Procedura completa: docs/runbook/deploy.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_rules:
+        description: 'Deploy Firestore rules e indici'
+        type: boolean
+        default: true
+      deploy_functions:
+        description: 'Deploy Cloud Functions'
+        type: boolean
+        default: true
+      deploy_frontend:
+        description: 'Deploy frontend su Vercel'
+        type: boolean
+        default: true
+
+# Mai due deploy contemporanei sullo stesso ambiente.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  gates:
+    name: Gate di rilascio
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scanning (intera history)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix functions ci
+
+      - name: Typecheck frontend
+        run: npx tsc --noEmit
+
+      - name: Typecheck functions
+        working-directory: functions
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint . --max-warnings 0
+
+      - name: Unit tests con coverage
+        run: npx vitest run --coverage
+
+      - name: Audit dipendenze di produzione
+        run: |
+          npm audit --omit=dev --audit-level=critical
+          npm --prefix functions audit --omit=dev --audit-level=critical
+
+      - name: Build frontend
+        run: npx vite build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: ${{ secrets.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_APP_VERSION: ${{ github.sha }}
+
+      - name: Verifica budget bundle
+        run: node scripts/check-bundle-size.mjs
+
+      - name: Build functions
+        working-directory: functions
+        run: npm run build
+
+  deploy:
+    name: Deploy (richiede approvazione)
+    needs: gates
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix functions ci
+
+      - name: Autenticazione Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      # ORDINE OBBLIGATO. Le rules devono già accettare i campi nuovi prima
+      # che le functions li scrivano; il frontend va per ultimo perché è
+      # quello che genera traffico verso il backend appena aggiornato.
+
+      - name: 1. Deploy Firestore rules e indici
+        if: inputs.deploy_rules
+        run: npx firebase-tools deploy --only firestore:rules,firestore:indexes --project ${{ secrets.FIREBASE_PROJECT_ID }} --non-interactive
+
+      - name: 2. Deploy Cloud Functions
+        if: inputs.deploy_functions
+        run: npx firebase-tools deploy --only functions --project ${{ secrets.FIREBASE_PROJECT_ID }} --non-interactive
+        env:
+          FUNCTIONS_DISCOVERY_TIMEOUT: 120
+
+      - name: 3. Build frontend
+        if: inputs.deploy_frontend
+        run: npx vite build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: ${{ secrets.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_APP_VERSION: ${{ github.sha }}
+
+      - name: 4. Deploy su Vercel
+        if: inputs.deploy_frontend
+        run: npx vercel deploy --prod --prebuilt=false --yes --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Verifica header di sicurezza
+        if: inputs.deploy_frontend
+        run: |
+          sleep 15
+          headers=$(curl -sSI https://fantaschedina.vercel.app)
+          echo "$headers"
+          for h in "content-security-policy" "x-content-type-options" "referrer-policy" "permissions-policy" "strict-transport-security"; do
+            if ! echo "$headers" | grep -qi "$h"; then
+              echo "::error::Header di sicurezza mancante: $h"
+              exit 1
+            fi
+          done
+          echo "Tutti gli header di sicurezza sono presenti."
+
+      - name: Tag della release
+        run: |
+          git tag "release-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          git push --tags
+
+      - name: Promemoria post-deploy
+        run: |
+          echo "::notice::Deploy completato. Esegui lo smoke test descritto in docs/runbook/deploy.md §5."
+          echo "::notice::Reperibilità attiva per le prossime 24 ore. Rollback: docs/runbook/rollback.md"

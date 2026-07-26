@@ -6,7 +6,47 @@ on:
   pull_request:
     branches: [master]
 
+# Un push successivo annulla la run precedente sullo stesso ramo:
+# evita code di build inutili e feedback su artefatti già superati.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  security:
+    name: Sicurezza (segreti, dipendenze)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks deve poter ispezionare TUTTA la history, non solo l'ultimo
+          # commit: un segreto rimosso ieri è ancora un segreto esposto.
+          fetch-depth: 0
+
+      - name: Secret scanning (intera history)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Solo le dipendenze di produzione: quelle di sviluppo non finiscono
+      # nel bundle servito agli utenti.
+      - name: Audit dipendenze frontend
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: Audit dipendenze functions
+        working-directory: functions
+        run: |
+          npm ci
+          npm audit --omit=dev --audit-level=critical
+
   frontend:
     name: Frontend (typecheck, lint, test, build)
     runs-on: ubuntu-latest
@@ -21,17 +61,34 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Le functions servono anche al frontend: i test importano da
+      # functions/src e firebase-functions è installato solo lì.
+      - name: Install functions dependencies
+        run: npm --prefix functions ci
+
       - name: Typecheck
         run: npx tsc --noEmit
 
+      # Zero tolleranza: un warning ignorato oggi è un warning permanente.
       - name: Lint
-        run: npx eslint .
+        run: npx eslint . --max-warnings 0
 
-      - name: Unit tests
-        run: npx vitest run
+      - name: Unit tests con coverage
+        run: npx vitest run --coverage
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
 
       - name: Build
         run: npx vite build
+
+      - name: Verifica budget bundle
+        run: node scripts/check-bundle-size.mjs
 
   functions:
     name: Cloud Functions (typecheck, build)

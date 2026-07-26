@@ -5,7 +5,18 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['dist', 'functions/lib', 'functions/node_modules', 'node_modules'] },
+  {
+    ignores: [
+      'dist',
+      'functions/lib',
+      'functions/node_modules',
+      'node_modules',
+      // Artefatti generati: non è codice nostro e sporca il report.
+      'coverage',
+      'playwright-report',
+      'test-results',
+    ],
+  },
   {
     files: ['src/**/*.{ts,tsx}', 'functions/src/**/*.ts'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

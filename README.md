@@ -75,9 +75,14 @@ Le quote sono generate algoritmicamente di default. Per usare **quote reali da b
 # 1. Registrati su the-odds-api.com → ottieni una API key gratuita
 # 2. Imposta la secret su Firebase
 firebase functions:secrets:set ODDS_API_KEY
-# 3. Ridistribuisci le functions
+# 3. Ridistribuisci le functions (obbligatorio a ogni cambio di secret)
 firebase deploy --only functions
 ```
+
+> Il secret è dichiarato con `defineSecret` e collegato a `syncMatchday` e
+> `adminSyncMatchday`. Le function v2 ricevono i secret **solo** se elencati
+> nelle loro opzioni: senza, `process.env` resta vuoto e il sistema ricade
+> silenziosamente sulle quote algoritmiche.
 
 Se la key non è impostata o l'API non risponde, il sistema usa automaticamente l'engine algoritmico come fallback. Mercati coperti da quote reali: `esito`, `over_under`, `goal_nogoal`, `doppia_chance` (derivata). Mercati algoritmici: `multigoal`, `esito_1t`, `over_under_1t`, `goal_nogoal_1t`.
 
@@ -117,19 +122,62 @@ npm run build     # produzione
 3. `settleMatchdays` (ogni ora, post-deadline) legge i risultati ESPN
 4. Quando tutte le partite sono finite: valuta le schedine (multi-mercato: 1X2, O/U, GG/NG, DC, multigoal, 1° tempo), applica i power-up, aggiorna profili in transaction, assegna premi (vincitore, quota più alta, poker), accredita gettoni e resetta `weeklyPoints` dei non-giocanti
 
-## Test
+## Test e verifiche
 
 ```bash
-npm test
+npm test              # 1462 test unitari
+npm run test:coverage # con soglie di copertura
+npm run check         # typecheck + lint (0 warning) + test + coverage
+npm run check:bundle  # budget di dimensione (richiede build)
+npm run audit:prod    # CVE sulle sole dipendenze di produzione
+npm run test:e2e      # Playwright contro gli emulatori Firebase
 ```
-Coprono `src/lib/scoring.ts` e `functions/src/scoring.ts` (regole punti, bonus, penalità, mercati, power-up, premi speciali).
 
-## Deploy frontend
+Coperti: scoring client e server, motore quote, economia, classifiche,
+sorgente casuale, motore rigori, client HTTP resiliente.
 
-Statico su **Vercel** o **Netlify**: imposta le `VITE_FIREBASE_*` nel pannello del provider. Il backend è interamente su Firebase.
+**Non ancora coperto:** `functions/src/index.ts` (settlement, callable,
+economia) richiede l'emulatore Firestore. È il prossimo intervento prioritario
+e il motivo per cui la copertura per riga è bassa.
+
+## Deploy
+
+**Il deploy in produzione avviene solo dalla CI, con approvazione manuale.**
+Non usare `vercel --prod` da locale: pubblicherebbe codice che non ha superato
+i gate.
+
+GitHub → Actions → *Deploy in produzione* → Run workflow.
+
+Procedura completa, configurazione dei secret e criteri di abort:
+[`docs/runbook/deploy.md`](./docs/runbook/deploy.md).
+
+## Operatività
+
+| Documento | Quando serve |
+|---|---|
+| [`docs/runbook/deploy.md`](./docs/runbook/deploy.md) | Rilasciare |
+| [`docs/runbook/rollback.md`](./docs/runbook/rollback.md) | Tornare indietro |
+| [`docs/runbook/backup-restore.md`](./docs/runbook/backup-restore.md) | Backup e ripristino |
+| [`docs/runbook/incidenti.md`](./docs/runbook/incidenti.md) | Qualcosa è rotto |
+| [`docs/runbook/osservabilita.md`](./docs/runbook/osservabilita.md) | Sentry, uptime, alert |
+| [`docs/runbook/app-check.md`](./docs/runbook/app-check.md) | Attivare App Check |
+| [`SECURITY.md`](./SECURITY.md) | Postura di sicurezza e limiti noti |
+| [`docs/privacy/registro-trattamenti.md`](./docs/privacy/registro-trattamenti.md) | Adempimenti GDPR |
+
+## Stato: beta chiusa (T1)
+
+Prima di aprire al pubblico vanno chiusi:
+
+- [ ] Backup: PITR + export giornaliero, con **un restore realmente provato**
+- [ ] Sentry e uptime monitor configurati e notifica testata
+- [ ] App Check in enforcement (`docs/runbook/app-check.md`)
+- [ ] Titolare del trattamento identificato, DPA firmati
+- [ ] Test sulle Cloud Functions con emulatore
+- [ ] E2E su schedina, minigiochi e leghe
+- [ ] Test di carico e punto di rottura noto
+- [ ] Pentest esterno
 
 ## Roadmap
-- [ ] Sfide 1vs1 sui pronostici (minigioco "Sfide")
+- [ ] Negozio con pagamenti reali (progetto separato, soglie T0)
 - [ ] Notifiche push pre-deadline
-- [ ] Quote da provider reale (es. odds API) al posto dell'odds engine
 - [ ] Classifiche di lega settimanali con premi in gettoni

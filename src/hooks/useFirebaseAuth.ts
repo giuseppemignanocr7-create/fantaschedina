@@ -21,6 +21,7 @@ import {
   updateProfile as dbUpdateProfile,
   type ProfileDoc,
 } from '@/lib/db';
+import { identifyUser, reportError } from '@/lib/monitoring';
 
 interface AuthState {
   user: FbUser | null;
@@ -77,6 +78,8 @@ export function useFirebaseAuth(): UseFirebaseAuth {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async fbUser => {
       setUser(fbUser);
+      // Solo l'uid: è uno pseudonimo, l'email non serve per il debug.
+      identifyUser(fbUser?.uid ?? null);
       if (fbUser) {
         try {
           const p = await getProfile(fbUser.uid);
@@ -89,7 +92,7 @@ export function useFirebaseAuth(): UseFirebaseAuth {
               ))
           );
         } catch (e) {
-          console.error('[Auth] profile load error:', e);
+          reportError(e, { where: 'useFirebaseAuth:loadProfile' });
           setProfile(null);
         }
       } else {

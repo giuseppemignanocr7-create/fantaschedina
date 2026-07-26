@@ -33,3 +33,6 @@ npm-debug.log*
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
+
+# Coverage
+/coverage

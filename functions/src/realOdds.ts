@@ -7,6 +7,7 @@
 // ============================================
 
 import { generateMatchOdds, type MatchOdds } from './odds';
+import { fetchJson } from './http';
 
 const API_BASE = 'https://api.odds-api.io/v3';
 const LEAGUE_SLUG = 'italy-serie-a';
@@ -104,27 +105,15 @@ function num(s: string | undefined): number | null {
 // ---------- Fetch eventi Serie A ----------
 
 async function fetchSerieAEvents(apiKey: string): Promise<OddsApiEvent[] | null> {
-  try {
-    const url = `${API_BASE}/events?sport=football&apiKey=${apiKey}&league=${LEAGUE_SLUG}&limit=100`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    return (await res.json()) as OddsApiEvent[];
-  } catch {
-    return null;
-  }
+  const url = `${API_BASE}/events?sport=football&apiKey=${apiKey}&league=${LEAGUE_SLUG}&limit=100`;
+  return fetchJson<OddsApiEvent[]>(url, { label: 'odds-api:events' });
 }
 
 // ---------- Fetch quote per singolo evento ----------
 
 async function fetchEventOdds(apiKey: string, eventId: number): Promise<OddsApiResponse | null> {
-  try {
-    const url = `${API_BASE}/odds?apiKey=${apiKey}&eventId=${eventId}&bookmakers=${encodeURIComponent(BOOKMAKER)}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    return (await res.json()) as OddsApiResponse;
-  } catch {
-    return null;
-  }
+  const url = `${API_BASE}/odds?apiKey=${apiKey}&eventId=${eventId}&bookmakers=${encodeURIComponent(BOOKMAKER)}`;
+  return fetchJson<OddsApiResponse>(url, { label: 'odds-api:odds' });
 }
 
 // ---------- Estrazione quote ----------

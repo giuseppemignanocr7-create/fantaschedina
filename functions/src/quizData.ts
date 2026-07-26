@@ -3,6 +3,8 @@
 // ~150 curated + programmatic generation → 1000+ questions
 // ============================================
 
+import { secureShuffle } from './random';
+
 export interface QuizQuestionData {
   question: string;
   options: string[];
@@ -437,12 +439,7 @@ const palloneOroYears: [number, string, string[]][] = [
 ];
 
 function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
+  return secureShuffle(arr);
 }
 
 function generateQuestions(): QuizQuestionData[] {
