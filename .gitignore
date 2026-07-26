@@ -36,3 +36,7 @@ ui-debug.log
 
 # Coverage
 /coverage
+
+# Firebase secrets locali (emulatore) - mai committare
+.secret.local
+functions/.secret.local
