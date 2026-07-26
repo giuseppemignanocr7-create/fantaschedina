@@ -54,37 +54,68 @@ npm run build
 npx vercel --prod --yes
 ```
 
-## 3b. Configurazione della pipeline (una tantum)
+## 3b. Configurazione della pipeline
 
-Finché questi passaggi non sono completati, `deploy.yml` fallisce. L'editor
-segnala i riferimenti ai secret come "context access might be invalid": è
-atteso, sparisce una volta creati.
+*Configurata il 26 luglio 2026.*
 
-**Settings → Environments → New environment → `production`**
+### Già fatto
 
-- Required reviewers: almeno una persona (è ciò che rende il deploy approvato,
-  non automatico)
-- Deployment branches: solo `master`
+**Environment `production-deploy`** — reviewer obbligatorio
+`giuseppemignanocr7-create`, deploy consentito solo da branch protetti.
 
-**Settings → Secrets and variables → Actions**
+> Si chiama `production-deploy` e non `production` perché su questo repo esiste
+> già un environment `Production` creato dall'integrazione Vercel, privo di
+> protection rules. Agganciarsi a quello avrebbe fatto passare il deploy senza
+> approvazione.
 
-| Secret | Da dove si ottiene |
+**Branch protection su `master`** — PR obbligatoria, force push e cancellazione
+vietati, `enforce_admins` attivo, status check richiesti:
+`Sicurezza (segreti, dipendenze)`,
+`Frontend (typecheck, lint, test, build)`,
+`Cloud Functions (typecheck, build)`.
+
+> `required_approving_review_count` è **0**: sei l'unico manutentore e GitHub
+> non permette di approvare le proprie PR. Il gate reale sono gli status check,
+> non l'approvazione umana. Diventa 1 quando entra una seconda persona.
+
+**Secret già caricati** (9): `FIREBASE_PROJECT_ID`, `VERCEL_ORG_ID`,
+`VERCEL_PROJECT_ID`, e i sei `VITE_FIREBASE_*`.
+
+```bash
+gh secret list
+gh api repos/giuseppemignanocr7-create/fantaschedina/branches/master/protection
+```
+
+### Ancora da fare a mano
+
+| Secret | Perché non è automatizzabile |
 |---|---|
-| `FIREBASE_SERVICE_ACCOUNT` | Firebase Console → Impostazioni → Account di servizio → Genera nuova chiave privata (JSON completo) |
-| `FIREBASE_PROJECT_ID` | `fantaschedina-4a1b2` |
-| `VERCEL_TOKEN` | Vercel → Settings → Tokens |
-| `VERCEL_ORG_ID` | file `.vercel/project.json` |
-| `VERCEL_PROJECT_ID` | file `.vercel/project.json` |
-| `VITE_FIREBASE_*` | stessi valori del pannello Vercel |
-| `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY` | opzionale, vedi `app-check.md` |
-| `VITE_SENTRY_DSN` | opzionale, vedi `osservabilita.md` |
+| `VERCEL_TOKEN` | Vercel non espone la creazione di token via CLI. Dashboard → Settings → Tokens, scope sul team `fantaschedina` |
+| `FIREBASE_SERVICE_ACCOUNT` | Firebase Console → Impostazioni → Account di servizio → Genera nuova chiave privata. Incolla il JSON **completo** |
+| `VITE_SENTRY_DSN` | Richiede un progetto Sentry, vedi `osservabilita.md` |
+| `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY` | Opzionale, vedi `app-check.md` |
 
-**Settings → Branches → Add rule su `master`**
+```bash
+gh secret set VERCEL_TOKEN
+gh secret set FIREBASE_SERVICE_ACCOUNT < service-account.json
+```
 
-- Require a pull request before merging
-- Require status checks: `Sicurezza (segreti, dipendenze)`,
-  `Frontend (typecheck, lint, test, build)`, `Cloud Functions (typecheck, build)`
-- Do not allow bypassing the above settings
+> Dopo aver caricato `FIREBASE_SERVICE_ACCOUNT`, **cancella il file JSON dal
+> disco**. È una credenziale con privilegi di deploy sul progetto.
+
+### Sbloccarsi in emergenza
+
+Con `enforce_admins` attivo non puoi pushare su `master` nemmeno tu. Per un
+hotfix quando la CI è rotta:
+
+```bash
+gh api -X DELETE repos/giuseppemignanocr7-create/fantaschedina/branches/master/protection/enforce_admins
+# ... push del fix ...
+gh api -X POST repos/giuseppemignanocr7-create/fantaschedina/branches/master/protection/enforce_admins
+```
+
+Riattivala subito dopo. Una protezione disattivata "temporaneamente" e mai
+ripristinata è lo scenario più comune di regressione.
 
 ## 4. Configurazione dei secret
 
