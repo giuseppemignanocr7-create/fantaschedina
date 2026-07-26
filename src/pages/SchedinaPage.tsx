@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  Check, AlertCircle, Send, Info, Trophy, Zap, Clock, RotateCcw, RefreshCw, Pencil, Trash2,
+  Check, AlertCircle, Send, Info, Trophy, Zap, Clock, RotateCcw, RefreshCw, Pencil, Trash2, Coins,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -495,6 +495,15 @@ export function SchedinaPage() {
                     predictions={predictions}
                     disabled={isSubmitting}
                   />
+                )}
+                {!isSubmitted && predictions.length === 0 && (currentUser?.coins ?? 0) > 0 && (
+                  <div className="mt-2 p-3 bg-accent-500/10 border border-accent-500/20 rounded-lg flex items-start gap-2">
+                    <Coins size={16} className="text-accent-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-white/70">
+                      Hai <span className="font-bold text-accent-400">{currentUser?.coins ?? 0} gettoni</span>.
+                      {' '}Seleziona almeno un pronostico qui sopra per sbloccare i power-up e spenderli.
+                    </p>
+                  </div>
                 )}
 
                 {/* Submit Button */}
