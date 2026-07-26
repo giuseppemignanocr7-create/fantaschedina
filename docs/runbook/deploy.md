@@ -78,8 +78,34 @@ vietati, `enforce_admins` attivo, status check richiesti:
 > non permette di approvare le proprie PR. Il gate reale sono gli status check,
 > non l'approvazione umana. Diventa 1 quando entra una seconda persona.
 
-**Secret già caricati** (9): `FIREBASE_PROJECT_ID`, `VERCEL_ORG_ID`,
-`VERCEL_PROJECT_ID`, e i sei `VITE_FIREBASE_*`.
+**Secret già caricati** (10): `FIREBASE_PROJECT_ID`, `VERCEL_ORG_ID`,
+`VERCEL_PROJECT_ID`, i sei `VITE_FIREBASE_*` e `FIREBASE_SERVICE_ACCOUNT`.
+
+**Service account di deploy** — `github-deploy@fantaschedina-4a1b2.iam.gserviceaccount.com`,
+creata apposta invece di riusare la chiave `firebase-adminsdk`, che avrebbe
+dato alla CI anche lettura e scrittura sui dati degli utenti e il controllo
+completo di Authentication. Ruoli assegnati:
+
+```
+firebase.admin            rules, indexes, configurazione progetto
+cloudfunctions.admin      deploy delle functions
+run.admin                 le functions v2 sono Cloud Run
+artifactregistry.admin    immagini di build
+cloudbuild.builds.editor  build delle functions
+iam.serviceAccountUser    impersonare la SA di runtime
+serviceusage.serviceUsageConsumer
+```
+
+```bash
+gcloud projects get-iam-policy fantaschedina-4a1b2 \
+  --flatten="bindings[].members" \
+  --filter="bindings.members:github-deploy@fantaschedina-4a1b2.iam.gserviceaccount.com" \
+  --format="value(bindings.role)"
+```
+
+> La chiave e' stata generata, caricata come secret e cancellata dal disco.
+> Ruotala se sospetti un'esposizione:
+> `gcloud iam service-accounts keys list --iam-account github-deploy@fantaschedina-4a1b2.iam.gserviceaccount.com`
 
 ```bash
 gh secret list
@@ -91,17 +117,15 @@ gh api repos/giuseppemignanocr7-create/fantaschedina/branches/master/protection
 | Secret | Perché non è automatizzabile |
 |---|---|
 | `VERCEL_TOKEN` | Vercel non espone la creazione di token via CLI. Dashboard → Settings → Tokens, scope sul team `fantaschedina` |
-| `FIREBASE_SERVICE_ACCOUNT` | Firebase Console → Impostazioni → Account di servizio → Genera nuova chiave privata. Incolla il JSON **completo** |
 | `VITE_SENTRY_DSN` | Richiede un progetto Sentry, vedi `osservabilita.md` |
 | `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY` | Opzionale, vedi `app-check.md` |
 
 ```bash
 gh secret set VERCEL_TOKEN
-gh secret set FIREBASE_SERVICE_ACCOUNT < service-account.json
 ```
 
-> Dopo aver caricato `FIREBASE_SERVICE_ACCOUNT`, **cancella il file JSON dal
-> disco**. È una credenziale con privilegi di deploy sul progetto.
+> Senza `VERCEL_TOKEN` il job di deploy del frontend fallisce. Il deploy di
+> rules e functions invece e' gia' completo.
 
 ### Sbloccarsi in emergenza
 

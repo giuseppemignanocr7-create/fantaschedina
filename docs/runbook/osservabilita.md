@@ -39,16 +39,39 @@ disattivato e l'app funziona normalmente. Nessun blocco in sviluppo.
 Un controllo indipendente dall'infrastruttura che stai monitorando: se cade
 Vercel, deve essere qualcosa *fuori* da Vercel ad accorgersene.
 
-Con Better Stack (o UptimeRobot):
+### Configurato su Cloud Monitoring
+
+*Creato il 26 luglio 2026.*
+
+| Risorsa | Valore |
+|---|---|
+| Uptime check | `Frontend Fantaschedina` — `fantaschedina.vercel.app`, ogni 5 min, HTTPS su `/` |
+| Alert policy | `Frontend Fantaschedina irraggiungibile` — scatta se il check fallisce in piu' di una regione per 5 min |
+| Canale | email a `giuseppemignanocr7@gmail.com` |
+
+```bash
+gcloud monitoring uptime list-configs --project fantaschedina-4a1b2
+gcloud alpha monitoring policies list --project fantaschedina-4a1b2
+```
+
+> Cloud Monitoring gira su Google Cloud, cioe' sulla stessa infrastruttura di
+> Firestore e delle functions. Copre la caduta di Vercel, **non** un guasto
+> esteso di Google. Un secondo check su un provider terzo (Better Stack,
+> UptimeRobot) resta la scelta corretta prima dell'apertura al pubblico.
+
+### Ancora da verificare
+
+**Il canale email e' stato creato ma non provato.** Metti in pausa il check,
+lascialo fallire e conferma che la notifica arrivi davvero. Un alert
+configurato e mai verificato e' un alert che non esiste: nella casella di posta
+puo' finire in spam, o l'indirizzo puo' essere sbagliato senza che nulla lo
+segnali.
+
+### Secondo check, da aggiungere
 
 | Check | URL | Frequenza | Atteso |
 |---|---|---|---|
-| Frontend | `https://fantaschedina.vercel.app` | 3 min | HTTP 200 |
-| Firestore rules | `https://firestore.googleapis.com/v1/projects/fantaschedina-4a1b2/databases/(default)` | 5 min | HTTP 200/401 |
-
-**Il canale di notifica va testato end-to-end.** Metti in pausa un check,
-lascialo fallire e verifica che la notifica arrivi davvero sul telefono.
-Un alert configurato ma mai verificato è un alert che non esiste.
+| Firestore | `https://firestore.googleapis.com/v1/projects/fantaschedina-4a1b2/databases/(default)` | 5 min | HTTP 200/401 |
 
 ## 3. Cloud Logging e alert di budget
 
