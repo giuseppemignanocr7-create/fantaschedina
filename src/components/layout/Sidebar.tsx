@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, Target, Trophy, BarChart2, Gamepad2, Flag, Gift, User,
-  X, TrendingUp, Calendar, FileText, LogOut, Zap, type LucideIcon,
+  X, TrendingUp, Calendar, FileText, LogOut, Zap, ShoppingBag, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -21,6 +21,7 @@ const navLinks = [
   { to: '/minigiochi', label: 'Minigiochi', icon: Gamepad2 },
   { to: '/missioni', label: 'Missioni', icon: Flag },
   { to: '/premi', label: 'Premi', icon: Gift },
+  { to: '/negozio', label: 'Negozio', icon: ShoppingBag, badge: 'PRESTO' },
   { to: '/calendario', label: 'Calendario', icon: Calendar },
   { to: '/statistiche', label: 'Statistiche', icon: BarChart2 },
   { to: '/profilo', label: 'Profilo', icon: User },
@@ -31,7 +32,7 @@ const adminLinks = [
   { to: '/admin', label: 'Admin', icon: Zap },
 ];
 
-function NavLink({ to, label, icon: Icon, onClick }: { to: string; label: string; icon: LucideIcon; onClick?: () => void }) {
+function NavLink({ to, label, icon: Icon, badge, onClick }: { to: string; label: string; icon: LucideIcon; badge?: string; onClick?: () => void }) {
   const location = useLocation();
   const isActive = location.pathname === to ||
     (to === '/' && location.pathname === '/dashboard') ||
@@ -53,6 +54,11 @@ function NavLink({ to, label, icon: Icon, onClick }: { to: string; label: string
         className={isActive ? 'text-primary-400' : 'text-white/40 group-hover:text-white/70 transition-colors'}
       />
       {label}
+      {badge && (
+        <span className="ml-auto rounded border border-white/10 bg-white/8 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-white/45">
+          {badge}
+        </span>
+      )}
     </Link>
   );
 }
