@@ -21,5 +21,12 @@
     }
   },
   "include": ["src"],
+  // I test sono esclusi dal build di produzione: alcuni importano da
+  // functions/src per verificare la logica server, e firebase-functions e'
+  // installato solo in functions/node_modules. Includerli qui farebbe fallire
+  // `tsc && vite build` ovunque le dipendenze delle functions non siano
+  // installate, a partire da Vercel.
+  // I test restano type-checked tramite tsconfig.test.json.
+  "exclude": ["src/**/__tests__/**", "src/**/*.test.ts", "src/**/*.test.tsx"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

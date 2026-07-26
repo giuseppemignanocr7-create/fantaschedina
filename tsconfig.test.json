@@ -1,0 +1,24 @@
+{
+  // Programma TypeScript dei soli test.
+  //
+  // Separato da tsconfig.json perche' alcuni test importano da functions/src
+  // per verificare la logica server (randomness, motore rigori, client HTTP).
+  // Quel codice dipende da firebase-functions, installato solo in
+  // functions/node_modules: tenerlo nel tsconfig di build romperebbe
+  // `npm run build` su qualunque ambiente che non installa le dipendenze delle
+  // functions, Vercel incluso.
+  //
+  // Richiede `npm --prefix functions ci` prima di essere eseguito.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vitest/globals", "node"],
+    "noEmit": true
+  },
+  "include": [
+    "src",
+    "functions/src",
+    "vitest.config.ts",
+    "scripts/**/*.mjs"
+  ],
+  "exclude": []
+}
