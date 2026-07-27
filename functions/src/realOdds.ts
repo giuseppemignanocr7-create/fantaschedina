@@ -10,8 +10,24 @@ import { generateMatchOdds, type MatchOdds } from './odds';
 import { fetchJson } from './http';
 
 const API_BASE = 'https://api.odds-api.io/v3';
-const LEAGUE_SLUG = 'italy-serie-a';
 const BOOKMAKER = 'Goldbet IT';
+
+/**
+ * Codice campionato interno (COMPETITIONS in config.ts) → slug lega su
+ * odds-api.io. uefa.champions/uefa.europa non hanno ancora uno slug stabile
+ * fuori stagione (solo turni di qualificazione con nomi variabili): quando
+ * riparte la fase a gironi va aggiunto qui.
+ */
+const ODDS_API_LEAGUE_SLUG: Record<string, string> = {
+  'ita.1': 'italy-serie-a',
+  'eng.1': 'england-premier-league',
+  'esp.1': 'spain-laliga',
+  'ger.1': 'germany-bundesliga',
+  'fra.1': 'france-ligue-1',
+  'ita.coppa_italia': 'italy-coppa-italia',
+  'bra.1': 'brazil-brasileiro-serie-a',
+  'usa.1': 'usa-mls',
+};
 
 // ---------- Tipi risposta API ----------
 
@@ -81,6 +97,60 @@ const TEAM_CANONICAL: Record<string, string> = {
   'pescara': 'pescara',
   'brescia': 'brescia',
   'sampdoria': 'sampdoria', 'samp': 'sampdoria',
+
+  // Brasileirão: nome ESPN + nome odds-api.io (accenti/sigle stato diversi)
+  'athletico-pr': 'athletico-pr', 'ca paranaense pr': 'athletico-pr',
+  'atlético-mg': 'atletico-mg', 'atletico mineiro mg': 'atletico-mg',
+  'bahia': 'bahia', 'ec bahia ba': 'bahia',
+  'botafogo': 'botafogo', 'botafogo fr rj': 'botafogo',
+  'chapecoense': 'chapecoense', 'chapecoense sc': 'chapecoense',
+  'corinthians': 'corinthians', 'sc corinthians sp': 'corinthians',
+  'coritiba': 'coritiba', 'coritiba fc pr': 'coritiba',
+  'cruzeiro': 'cruzeiro', 'cruzeiro ec mg': 'cruzeiro',
+  'flamengo': 'flamengo', 'cr flamengo rj': 'flamengo',
+  'fluminense': 'fluminense', 'fluminense fc rj': 'fluminense',
+  'grêmio': 'gremio', 'gremio fb porto alegrense rs': 'gremio',
+  'internacional': 'internacional-bra', 'sc internacional rs': 'internacional-bra',
+  'mirassol': 'mirassol', 'mirassol fc sp': 'mirassol',
+  'palmeiras': 'palmeiras', 'se palmeiras sp': 'palmeiras',
+  'red bull bragantino': 'red-bull-bragantino', 'red bull bragantino sp': 'red-bull-bragantino',
+  'remo': 'remo', 'clube do remo pa': 'remo',
+  'santos': 'santos', 'santos fc sp': 'santos',
+  'são paulo': 'sao-paulo', 'sao paulo fc sp': 'sao-paulo',
+  'vasco da gama': 'vasco-da-gama', 'cr vasco da gama rj': 'vasco-da-gama',
+  'vitória': 'vitoria', 'ec vitoria ba': 'vitoria',
+
+  // MLS: nome ESPN + nome odds-api.io (sigle/ordine parole/punteggiatura diversi)
+  'atlanta united fc': 'atlanta-utd',
+  'austin fc': 'austin',
+  'cf montréal': 'cf-montreal', 'cf montreal': 'cf-montreal',
+  'charlotte fc': 'charlotte',
+  'chicago fire fc': 'chicago-fire', 'chicago fire': 'chicago-fire',
+  'colorado rapids': 'colorado-rapids',
+  'columbus crew': 'columbus-crew',
+  'd.c. united': 'dc-united', 'dc united': 'dc-united',
+  'fc cincinnati': 'fc-cincinnati',
+  'fc dallas': 'fc-dallas',
+  'houston dynamo fc': 'houston-dynamo', 'houston dynamo': 'houston-dynamo',
+  'inter miami cf': 'inter-miami',
+  'la galaxy': 'la-galaxy', 'los angeles galaxy': 'la-galaxy',
+  'lafc': 'lafc', 'los angeles fc': 'lafc',
+  'minnesota united fc': 'minnesota-utd',
+  'nashville sc': 'nashville',
+  'new england revolution': 'new-england-revolution',
+  'new york city fc': 'nycfc',
+  'red bull new york': 'ny-red-bulls', 'new york red bulls': 'ny-red-bulls',
+  'orlando city sc': 'orlando-city',
+  'philadelphia union': 'philadelphia-union',
+  'portland timbers': 'portland-timbers',
+  'real salt lake': 'real-salt-lake',
+  'san diego fc': 'san-diego',
+  'san jose earthquakes': 'san-jose',
+  'seattle sounders fc': 'seattle-sounders', 'seattle sounders': 'seattle-sounders',
+  'sporting kansas city': 'sporting-kc',
+  'st. louis city sc': 'st-louis-city', 'saint louis city sc': 'st-louis-city',
+  'toronto fc': 'toronto',
+  'vancouver whitecaps': 'vancouver-whitecaps', 'vancouver whitecaps fc': 'vancouver-whitecaps',
 };
 
 function canonicalName(name: string): string {
@@ -102,11 +172,11 @@ function num(s: string | undefined): number | null {
   return isNaN(n) ? null : n;
 }
 
-// ---------- Fetch eventi Serie A ----------
+// ---------- Fetch eventi per campionato ----------
 
-async function fetchSerieAEvents(apiKey: string): Promise<OddsApiEvent[] | null> {
-  const url = `${API_BASE}/events?sport=football&apiKey=${apiKey}&league=${LEAGUE_SLUG}&limit=100`;
-  return fetchJson<OddsApiEvent[]>(url, { label: 'odds-api:events' });
+async function fetchLeagueEvents(apiKey: string, leagueSlug: string): Promise<OddsApiEvent[] | null> {
+  const url = `${API_BASE}/events?sport=football&apiKey=${apiKey}&league=${leagueSlug}&limit=100`;
+  return fetchJson<OddsApiEvent[]>(url, { label: `odds-api:events:${leagueSlug}` });
 }
 
 // ---------- Fetch quote per singolo evento ----------
@@ -168,6 +238,7 @@ function extractOddsFromResponse(
 export async function fetchRealMatchdayOdds(
   matches: {
     id: string;
+    competition: string;
     homeTeam: { id: string; name: string };
     awayTeam: { id: string; name: string };
   }[],
@@ -175,12 +246,25 @@ export async function fetchRealMatchdayOdds(
 ): Promise<Record<string, MatchOdds> | null> {
   if (!apiKey) return null;
 
-  const events = await fetchSerieAEvents(apiKey);
-  if (!events || events.length === 0) return null;
+  // Un fetch eventi per ogni campionato coinvolto (solo quelli con uno slug
+  // odds-api.io noto: gli altri restano sul motore algoritmico).
+  const slugsNeeded = [...new Set(
+    matches.map(m => ODDS_API_LEAGUE_SLUG[m.competition]).filter((s): s is string => !!s)
+  )];
+  if (slugsNeeded.length === 0) return null;
+
+  const eventsBySlug = new Map<string, OddsApiEvent[]>();
+  await Promise.all(slugsNeeded.map(async slug => {
+    const events = await fetchLeagueEvents(apiKey, slug);
+    if (events && events.length > 0) eventsBySlug.set(slug, events);
+  }));
+  if (eventsBySlug.size === 0) return null;
 
   // Match each game to an API event, then fetch all odds in parallel
   const matchTasks = matches.map(async (match) => {
-    const event = events.find(
+    const slug = ODDS_API_LEAGUE_SLUG[match.competition];
+    const events = slug ? eventsBySlug.get(slug) : undefined;
+    const event = events?.find(
       e => teamsMatch(e.home, match.homeTeam.name) && teamsMatch(e.away, match.awayTeam.name)
     );
 
