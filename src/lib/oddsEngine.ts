@@ -16,6 +16,20 @@ const HOME_ADV = 5;
 const MARGIN = 1.065;
 const LEAGUE_AVG_GOALS = 2.65;
 
+/**
+ * Squadre fuori dal catalogo TEAM_STRENGTH (competizioni diverse dalla Serie A)
+ * non avevano una forza propria: il fallback fisso a 62 per entrambe rendeva
+ * ogni partita identica (stesso xG, stesse quote). Una forza deterministica
+ * dall'id squadra mantiene le quote stabili ma differenziate partita per partita.
+ */
+function fallbackStrength(teamId: string): number {
+  let h = 0;
+  for (let i = 0; i < teamId.length; i++) {
+    h = (h * 31 + teamId.charCodeAt(i)) >>> 0;
+  }
+  return 50 + (h % 40); // 50-89, stesso range delle squadre di Serie A note
+}
+
 function r(n: number): number {
   return Math.round(Math.max(1.01, n) * 100) / 100;
 }
@@ -60,8 +74,8 @@ function sumWhere(matrix: number[][], pred: (i: number, j: number) => boolean): 
 }
 
 export function generateMatchOdds(homeId: string, awayId: string): MatchOdds {
-  const hs = (TEAM_STRENGTH[homeId] ?? 62) + HOME_ADV;
-  const as_ = TEAM_STRENGTH[awayId] ?? 62;
+  const hs = (TEAM_STRENGTH[homeId] ?? fallbackStrength(homeId)) + HOME_ADV;
+  const as_ = TEAM_STRENGTH[awayId] ?? fallbackStrength(awayId);
 
   const xg = expectedGoals(hs, as_);
   const m = scoreMatrix(xg.home, xg.away);
