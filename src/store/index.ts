@@ -32,7 +32,12 @@ import {
   profileToParticipant,
   type ProfileDoc,
 } from '@/lib/db';
-import { submitSchedinaFn, cancelSchedinaFn, callableErrorMessage } from '@/lib/gameApi';
+import {
+  submitSchedinaFn,
+  cancelSchedinaFn,
+  changePredictionFn,
+  callableErrorMessage,
+} from '@/lib/gameApi';
 import { MAX_PICKS_PER_SCHEDINA, type PowerUpSelection } from '@/lib/economy';
 import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
 import { getCached, setCached, invalidate, invalidatePrefix, CACHE_TTL } from '@/lib/cache';
@@ -74,6 +79,11 @@ interface AppStore {
   resetSchedina: () => void;
   unlockSchedina: () => void;
   cancelSchedina: () => Promise<void>;
+  applyLastMinuteChange: (
+    matchId: string,
+    betType: string,
+    outcome: string
+  ) => Promise<boolean>;
   loadUserSchedina: () => Promise<void>;
   loadSchedinaHistory: () => Promise<void>;
 
@@ -200,6 +210,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
           submittedAt: new Date(),
           isLocked: true,
           powerups: selectedPowerups,
+          lastMinuteUsed: false,
         },
         selectedPowerups: {},
         isSubmitting: false,
@@ -245,6 +256,28 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     }
   },
 
+  /**
+   * Power-up "Cambio Last-Minute": cambia un pronostico dopo la deadline,
+   * a pagamento e una volta sola. Il costo e il consumo li applica il server
+   * (callable `changePrediction`); qui si rilegge la schedina autorevole
+   * invece di indovinare la nuova quota lato client.
+   */
+  applyLastMinuteChange: async (matchId, betType, outcome) => {
+    const { currentUser, currentMatchday } = get();
+    if (!currentUser || !currentMatchday) return false;
+    set({ isSubmitting: true, error: null });
+    try {
+      await changePredictionFn(matchId, betType, outcome);
+      invalidatePrefix('schedinaHistory_');
+      await get().loadUserSchedina();
+      set({ isSubmitting: false });
+      return true;
+    } catch (e) {
+      set({ error: callableErrorMessage(e), isSubmitting: false });
+      return false;
+    }
+  },
+
   loadUserSchedina: async () => {
     const { currentUser, currentMatchday } = get();
     if (!currentUser || !currentMatchday) return;
@@ -260,6 +293,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
             submittedAt: saved.submittedAt?.toDate(),
             isLocked: saved.isLocked,
             powerups: saved.powerups,
+            lastMinuteUsed: saved.lastMinuteUsed,
           },
         });
       } else if (

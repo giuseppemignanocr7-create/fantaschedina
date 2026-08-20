@@ -17,22 +17,35 @@ Tutta la logica che tocca **punti e gettoni** gira server-side su Cloud Function
 | Sync giornata + quote | scheduled `syncMatchday` (ogni 6h) | le quote sono generate SOLO server-side |
 | Minigiochi | callable `playMinigame` | esiti estratti dal server, cooldown 1/giorno su Firestore |
 | Missioni | callable `claimMission` | verifica progressi dal profilo, accredita gettoni |
-| Cambio Last-Minute | callable `changePrediction` | modifica 1 pronostico post-invio, pre-deadline |
+| Classifica | callable `getRankings` | calcolata una volta sola dal server, anche per lega: il client non scarica più tutti i profili |
+| Pulizia duelli | scheduled `cleanupPenaltyDuels` (ogni ora) | chiude le sfide ferme e cancella quelle mai iniziate |
+| Cambio Last-Minute | callable `changePrediction` | addebita 100 gettoni, consuma il power-up e cambia 1 pronostico dopo la deadline, solo su partite non iniziate |
 
 Le **Firestore Rules** (`firestore.rules`) bloccano ogni scrittura client su punti, gettoni, schedine e giornate. Le schedine altrui sono leggibili **solo dopo la deadline** (anti-copia).
 
 ## Economia di gioco 🪙
 
 **Guadagni gettoni con:**
-- Minigiochi (1 partita/giorno per gioco): Quiz (+5/risposta), Ruota (10–150), Rigori (+10/gol)
-- Missioni (50–500 gettoni)
-- Performance schedina: +2/esatto, +50 con 9/10, +150 con 10/10, +100 vincitore di giornata
+
+| Fonte | Premio | Limite |
+|---|---|---|
+| Quiz Calcio | +3 a risposta esatta (max 10 domande) | 1 partita al giorno |
+| Ruota giornaliera | 5–100 a caso su 8 spicchi | 1 giro al giorno |
+| Rigori | +2 a gol (5 tiri) | 50 gettoni al giorno |
+| Memoria Calcio | +5 a livello, +1 ogni 5 secondi risparmiati | 40 gettoni al giorno |
+| Duelli rigori 1v1 | 50 a vittoria, 25 a pareggio | 150 gettoni al giorno |
+| Sfide 1vs1 | 5–30 secondo la prestazione | una per avversario a settimana |
+| Missioni | 50–500 una tantum | una volta per missione |
+| Schedina | +2 a pronostico esatto, +50 con 9/10, +150 con 10/10, +100 al vincitore di giornata | per giornata |
+
+I valori vivono in `functions/src/config.ts` e sono verificati dai test: se
+cambi quelli, questa tabella va aggiornata a mano.
 
 **Li spendi in power-up sulla schedina:**
 - 🃏 **Jolly Raddoppio** (200) — raddoppia i punti di 1 pronostico
 - 🛡️ **Scudo** (150) — annulla le penalità quote basse
 - ⭐ **Assicurazione** (120) — con 8/10 ricevi il bonus del 9/10
-- 🔄 **Cambio Last-Minute** (100) — modifica 1 pronostico dopo l'invio
+- 🔄 **Cambio Last-Minute** (100) — dopo la deadline cambia 1 pronostico, una volta sola per schedina e solo su una partita non ancora iniziata (prima della deadline la schedina si modifica gratis)
 
 Config centralizzata in `functions/src/config.ts` (server, fonte di verità) e `src/lib/economy.ts` (client, mirror).
 
@@ -125,20 +138,39 @@ npm run build     # produzione
 ## Test e verifiche
 
 ```bash
-npm test              # 1462 test unitari
-npm run test:coverage # con soglie di copertura
-npm run check         # typecheck + lint (0 warning) + test + coverage
-npm run check:bundle  # budget di dimensione (richiede build)
-npm run audit:prod    # CVE sulle sole dipendenze di produzione
-npm run test:e2e      # Playwright contro gli emulatori Firebase
+npm test                 # test unitari (logica pura)
+npm run test:coverage    # con soglie di copertura
+npm run check            # typecheck + lint (0 warning) + test + coverage
+npm run check:bundle     # budget di dimensione (richiede build)
+npm run audit:prod       # CVE sulle sole dipendenze di produzione
+npm run test:integration # callable contro l'emulatore Firestore (richiede Java)
+npm run test:e2e         # Playwright contro gli emulatori Firebase
 ```
 
-Coperti: scoring client e server, motore quote, economia, classifiche,
-sorgente casuale, motore rigori, client HTTP resiliente.
+Coperti dai test unitari: scoring client e server, motore quote, economia,
+classifiche, sorgente casuale, motore rigori, client HTTP resiliente,
+contabilità dei power-up.
 
-**Non ancora coperto:** `functions/src/index.ts` (settlement, callable,
-economia) richiede l'emulatore Firestore. È il prossimo intervento prioritario
-e il motivo per cui la copertura per riga è bassa.
+Coperti dai test di integrazione (`functions/src/__tests__/*.itest.ts`):
+invio e reinvio della schedina con addebito/rimborso dei power-up,
+annullamento, Cambio Last-Minute, settlement di giornata, duelli con tetto
+giornaliero e pulizia, minigiochi, classifica generale e di lega. Girano
+contro un Firestore vero perché transazioni e idempotenza non si verificano
+con dei mock.
+
+**Non ancora coperto:** leghe (`manageLeague`), missioni (`claimMission`),
+quiz e cancellazione account.
+
+### Emulatore su Windows
+
+Se l'emulatore Firestore non parte con `Unable to establish loopback
+connection`, il JVM non riesce a creare il socket AF_UNIX nella cartella
+temporanea di default (tipico dei path con nome corto tipo `GIUSEP~1`).
+Si risolve indicandogliene un'altra:
+
+```bash
+setx JAVA_TOOL_OPTIONS "-Djdk.net.unixdomain.tmpdir=C:\jtmp"
+```
 
 ## Deploy
 

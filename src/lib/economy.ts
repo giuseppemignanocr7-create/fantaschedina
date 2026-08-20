@@ -26,6 +26,11 @@ export const COINS = {
   memoriaPerLevel: 5,
   memoriaTimeBonus: 1,
   memoriaDailyCap: 40,
+  memoriaLevelTimes: [30, 45, 60],
+  // Duelli rigori 1v1
+  duelWin: 50,
+  duelDraw: 25,
+  duelDailyCap: 150,
 } as const;
 
 export type PowerUpId = 'jolly' | 'shield' | 'insurance' | 'lastminute';
@@ -65,7 +70,7 @@ export const POWERUPS: Record<PowerUpId, PowerUpInfo> = {
     name: 'Cambio Last-Minute',
     emoji: '🔄',
     cost: 100,
-    description: 'Modifica 1 pronostico dopo l\'invio, prima della deadline',
+    description: 'Dopo la deadline cambia 1 pronostico, su una partita non ancora iniziata',
   },
 };
 

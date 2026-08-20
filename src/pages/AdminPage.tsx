@@ -172,6 +172,7 @@ function MatchdayTab({ onError, onSuccess }: {
   const [syncing, setSyncing] = useState(false);
   const [settling, setSettling] = useState(false);
   const [settleNumber, setSettleNumber] = useState('');
+  const [settleWarning, setSettleWarning] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
 
   const handleSync = async (forceOdds = false) => {
@@ -191,16 +192,24 @@ function MatchdayTab({ onError, onSuccess }: {
     }
   };
 
-  const handleSettle = async () => {
+  const handleSettle = async (force = false) => {
     const n = parseInt(settleNumber, 10);
     if (!n) { onError('Inserisci un numero di giornata valido'); return; }
     setSettling(true);
     onError('');
     try {
-      const res = await adminForceSettleFn(n);
+      const res = await adminForceSettleFn(n, force);
+      setSettleWarning(null);
       onSuccess(`Giornata ${res.matchday} settleata: ${res.settled} schedine valutate`);
     } catch (e) {
-      onError(callableErrorMessage(e));
+      const messaggio = callableErrorMessage(e);
+      // Il server rifiuta le giornate con partite ancora in corso: la richiesta
+      // va ripetuta con `force`, ma deve essere una scelta esplicita.
+      if (messaggio.includes('non concluse')) {
+        setSettleWarning(messaggio);
+      } else {
+        onError(messaggio);
+      }
     } finally {
       setSettling(false);
     }
@@ -261,7 +270,7 @@ function MatchdayTab({ onError, onSuccess }: {
             className="flex-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
           />
           <button
-            onClick={handleSettle}
+            onClick={() => handleSettle(false)}
             disabled={settling}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
           >
@@ -269,6 +278,31 @@ function MatchdayTab({ onError, onSuccess }: {
             {settling ? 'Settlement...' : 'Settle'}
           </button>
         </div>
+
+        {settleWarning && (
+          <div className="mt-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
+            <p className="text-red-300 text-sm font-bold mb-1">{settleWarning}</p>
+            <p className="text-white/50 text-xs mb-3">
+              Valutare adesso conta come sbagliati i pronostici sulle partite non
+              ancora giocate. L'operazione non è reversibile.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleSettle(true)}
+                disabled={settling}
+                className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-bold hover:bg-red-500/30 transition-colors disabled:opacity-50"
+              >
+                Valuta comunque
+              </button>
+              <button
+                onClick={() => setSettleWarning(null)}
+                className="px-3 py-1.5 rounded-lg bg-white/5 text-white/60 border border-white/10 text-xs font-bold hover:bg-white/10 transition-colors"
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       <div className="glass-card p-5">
         <h2 className="text-lg font-bold text-white mb-1">Seed Quiz DB</h2>

@@ -139,7 +139,6 @@ export interface SfidaStartResponse {
   opponent: {
     uid: string;
     displayName: string;
-    coins: number;
   };
   myCoins: number;
 }
@@ -209,9 +208,34 @@ export interface PublicProfileData {
   weeklyWins: number;
   bestMatchdayPoints: number;
   correctPredictions: number;
-  coins: number;
-  coinsEarned: number;
   isActive?: boolean;
+}
+
+export interface RankingRow {
+  rank: number;
+  participantId: string;
+  username: string;
+  totalPoints: number;
+  matchdaysPlayed: number;
+  correctPredictions: number;
+  averagePointsPerMatchday: number;
+  bestMatchdayPoints: number;
+  perfectSchedine: number;
+  bonusPointsTotal: number;
+  penaltyPointsTotal: number;
+  weeklyWins: number;
+}
+
+/** Classifica calcolata dal server. Con `leagueId` è ristretta a quella lega. */
+export async function getRankingsFn(
+  leagueId?: string
+): Promise<{ rankings: RankingRow[] }> {
+  const fn = httpsCallable<{ leagueId?: string }, { rankings: RankingRow[] }>(
+    functions,
+    'getRankings'
+  );
+  const res = await fn(leagueId ? { leagueId } : {});
+  return res.data;
 }
 
 export async function getPublicProfilesFn(
@@ -259,6 +283,8 @@ export interface PenaltyDuelState {
   startedAt: number;
   deadlineAt: number;
   winner: 1 | 2 | 'draw' | null;
+  /** Chiusa dalla pulizia perché nessuno ha più giocato: non è una sconfitta. */
+  abandoned?: boolean;
   reward: number;
   lastRound: {
     round: number;
@@ -370,11 +396,20 @@ export async function adminSyncMatchdayFn(forceOdds = false): Promise<{ ok: bool
   return res.data;
 }
 
-export async function adminForceSettleFn(matchdayNumber: number): Promise<{ ok: boolean; settled: number; matchday: number }> {
-  const fn = httpsCallable<{ matchdayNumber: number }, { ok: boolean; settled: number; matchday: number }>(
-    functions, 'adminForceSettle'
-  );
-  const res = await fn({ matchdayNumber });
+/**
+ * `force` valuta la giornata anche con partite non ancora concluse: i relativi
+ * pronostici risultano sbagliati e l'operazione non è reversibile, quindi il
+ * server la rifiuta se non è chiesta esplicitamente.
+ */
+export async function adminForceSettleFn(
+  matchdayNumber: number,
+  force = false
+): Promise<{ ok: boolean; settled: number; matchday: number }> {
+  const fn = httpsCallable<
+    { matchdayNumber: number; force?: boolean },
+    { ok: boolean; settled: number; matchday: number }
+  >(functions, 'adminForceSettle');
+  const res = await fn({ matchdayNumber, force });
   return res.data;
 }
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Check, AlertCircle, Send, Info, Trophy, Zap, Clock, RotateCcw, RefreshCw, Pencil, Trash2, Coins,
 } from 'lucide-react';
@@ -9,6 +9,8 @@ import { isValidOdds, isInPenaltyRange, calculateSchedinaScore, calculateBetPoin
 import { CountdownTimer, QuickBet, PowerUpSelector, TeamLogo } from '@/components/ui';
 import { useToast } from '@/contexts/ToastContext';
 import { useSchedinaEditWindow } from '@/hooks';
+import { useSilentProfileRefresh } from '@/hooks/useSilentProfileRefresh';
+import { POWERUPS } from '@/lib/economy';
 import { sideCannons, vibrate } from '@/lib/juice';
 
 // 10 matches = 10 giocate
@@ -70,6 +72,7 @@ export function SchedinaPage() {
     submitSchedina,
     resetSchedina,
     unlockSchedina,
+    applyLastMinuteChange,
     selectedPowerups,
     setPowerups,
     isLoadingOdds,
@@ -80,7 +83,11 @@ export function SchedinaPage() {
   } = useAppStore();
 
   const toast = useToast();
-  const { isSubmitted, canEdit, isSubmitting, handleEdit, handleCancel } = useSchedinaEditWindow();
+  const {
+    isSubmitted, canEdit, canUseLastMinute, lastMinuteUsed, isDeadlinePassed,
+    isSubmitting, handleEdit, handleCancel,
+  } = useSchedinaEditWindow();
+  const refreshProfile = useSilentProfileRefresh('SchedinaPage');
 
   const formatTime = (d: Date | null) => {
     if (!d) return null;
@@ -88,6 +95,23 @@ export function SchedinaPage() {
   };
 
   const [selectedBetType, setSelectedBetType] = useState<BetType>('esito');
+  // L'orologio sta nello stato: leggerlo durante il render renderebbe il
+  // componente impuro, e l'idoneità al Cambio Last-Minute deve comunque
+  // decadere da sola quando una partita inizia con la pagina aperta.
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const [lastMinuteMode, setLastMinuteMode] = useState(false);
+  const [pendingChange, setPendingChange] = useState<{
+    matchId: string;
+    betType: BetType;
+    outcome: BetOutcome;
+    odds: number;
+  } | null>(null);
 
   const predictions = useMemo(() => currentSchedina?.predictions || [], [currentSchedina?.predictions]);
   const completedCount = predictions.length;
@@ -144,6 +168,56 @@ export function SchedinaPage() {
 
   const getPrediction = (matchId: string): Prediction | undefined =>
     predictions.find(p => p.matchId === matchId);
+
+  // --- Power-up Cambio Last-Minute (dopo la deadline, a pagamento, una volta) ---
+  const lastMinuteCost = POWERUPS.lastminute.cost;
+  const canAffordLastMinute = (currentUser?.coins ?? 0) >= lastMinuteCost;
+
+  /** Una partita è ancora "aperta" finché non è iniziata: dopo, il pronostico è congelato. */
+  const isMatchOpen = (matchId: string): boolean => {
+    const m = currentMatchday?.matches.find(x => x.id === matchId);
+    if (!m || now === 0) return false;
+    return m.status === 'scheduled' && new Date(m.scheduledAt).getTime() > now;
+  };
+
+  const openPredictions = useMemo(
+    () =>
+      predictions.filter(p => {
+        const m = currentMatchday?.matches.find(x => x.id === p.matchId);
+        return !!m && m.status === 'scheduled' && new Date(m.scheduledAt).getTime() > now;
+      }),
+    [predictions, currentMatchday?.matches, now]
+  );
+
+  const canPickForLastMinute = (matchId: string) =>
+    lastMinuteMode && !!getPrediction(matchId) && isMatchOpen(matchId);
+
+  const handleLastMinutePick = (
+    matchId: string,
+    betType: BetType,
+    outcome: BetOutcome,
+    odds: number
+  ) => {
+    setPendingChange({ matchId, betType, outcome, odds });
+  };
+
+  const confirmLastMinute = async () => {
+    if (!pendingChange) return;
+    const ok = await applyLastMinuteChange(
+      pendingChange.matchId,
+      pendingChange.betType,
+      pendingChange.outcome
+    );
+    if (ok) {
+      vibrate([40, 20, 40]);
+      toast.success(`Pronostico cambiato! −${lastMinuteCost} gettoni`);
+      refreshProfile();
+      setPendingChange(null);
+      setLastMinuteMode(false);
+    } else {
+      toast.error(useAppStore.getState().error || 'Cambio non riuscito');
+    }
+  };
 
   const currentBetDef = BET_TYPES.find(b => b.key === selectedBetType)!
 
@@ -272,6 +346,108 @@ export function SchedinaPage() {
               </div>
             )}
 
+            {/* Cambio Last-Minute: dopo la deadline è l'unico modo di toccare la schedina */}
+            {isSubmitted && isDeadlinePassed && (
+              <div className="glass-card p-4 mb-6 border-accent-500/30 bg-accent-500/5">
+                {lastMinuteUsed ? (
+                  <div className="flex items-center gap-2">
+                    <RefreshCw size={16} className="text-white/30" />
+                    <p className="text-white/50 text-sm">
+                      Cambio Last-Minute già usato per questa giornata.
+                    </p>
+                  </div>
+                ) : pendingChange ? (
+                  <>
+                    <p className="text-accent-300 font-bold text-sm mb-1">
+                      Confermi il cambio?
+                    </p>
+                    <p className="text-white/60 text-xs mb-3">
+                      {(() => {
+                        const m = currentMatchday.matches.find(x => x.id === pendingChange.matchId);
+                        const home = m?.homeTeam.shortName || m?.homeTeam.name || '';
+                        const away = m?.awayTeam.shortName || m?.awayTeam.name || '';
+                        return `${home} - ${away}: nuovo pronostico ${pendingChange.outcome} @${pendingChange.odds.toFixed(2)}`;
+                      })()}
+                      {' · '}
+                      <span className="text-accent-400 font-bold">−{lastMinuteCost} gettoni</span>
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={confirmLastMinute}
+                        disabled={isSubmitting}
+                        className="flex items-center justify-center gap-1.5 py-2 px-4 rounded-lg bg-accent-500/20 border border-accent-500/30 text-accent-300 text-xs font-bold hover:bg-accent-500/30 transition-all disabled:opacity-50"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-accent-300/30 border-t-accent-300 rounded-full animate-spin" />
+                            Applico...
+                          </>
+                        ) : (
+                          <>
+                            <Check size={14} />
+                            Conferma (−{lastMinuteCost} 🪙)
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setPendingChange(null)}
+                        className="py-2 px-4 rounded-lg bg-white/5 border border-white/10 text-white/60 text-xs font-bold hover:bg-white/10 transition-all"
+                      >
+                        Scegli un'altra quota
+                      </button>
+                    </div>
+                  </>
+                ) : lastMinuteMode ? (
+                  <>
+                    <p className="text-accent-300 font-bold text-sm mb-1">
+                      Scegli la nuova quota
+                    </p>
+                    <p className="text-white/60 text-xs mb-3">
+                      Tocca una quota su una partita che hai giocato e non è ancora iniziata.
+                      Puoi cambiare un solo pronostico.
+                    </p>
+                    <button
+                      onClick={() => setLastMinuteMode(false)}
+                      className="py-2 px-4 rounded-lg bg-white/5 border border-white/10 text-white/60 text-xs font-bold hover:bg-white/10 transition-all"
+                    >
+                      Annulla
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 mb-1">
+                      <RefreshCw size={16} className="text-accent-400" />
+                      <p className="text-accent-300 font-bold text-sm">
+                        Cambio Last-Minute disponibile
+                      </p>
+                    </div>
+                    <p className="text-white/60 text-xs mb-3">
+                      La deadline è passata: con {lastMinuteCost} gettoni puoi cambiare{' '}
+                      <span className="font-bold">un solo</span> pronostico, su una partita non
+                      ancora iniziata.
+                    </p>
+                    <button
+                      onClick={() => setLastMinuteMode(true)}
+                      disabled={!canUseLastMinute || !canAffordLastMinute || openPredictions.length === 0}
+                      className="flex items-center gap-1.5 py-2 px-4 rounded-lg bg-accent-500/20 border border-accent-500/30 text-accent-300 text-xs font-bold hover:bg-accent-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Coins size={14} />
+                      Usa Cambio Last-Minute ({lastMinuteCost} 🪙)
+                    </button>
+                    {openPredictions.length === 0 ? (
+                      <p className="text-[10px] text-white/40 mt-2">
+                        Tutte le tue partite sono già iniziate: non c'è più nulla da cambiare.
+                      </p>
+                    ) : !canAffordLastMinute ? (
+                      <p className="text-[10px] text-white/40 mt-2">
+                        Ti servono {lastMinuteCost} gettoni (ne hai {currentUser?.coins ?? 0}).
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Bet Type Selector */}
             <div className="glass-card p-2 mb-4">
               <div className="flex gap-1">
@@ -360,17 +536,34 @@ export function SchedinaPage() {
                           const isValid = isValidOdds(outcomeOdds);
                           const isPenalty = isInPenaltyRange(outcomeOdds);
 
+                          const isLastMinuteTarget = canPickForLastMinute(match.id) && !isSelected;
+                          const isPending =
+                            pendingChange?.matchId === match.id &&
+                            pendingChange.betType === selectedBetType &&
+                            pendingChange.outcome === opt.value;
+
                           return (
                             <button
                               key={opt.value}
-                              onClick={() => handleOutcomeSelect(match.id, selectedBetType, opt.value as BetOutcome)}
-                              disabled={isSubmitted}
+                              onClick={() =>
+                                isLastMinuteTarget
+                                  ? handleLastMinutePick(
+                                      match.id,
+                                      selectedBetType,
+                                      opt.value as BetOutcome,
+                                      outcomeOdds
+                                    )
+                                  : handleOutcomeSelect(match.id, selectedBetType, opt.value as BetOutcome)
+                              }
+                              disabled={isSubmitted && !isLastMinuteTarget}
                               className={cn(
                                 'relative flex flex-col items-center justify-center p-2 rounded-xl border-2 transition-all duration-200 group',
                                 isSelected
                                   ? 'bg-primary-500 border-primary-400 shadow-lg shadow-primary-500/30'
                                   : 'bg-white/5 border-white/10 hover:border-primary-500/40 hover:bg-white/10',
-                                isSubmitted && 'opacity-50 cursor-not-allowed'
+                                isSubmitted && !isLastMinuteTarget && 'opacity-50 cursor-not-allowed',
+                                isLastMinuteTarget && 'border-accent-500/40 hover:border-accent-400',
+                                isPending && 'ring-2 ring-accent-400'
                               )}
                             >
                               <span className={cn(

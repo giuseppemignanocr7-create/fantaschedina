@@ -16,10 +16,12 @@ interface Level {
   name: string;
 }
 
+// I tempi arrivano da `COINS.memoriaLevelTimes`: il server li usa per validare
+// il bonus tempo dichiarato dal client, quindi devono essere gli stessi.
 const LEVELS: Level[] = [
-  { pairs: 4, cols: 4, time: 30, name: 'Esordiente' },
-  { pairs: 6, cols: 4, time: 45, name: 'Titolare' },
-  { pairs: 8, cols: 4, time: 60, name: 'Campione' },
+  { pairs: 4, cols: 4, time: COINS.memoriaLevelTimes[0], name: 'Esordiente' },
+  { pairs: 6, cols: 4, time: COINS.memoriaLevelTimes[1], name: 'Titolare' },
+  { pairs: 8, cols: 4, time: COINS.memoriaLevelTimes[2], name: 'Campione' },
 ];
 
 type Phase = 'intro' | 'playing' | 'submitting' | 'done';

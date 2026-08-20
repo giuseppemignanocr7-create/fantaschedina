@@ -11,5 +11,8 @@
     "sourceMap": true,
     "noUnusedLocals": true
   },
-  "include": ["src"]
+  // I test di integrazione non vanno compilati nel bundle deployato:
+  // usano vitest, che non e' una dipendenza delle functions.
+  "include": ["src"],
+  "exclude": ["src/__tests__"]
 }

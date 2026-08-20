@@ -33,8 +33,8 @@ import type {
   SchedinaResult,
 } from '@/types';
 import type { MatchOdds } from '@/data/mockData';
-import { computeRankings, computeWeeklyRanking } from './rankings';
-import { getPublicProfilesFn, type PublicProfileData } from './gameApi';
+import { computeWeeklyRanking } from './rankings';
+import { getPublicProfilesFn, getRankingsFn, type PublicProfileData } from './gameApi';
 import type { WeeklyRanking } from '@/types';
 
 // ============================================
@@ -112,7 +112,20 @@ export async function ensureProfile(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
-  await setDoc(ref, profile);
+  try {
+    await setDoc(ref, profile);
+  } catch (e) {
+    // Alla registrazione questa funzione parte due volte: una da `signUp` e
+    // una dal listener `onAuthStateChanged`, che ha già letto "profilo
+    // assente". La seconda scrive su un documento nel frattempo creato, e
+    // Firestore la valuta come update: le rules la respingono (giustamente,
+    // consentono di toccare solo username/avatarUrl). Il profilo però c'è:
+    // va riletto, non trattato come errore — altrimenti finisce a Sentry e
+    // l'utente resta senza profilo caricato fino al reload.
+    const esistente = await getDoc(ref);
+    if (esistente.exists()) return esistente.data() as ProfileDoc;
+    throw e;
+  }
   const created = await getDoc(ref);
   return created.data() as ProfileDoc;
 }
@@ -379,9 +392,16 @@ export async function getWeeklyRanking(matchdayNumber: number): Promise<WeeklyRa
 // ============================================
 // RANKINGS (computed from profiles)
 // ============================================
-export async function getRankings(): Promise<RankingEntry[]> {
-  const profiles = await getAllProfiles();
-  return computeRankings(profiles);
+/**
+ * La classifica arriva già ordinata dal server (callable `getRankings`):
+ * prima ogni client scaricava tutti i profili, a pagine da 100, e ordinava in
+ * locale. `computeRankings` resta lato client per i test e per le classifiche
+ * calcolate in locale (giornata, lega), ed è confrontata con la copia server
+ * da `rankingsMirror.test.ts`.
+ */
+export async function getRankings(leagueId?: string): Promise<RankingEntry[]> {
+  const { rankings } = await getRankingsFn(leagueId);
+  return rankings;
 }
 
 // Util to read raw query snapshots (debug/admin)

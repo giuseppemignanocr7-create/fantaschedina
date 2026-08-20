@@ -67,6 +67,17 @@ export const COINS = {
   memoriaPerLevel: 5, // gettoni per livello completato
   memoriaTimeBonus: 1, // gettoni per 5 secondi rimanenti
   memoriaDailyCap: 40, // max gettoni al giorno da memoria
+  // Secondi a disposizione per livello. Il server ne ha bisogno per sapere
+  // quanto tempo residuo è fisicamente possibile: il client dichiara il
+  // proprio risultato, e senza questo tetto potrebbe dichiarare qualunque cosa.
+  memoriaLevelTimes: [30, 45, 60] as number[],
+  // Duelli rigori 1v1 (anche contro bot)
+  duelWin: 50,
+  duelDraw: 25,
+  // Un duello contro il bot si crea e si chiude in circa un minuto: senza
+  // tetto giornaliero è la sorgente di gettoni più redditizia del gioco,
+  // molto sopra rigori (50) e memoria (40).
+  duelDailyCap: 150,
 } as const;
 
 // --- POWER-UP ---
