@@ -413,6 +413,19 @@ export async function adminForceSettleFn(
   return res.data;
 }
 
+/**
+ * Azzeramento di inizio stagione: irreversibile, riporta tutti i profili allo
+ * stato iniziale. Il server pretende la parola di conferma.
+ */
+export async function adminResetSeasonFn(): Promise<{ ok: boolean; profili: number }> {
+  const fn = httpsCallable<{ confirm: string }, { ok: boolean; profili: number }>(
+    functions,
+    'adminResetSeason'
+  );
+  const res = await fn({ confirm: 'AZZERA' });
+  return res.data;
+}
+
 export async function adminManageSponsorFn(
   action: 'list' | 'create' | 'update' | 'delete' | 'toggle',
   data: Partial<SponsorData> & { sponsorId?: string } = {}

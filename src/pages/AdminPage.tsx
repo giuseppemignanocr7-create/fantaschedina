@@ -1,18 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   RefreshCw, Users, Trophy, Calendar, Megaphone, Ban, Plus, Trash2,
-  ToggleLeft, ToggleRight, Zap, AlertTriangle, BarChart3, Globe,
+  ToggleLeft, ToggleRight, Zap, AlertTriangle, BarChart3, Globe, RotateCcw,
 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import {
   adminGetStatsFn, adminSyncMatchdayFn, adminForceSettleFn,
   adminManageSponsorFn, adminToggleBanFn, seedQuizQuestionsFn,
-  adminManageCompetitionsFn, type AdminStats, type SponsorData,
+  adminManageCompetitionsFn, adminResetSeasonFn, type AdminStats, type SponsorData,
   type CompetitionStatus,
 } from '@/lib/gameApi';
 import { callableErrorMessage } from '@/lib/gameApi';
 import { getPublicProfilesFn, type PublicProfileData } from '@/lib/gameApi';
 import { cn } from '@/lib/utils';
+import { COINS } from '@/lib/economy';
+
+const STARTING_COINS = COINS.starting;
 
 type Tab = 'stats' | 'matchday' | 'competitions' | 'sponsors' | 'users';
 
@@ -173,6 +176,8 @@ function MatchdayTab({ onError, onSuccess }: {
   const [settling, setSettling] = useState(false);
   const [settleNumber, setSettleNumber] = useState('');
   const [settleWarning, setSettleWarning] = useState<string | null>(null);
+  const [resetConferma, setResetConferma] = useState('');
+  const [resetting, setResetting] = useState(false);
   const [seeding, setSeeding] = useState(false);
 
   const handleSync = async (forceOdds = false) => {
@@ -212,6 +217,20 @@ function MatchdayTab({ onError, onSuccess }: {
       }
     } finally {
       setSettling(false);
+    }
+  };
+
+  const handleResetStagione = async () => {
+    setResetting(true);
+    onError('');
+    try {
+      const res = await adminResetSeasonFn();
+      setResetConferma('');
+      onSuccess(`Stagione azzerata: ${res.profili} profili riportati allo stato iniziale`);
+    } catch (e) {
+      onError(callableErrorMessage(e));
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -304,6 +323,36 @@ function MatchdayTab({ onError, onSuccess }: {
           </div>
         )}
       </div>
+      <div className="glass-card p-5 border-red-500/30">
+        <h2 className="text-lg font-bold text-white mb-1">Azzera stagione</h2>
+        <p className="text-white/50 text-sm mb-1">
+          Riporta <span className="font-bold text-white">tutti</span> i profili allo stato
+          iniziale: punti, statistiche e missioni riscosse a zero, gettoni a {STARTING_COINS}.
+        </p>
+        <p className="text-white/40 text-xs mb-3">
+          Schedine, giornate e premi passati restano come storico. L'operazione non è
+          reversibile: scrivi AZZERA per abilitare il pulsante.
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={resetConferma}
+            onChange={e => setResetConferma(e.target.value)}
+            placeholder="AZZERA"
+            aria-label="Conferma azzeramento stagione"
+            className="flex-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-red-500/50 outline-none"
+          />
+          <button
+            onClick={handleResetStagione}
+            disabled={resetting || resetConferma !== 'AZZERA'}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <RotateCcw size={16} className={resetting ? 'animate-spin' : ''} />
+            {resetting ? 'Azzeramento...' : 'Azzera'}
+          </button>
+        </div>
+      </div>
+
       <div className="glass-card p-5">
         <h2 className="text-lg font-bold text-white mb-1">Seed Quiz DB</h2>
         <p className="text-white/50 text-sm mb-3">

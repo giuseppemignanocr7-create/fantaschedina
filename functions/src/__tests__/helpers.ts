@@ -244,7 +244,8 @@ export function tenPredictions(outcome: string = '1'): Record<string, unknown>[]
 export async function wipe(): Promise<void> {
   for (const name of [
     'profiles', 'schedine', 'matchdays', 'wallet_transactions',
-    'rate_limits', 'prizes', 'penalty_duels',
+    'rate_limits', 'prizes', 'penalty_duels', 'leagues', 'season_resets',
+    'sfide_cooldowns',
   ]) {
     await db.recursiveDelete(db.collection(name));
   }

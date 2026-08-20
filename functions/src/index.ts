@@ -2000,6 +2000,73 @@ export const adminGetStats = onCall(callableOpts, async request => {
   };
 });
 
+/**
+ * Azzeramento di inizio stagione (admin).
+ *
+ * Riporta tutti i profili allo stato iniziale: punti, statistiche e missioni
+ * riscosse a zero, gettoni al bonus di partenza. Serve dopo un cambio di
+ * regole del punteggio, quando i valori accumulati sono su una scala che non
+ * ha più senso confrontare con quelli nuovi.
+ *
+ * Non tocca schedine, giornate e premi passati: restano come storico.
+ * Le missioni tornano riscuotibili — è voluto, è una stagione nuova.
+ */
+export const adminResetSeason = onCall(callableOpts, async request => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireAdmin(uid);
+  if (request.data?.confirm !== 'AZZERA') {
+    throw new HttpsError(
+      'failed-precondition',
+      'Conferma mancante: serve la parola AZZERA'
+    );
+  }
+
+  const azzeramento = {
+    totalPoints: 0,
+    weeklyPoints: 0,
+    matchdaysPlayed: 0,
+    perfectSchedine: 0,
+    bonusPointsTotal: 0,
+    penaltyPointsTotal: 0,
+    weeklyWins: 0,
+    bestMatchdayPoints: 0,
+    correctPredictions: 0,
+    coins: COINS.starting,
+    coinsEarned: 0,
+    claimedMissions: [] as string[],
+  };
+
+  let azzerati = 0;
+  let cursore: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+  for (;;) {
+    let q = db.collection('profiles').limit(300);
+    if (cursore) q = q.startAfter(cursore);
+    const pagina = await q.get();
+    if (pagina.empty) break;
+
+    const batch = db.batch();
+    for (const d of pagina.docs) {
+      batch.update(d.ref, { ...azzeramento, updatedAt: FieldValue.serverTimestamp() });
+    }
+    await batch.commit();
+    azzerati += pagina.docs.length;
+
+    cursore = pagina.docs[pagina.docs.length - 1];
+    if (pagina.docs.length < 300) break;
+  }
+
+  // Traccia dell'operazione: è irreversibile e cambia la classifica di tutti.
+  await db.collection('season_resets').add({
+    byUid: uid,
+    profili: azzerati,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  logger.warn('adminResetSeason', { uid, profili: azzerati });
+
+  return { ok: true, profili: azzerati };
+});
+
 /** Ban/unban utente (admin). */
 export const adminToggleBan = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
