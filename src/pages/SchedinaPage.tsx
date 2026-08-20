@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Check, AlertCircle, Send, Info, Trophy, Zap, Clock, RotateCcw, RefreshCw, Pencil, Trash2, Coins,
+  Check, AlertCircle, Send, Info, Trophy, Zap, Clock, RotateCcw, RefreshCw, Pencil, Trash2, Coins, Copy,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -11,6 +11,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { useSchedinaEditWindow } from '@/hooks';
 import { useSilentProfileRefresh } from '@/hooks/useSilentProfileRefresh';
 import { POWERUPS } from '@/lib/economy';
+import { getUserLeagues, type LeagueDoc } from '@/lib/leagues';
 import { sideCannons, vibrate } from '@/lib/juice';
 
 // 10 matches = 10 giocate
@@ -73,6 +74,9 @@ export function SchedinaPage() {
     resetSchedina,
     unlockSchedina,
     applyLastMinuteChange,
+    currentLeagueId,
+    setCircuito,
+    copiaDaGenerale,
     selectedPowerups,
     setPowerups,
     isLoadingOdds,
@@ -105,6 +109,22 @@ export function SchedinaPage() {
     const id = setInterval(tick, 30_000);
     return () => clearInterval(id);
   }, []);
+  // Leghe di cui l'utente fa parte: una schedina per ognuna, oltre a quella
+  // della classifica generale.
+  const [mieLeghe, setMieLeghe] = useState<LeagueDoc[]>([]);
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    let annullato = false;
+    getUserLeagues(currentUser.id)
+      .then(l => {
+        if (!annullato) setMieLeghe(l);
+      })
+      .catch(e => console.warn('[Schedina] leghe:', e));
+    return () => {
+      annullato = true;
+    };
+  }, [currentUser?.id]);
+
   const [lastMinuteMode, setLastMinuteMode] = useState(false);
   const [pendingChange, setPendingChange] = useState<{
     matchId: string;
@@ -150,6 +170,15 @@ export function SchedinaPage() {
       toast.success(isUpdate ? 'Schedina aggiornata con successo!' : 'Schedina inviata con successo!');
     } else {
       toast.error(useAppStore.getState().error || 'Errore nell\'invio della schedina');
+    }
+  };
+
+  const handleCopiaDaGenerale = async () => {
+    const ok = await copiaDaGenerale();
+    if (ok) {
+      toast.success('Pronostici copiati dalla schedina generale');
+    } else {
+      toast.error(useAppStore.getState().error || 'Copia non riuscita');
     }
   };
 
@@ -286,6 +315,48 @@ export function SchedinaPage() {
                 </div>
               </div>
             </div>
+
+            {/* Circuito: una schedina per la classifica generale e una per ogni lega */}
+            {mieLeghe.length > 0 && (
+              <div className="glass-card p-3 mb-4">
+                <p className="text-white/40 text-[11px] uppercase tracking-wide mb-2">
+                  Per quale classifica stai giocando
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[{ id: null, nome: 'Generale' }, ...mieLeghe.map(l => ({ id: l.id, nome: l.name }))].map(
+                    circuito => (
+                      <button
+                        key={circuito.id ?? 'generale'}
+                        onClick={() => setCircuito(circuito.id)}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-xs font-bold border transition-all',
+                          currentLeagueId === circuito.id
+                            ? 'bg-primary-500 border-primary-400 text-white'
+                            : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'
+                        )}
+                      >
+                        {circuito.nome}
+                      </button>
+                    )
+                  )}
+                </div>
+                {currentLeagueId && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={handleCopiaDaGenerale}
+                      disabled={isSubmitted}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/70 text-xs font-bold hover:bg-white/10 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Copy size={13} />
+                      Copia dalla schedina generale
+                    </button>
+                    <span className="text-[10px] text-white/40">
+                      Questa schedina vale solo per la lega: niente gettoni dai pronostici.
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Error Message */}
             {error && (

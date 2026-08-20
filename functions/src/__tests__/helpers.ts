@@ -203,6 +203,39 @@ export async function seedProfile(uid: string, coins = 1000, extra: Record<strin
   });
 }
 
+/** Lega con i membri indicati. */
+export async function seedLega(
+  leagueId: string,
+  memberIds: string[],
+  opts: { isPrivate?: boolean; name?: string } = {}
+): Promise<void> {
+  await db.collection('leagues').doc(leagueId).set({
+    id: leagueId,
+    name: opts.name ?? `Lega ${leagueId}`,
+    description: '',
+    ownerId: memberIds[0] ?? '',
+    memberIds,
+    memberCount: memberIds.length,
+    maxMembers: 20,
+    isPrivate: opts.isPrivate ?? false,
+    inviteCode: 'ABC123',
+  });
+}
+
+/** Riga di classifica di una lega (sottocollezione standings). */
+export async function readStanding(
+  leagueId: string,
+  uid: string
+): Promise<Record<string, number> | null> {
+  const snap = await db
+    .collection('leagues')
+    .doc(leagueId)
+    .collection('standings')
+    .doc(uid)
+    .get();
+  return snap.exists ? (snap.data() as Record<string, number>) : null;
+}
+
 export async function readProfile(uid: string): Promise<Record<string, number>> {
   const snap = await db.collection('profiles').doc(uid).get();
   return (snap.data() ?? {}) as Record<string, number>;

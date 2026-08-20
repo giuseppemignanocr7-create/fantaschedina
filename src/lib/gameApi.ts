@@ -12,40 +12,50 @@ import type { PenaltyZone } from './penalty';
 export interface SubmitSchedinaResponse {
   ok: boolean;
   matchday: number;
+  leagueId: string | null;
   coinsSpent: number;
 }
 
+/**
+ * `leagueId` sceglie il circuito: assente = classifica generale, altrimenti la
+ * schedina vale solo per quella lega. Sono schedine distinte sulla stessa
+ * giornata, ognuna con i propri power-up.
+ */
 export async function submitSchedinaFn(
   predictions: Prediction[],
-  powerups: PowerUpSelection = {}
+  powerups: PowerUpSelection = {},
+  leagueId?: string | null
 ): Promise<SubmitSchedinaResponse> {
   const fn = httpsCallable<
-    { predictions: Prediction[]; powerups: PowerUpSelection },
+    { predictions: Prediction[]; powerups: PowerUpSelection; leagueId?: string | null },
     SubmitSchedinaResponse
   >(functions, 'submitSchedina');
-  const res = await fn({ predictions, powerups });
+  const res = await fn({ predictions, powerups, leagueId: leagueId ?? null });
   return res.data;
 }
 
 export async function changePredictionFn(
   matchId: string,
   betType: string,
-  outcome: string
+  outcome: string,
+  leagueId?: string | null
 ): Promise<{ ok: boolean; coinsSpent: number }> {
   const fn = httpsCallable<
-    { matchId: string; betType: string; outcome: string },
+    { matchId: string; betType: string; outcome: string; leagueId?: string | null },
     { ok: boolean; coinsSpent: number }
   >(functions, 'changePrediction');
-  const res = await fn({ matchId, betType, outcome });
+  const res = await fn({ matchId, betType, outcome, leagueId: leagueId ?? null });
   return res.data;
 }
 
-export async function cancelSchedinaFn(): Promise<{ ok: boolean; refund: boolean }> {
-  const fn = httpsCallable<Record<string, never>, { ok: boolean; refund: boolean }>(
+export async function cancelSchedinaFn(
+  leagueId?: string | null
+): Promise<{ ok: boolean; refund: boolean }> {
+  const fn = httpsCallable<{ leagueId?: string | null }, { ok: boolean; refund: boolean }>(
     functions,
     'cancelSchedina'
   );
-  const res = await fn({});
+  const res = await fn({ leagueId: leagueId ?? null });
   return res.data;
 }
 

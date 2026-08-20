@@ -82,7 +82,9 @@ describe('getRankings', () => {
     expect(riga).not.toHaveProperty('email');
   });
 
-  it('con leagueId restituisce solo i membri della lega', async () => {
+  it('con leagueId restituisce solo i membri della lega, coi punti della lega', async () => {
+    // I punti del circuito generale sono volutamente in ordine opposto a
+    // quelli di lega: la classifica di lega non deve guardarli.
     await seedProfile('u_membro1', 0, { username: 'Membro1', totalPoints: 30 });
     await seedProfile('u_membro2', 0, { username: 'Membro2', totalPoints: 80 });
     await seedProfile('u_estraneo', 0, { username: 'Estraneo', totalPoints: 500 });
@@ -90,11 +92,41 @@ describe('getRankings', () => {
       id: 'lega1', name: 'Lega Uno', isPrivate: false,
       memberIds: ['u_membro1', 'u_membro2'], ownerId: 'u_membro1',
     });
+    await db.collection('leagues').doc('lega1').collection('standings').doc('u_membro1').set({
+      userId: 'u_membro1', username: 'Membro1', totalPoints: 42, matchdaysPlayed: 2,
+      correctPredictions: 12, bestMatchdayPoints: 25, perfectSchedine: 0,
+      bonusPointsTotal: 0, penaltyPointsTotal: 0, weeklyWins: 1,
+    });
+    await db.collection('leagues').doc('lega1').collection('standings').doc('u_membro2').set({
+      userId: 'u_membro2', username: 'Membro2', totalPoints: 18, matchdaysPlayed: 2,
+      correctPredictions: 6, bestMatchdayPoints: 11, perfectSchedine: 0,
+      bonusPointsTotal: 0, penaltyPointsTotal: 0, weeklyWins: 0,
+    });
 
     const righe = await classifica('u_membro1', { leagueId: 'lega1' });
 
-    expect(righe.map(r => r.participantId)).toEqual(['u_membro2', 'u_membro1']);
+    expect(righe.map(r => r.participantId)).toEqual(['u_membro1', 'u_membro2']);
     expect(righe.map(r => r.rank)).toEqual([1, 2]);
+    expect(righe[0].totalPoints).toBe(42);
+  });
+
+  it('un membro che non ha ancora giocato compare comunque, a zero', async () => {
+    await seedProfile('u_attivo', 0, { username: 'Attivo' });
+    await seedProfile('u_nuovo', 0, { username: 'Nuovo' });
+    await db.collection('leagues').doc('lega2').set({
+      id: 'lega2', name: 'Lega Due', isPrivate: false,
+      memberIds: ['u_attivo', 'u_nuovo'], ownerId: 'u_attivo',
+    });
+    await db.collection('leagues').doc('lega2').collection('standings').doc('u_attivo').set({
+      userId: 'u_attivo', username: 'Attivo', totalPoints: 12, matchdaysPlayed: 1,
+      correctPredictions: 4, bestMatchdayPoints: 12, perfectSchedine: 0,
+      bonusPointsTotal: 0, penaltyPointsTotal: 0, weeklyWins: 0,
+    });
+
+    const righe = await classifica('u_attivo', { leagueId: 'lega2' });
+
+    expect(righe.map(r => r.participantId)).toEqual(['u_attivo', 'u_nuovo']);
+    expect(righe[1].totalPoints).toBe(0);
   });
 
   it('una lega privata non è leggibile da chi non ne fa parte', async () => {

@@ -129,6 +129,34 @@ interface SchedinaDoc {
   lastMinuteUsed?: boolean;
   settled: boolean;
   submittedAt?: Timestamp;
+  /** null = circuito generale; altrimenti la lega per cui vale la schedina. */
+  leagueId?: string | null;
+}
+
+/**
+ * Identificativo della schedina. Ogni utente ne ha una per il circuito
+ * generale e una per ciascuna lega di cui fa parte, sulla stessa giornata.
+ */
+function schedinaId(uid: string, matchday: number, leagueId?: string | null): string {
+  return leagueId ? `${uid}_${matchday}_${leagueId}` : `${uid}_${matchday}`;
+}
+
+/**
+ * Valida il circuito richiesto: il generale è sempre ammesso, una lega solo
+ * se esiste e se chi scrive ne fa parte. Restituisce l'id normalizzato.
+ */
+async function requireCircuito(uid: string, leagueId: unknown): Promise<string | null> {
+  if (leagueId == null || leagueId === '') return null;
+  if (typeof leagueId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Lega non valida');
+  }
+  const snap = await db.collection('leagues').doc(leagueId).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Lega non trovata');
+  const membri = (snap.data()?.memberIds as string[] | undefined) ?? [];
+  if (!membri.includes(uid)) {
+    throw new HttpsError('permission-denied', 'Non fai parte di questa lega');
+  }
+  return leagueId;
 }
 
 /**
@@ -533,9 +561,15 @@ async function settleSchedine(
     return { sSnap, schedina, score, outcome };
   });
 
+  // Due circuiti separati sulla stessa giornata: la schedina generale muove
+  // profilo, gettoni e premio di giornata; quelle di lega restano dentro la
+  // classifica della loro lega e non toccano nulla del circuito generale.
+  const generali = evaluations.filter(e => !e.schedina.leagueId);
+  const diLega = evaluations.filter(e => !!e.schedina.leagueId);
+
   // Vincitore di giornata con criteri espliciti: vedi pickWeeklyWinner.
   const vincitore = pickWeeklyWinner(
-    evaluations.map(e => ({
+    generali.map(e => ({
       userId: e.schedina.userId,
       finalPoints: e.score.finalPoints,
       correctPredictions: e.score.correctPredictions,
@@ -545,8 +579,24 @@ async function settleSchedine(
   const bestUserId = vincitore?.userId ?? null;
   const bestPoints = vincitore?.finalPoints ?? 0;
 
+  // Vincitore di giornata di ciascuna lega: stesso criterio, nessun gettone.
+  const vincitoriLega = new Map<string, string>();
+  for (const leagueId of new Set(diLega.map(e => e.schedina.leagueId as string))) {
+    const migliore = pickWeeklyWinner(
+      diLega
+        .filter(e => e.schedina.leagueId === leagueId)
+        .map(e => ({
+          userId: e.schedina.userId,
+          finalPoints: e.score.finalPoints,
+          correctPredictions: e.score.correctPredictions,
+          submittedAtMs: e.schedina.submittedAt?.toMillis(),
+        }))
+    );
+    if (migliore) vincitoriLega.set(leagueId, migliore.userId);
+  }
+
   // Aggiorna profili in transaction (uno per utente)
-  for (const { sSnap, schedina, score, outcome } of evaluations) {
+  for (const { sSnap, schedina, score, outcome } of generali) {
     await db.runTransaction(async tx => {
       const freshSchedina = await tx.get(sSnap.ref);
       if (!freshSchedina.exists || (freshSchedina.data() as SchedinaDoc).settled) return;
@@ -601,7 +651,57 @@ async function settleSchedine(
     });
   }
 
-  const participantIds = new Set(evaluations.map(e => e.schedina.userId));
+  // Schedine di lega: i punti restano nella classifica della lega. Niente
+  // gettoni, niente statistiche di profilo, niente missioni: il circuito
+  // generale è l'unica strada per i gettoni.
+  for (const { sSnap, schedina, score } of diLega) {
+    const leagueId = schedina.leagueId as string;
+    await db.runTransaction(async tx => {
+      const freshSchedina = await tx.get(sSnap.ref);
+      if (!freshSchedina.exists || (freshSchedina.data() as SchedinaDoc).settled) return;
+
+      const standingRef = db
+        .collection('leagues')
+        .doc(leagueId)
+        .collection('standings')
+        .doc(schedina.userId);
+      const standing = await tx.get(standingRef);
+      const precedenti = (standing.data() ?? {}) as Record<string, number>;
+      const isVincitoreLega = vincitoriLega.get(leagueId) === schedina.userId;
+
+      tx.update(sSnap.ref, {
+        predictionResults: score.predictionResults,
+        settled: true,
+        totalPoints: score.totalPoints,
+        bonusPoints: score.bonusPoints,
+        penaltyPoints: score.penaltyPoints,
+        finalPoints: score.finalPoints,
+        correctPredictions: score.correctPredictions,
+        settledAt: FieldValue.serverTimestamp(),
+      });
+
+      tx.set(
+        standingRef,
+        {
+          userId: schedina.userId,
+          username: schedina.username,
+          totalPoints: FieldValue.increment(score.finalPoints),
+          weeklyPoints: score.finalPoints,
+          matchdaysPlayed: FieldValue.increment(1),
+          correctPredictions: FieldValue.increment(score.correctPredictions),
+          perfectSchedine: FieldValue.increment(score.correctPredictions >= 10 ? 1 : 0),
+          bonusPointsTotal: FieldValue.increment(score.bonusPoints),
+          penaltyPointsTotal: FieldValue.increment(score.penaltyPoints),
+          bestMatchdayPoints: Math.max(precedenti.bestMatchdayPoints ?? 0, score.finalPoints),
+          weeklyWins: FieldValue.increment(isVincitoreLega ? 1 : 0),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    });
+  }
+
+  const participantIds = new Set(generali.map(e => e.schedina.userId));
   // Paginated reset of weeklyPoints for non-participants (no hard limit)
   let lastDocId: string | null = null;
   const batchSize = 200;
@@ -660,6 +760,8 @@ export const submitSchedina = onCall(callableOpts, async request => {
     throw new HttpsError('invalid-argument', 'Pronostici mancanti');
   }
 
+  const leagueId = await requireCircuito(uid, request.data?.leagueId);
+
   let md = await getCurrentMatchday();
   if (!md) md = await syncMatchdayInternal();
   if (!md) throw new HttpsError('unavailable', 'Nessuna giornata disponibile');
@@ -710,7 +812,7 @@ export const submitSchedina = onCall(callableOpts, async request => {
   if (powerups.insurance) cleanPowerups.insurance = true;
   const cost = powerupCost(cleanPowerups);
 
-  const schedinaRef = db.collection('schedine').doc(`${uid}_${md.number}`);
+  const schedinaRef = db.collection('schedine').doc(schedinaId(uid, md.number, leagueId));
 
   await db.runTransaction(async tx => {
     const existing = await tx.get(schedinaRef);
@@ -745,6 +847,7 @@ export const submitSchedina = onCall(callableOpts, async request => {
       userId: uid,
       username: profile.data()?.username ?? 'player',
       matchdayNumber: md!.number,
+      leagueId,
       predictions: validated,
       powerups: cleanPowerups,
       lastMinuteUsed: false,
@@ -762,8 +865,8 @@ export const submitSchedina = onCall(callableOpts, async request => {
     });
   });
 
-  logger.info('submitSchedina:ok', { uid, matchday: md.number, coinsSpent: cost });
-  return { ok: true, matchday: md.number, coinsSpent: cost };
+  logger.info('submitSchedina:ok', { uid, matchday: md.number, leagueId, coinsSpent: cost });
+  return { ok: true, matchday: md.number, leagueId, coinsSpent: cost };
 });
 
 // ---------- 4. CAMBIO LAST-MINUTE (callable) ----------
@@ -824,8 +927,9 @@ export const changePrediction = onCall(callableOpts, async request => {
     throw new HttpsError('invalid-argument', 'Mercato non valido');
   }
 
+  const leagueId = await requireCircuito(uid, request.data?.leagueId);
   const cost = POWERUPS.lastminute.cost;
-  const schedinaRef = db.collection('schedine').doc(`${uid}_${md.number}`);
+  const schedinaRef = db.collection('schedine').doc(schedinaId(uid, md.number, leagueId));
   await db.runTransaction(async tx => {
     const snap = await tx.get(schedinaRef);
     if (!snap.exists) throw new HttpsError('not-found', 'Nessuna schedina inviata');
@@ -875,7 +979,8 @@ export const cancelSchedina = onCall(callableOpts, async request => {
     throw new HttpsError('failed-precondition', 'Deadline superata, non puoi annullare la schedina');
   }
 
-  const schedinaRef = db.collection('schedine').doc(`${uid}_${md.number}`);
+  const leagueId = await requireCircuito(uid, request.data?.leagueId);
+  const schedinaRef = db.collection('schedine').doc(schedinaId(uid, md.number, leagueId));
 
   await db.runTransaction(async tx => {
     const snap = await tx.get(schedinaRef);
@@ -1381,7 +1486,6 @@ export const getRankings = onCall(callableOpts, async request => {
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
 
   const leagueId = request.data?.leagueId as string | undefined;
-  let membri: Set<string> | null = null;
   if (leagueId) {
     const snap = await db.collection('leagues').doc(leagueId).get();
     if (!snap.exists) throw new HttpsError('not-found', 'Lega non trovata');
@@ -1390,7 +1494,40 @@ export const getRankings = onCall(callableOpts, async request => {
     if (lega.isPrivate && !memberIds.includes(uid)) {
       throw new HttpsError('permission-denied', 'Lega privata');
     }
-    membri = new Set(memberIds);
+
+    // La classifica di lega si costruisce sui punti delle schedine di lega
+    // (sottocollezione standings), non su quelli del circuito generale: sono
+    // due competizioni distinte. I membri che non hanno ancora giocato
+    // compaiono comunque, a zero.
+    const standings = await db
+      .collection('leagues')
+      .doc(leagueId)
+      .collection('standings')
+      .get();
+    const perUid = new Map(standings.docs.map(d => [d.id, d.data()]));
+
+    const membriProfili = await Promise.all(
+      memberIds.map(m => db.collection('profiles').doc(m).get())
+    );
+    const righeLega: RankableProfile[] = membriProfili
+      .filter(d => d.exists && d.data()?.isActive !== false)
+      .map(d => {
+        const s = perUid.get(d.id) ?? {};
+        return {
+          id: d.id,
+          username: (s.username as string) ?? (d.data()?.username as string) ?? 'player',
+          totalPoints: Number(s.totalPoints ?? 0),
+          matchdaysPlayed: Number(s.matchdaysPlayed ?? 0),
+          correctPredictions: Number(s.correctPredictions ?? 0),
+          bestMatchdayPoints: Number(s.bestMatchdayPoints ?? 0),
+          perfectSchedine: Number(s.perfectSchedine ?? 0),
+          bonusPointsTotal: Number(s.bonusPointsTotal ?? 0),
+          penaltyPointsTotal: Number(s.penaltyPointsTotal ?? 0),
+          weeklyWins: Number(s.weeklyWins ?? 0),
+        };
+      });
+
+    return { rankings: computeRankings(righeLega) };
   }
 
   const profili: RankableProfile[] = [];
@@ -1401,7 +1538,6 @@ export const getRankings = onCall(callableOpts, async request => {
     const pagina = await q.get();
     if (pagina.empty) break;
     for (const d of pagina.docs) {
-      if (membri && !membri.has(d.id)) continue;
       const p = d.data();
       profili.push({
         id: d.id,

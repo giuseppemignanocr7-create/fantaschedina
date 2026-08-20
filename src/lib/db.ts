@@ -268,15 +268,23 @@ export interface SchedinaDoc {
   createdAt: Timestamp | null;
 }
 
-function schedinaIdFor(uid: string, matchdayNumber: number): string {
-  return `${uid}_${matchdayNumber}`;
+/** Stesso schema del server (functions/src/index.ts:schedinaId). */
+function schedinaIdFor(
+  uid: string,
+  matchdayNumber: number,
+  leagueId?: string | null
+): string {
+  return leagueId ? `${uid}_${matchdayNumber}_${leagueId}` : `${uid}_${matchdayNumber}`;
 }
 
 export async function getUserSchedinaForMatchday(
   uid: string,
-  matchdayNumber: number
+  matchdayNumber: number,
+  leagueId?: string | null
 ): Promise<SchedinaDoc | null> {
-  const snap = await getDoc(doc(db, COL.schedine, schedinaIdFor(uid, matchdayNumber)));
+  const snap = await getDoc(
+    doc(db, COL.schedine, schedinaIdFor(uid, matchdayNumber, leagueId))
+  );
   return snap.exists() ? (snap.data() as SchedinaDoc) : null;
 }
 

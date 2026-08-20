@@ -12,7 +12,7 @@ Tutta la logica che tocca **punti e gettoni** gira server-side su Cloud Function
 
 | Azione | Dove gira | Perché |
 |---|---|---|
-| Invio schedina | callable `submitSchedina` | valida deadline, sostituisce le quote con quelle ufficiali, addebita i power-up |
+| Invio schedina | callable `submitSchedina` | valida deadline, sostituisce le quote con quelle ufficiali, addebita i power-up, e verifica l'appartenenza alla lega per le schedine di lega |
 | Settlement giornata | scheduled `settleMatchdays` (ogni ora) | valuta le schedine, aggiorna punti/profili in transaction, assegna premi |
 | Sync giornata + quote | scheduled `syncMatchday` (ogni 6h) | le quote sono generate SOLO server-side |
 | Minigiochi | callable `playMinigame` | esiti estratti dal server, cooldown 1/giorno su Firestore |
@@ -22,6 +22,26 @@ Tutta la logica che tocca **punti e gettoni** gira server-side su Cloud Function
 | Cambio Last-Minute | callable `changePrediction` | addebita 100 gettoni, consuma il power-up e cambia 1 pronostico dopo la deadline, solo su partite non iniziate |
 
 Le **Firestore Rules** (`firestore.rules`) bloccano ogni scrittura client su punti, gettoni, schedine e giornate. Le schedine altrui sono leggibili **solo dopo la deadline** (anti-copia).
+
+## Due circuiti: generale e leghe
+
+Ogni giornata un utente compila **una schedina per la classifica generale** e
+**una per ogni lega** di cui fa parte: stesse partite, stessa deadline, punti
+separati.
+
+| | Circuito generale | Leghe |
+|---|---|---|
+| Documento | `schedine/{uid}_{giornata}` | `schedine/{uid}_{giornata}_{lega}` |
+| Dove finiscono i punti | profilo (`totalPoints`) | `leagues/{lega}/standings/{uid}` |
+| Gettoni dai pronostici | sì | no |
+| Statistiche e missioni | sì | no |
+| Power-up | sì, a pagamento | sì, si pagano su ogni schedina |
+| Premio di giornata | 100 gettoni al migliore | solo la vittoria in classifica di lega |
+
+I gettoni si guadagnano quindi solo dal circuito generale e dai minigiochi,
+mentre le leghe li consumano: è una scelta di bilanciamento, non un effetto
+collaterale. In schedina un pulsante **copia dalla schedina generale** evita di
+ricompilare dieci pronostici per ogni lega.
 
 ## Economia di gioco 🪙
 
@@ -121,8 +141,9 @@ npm run build     # produzione
 |---|---|---|---|
 | `profiles` | `{uid}` | Functions (client: solo username/avatar) | punti, gettoni, statistiche, missioni riscosse |
 | `matchdays` | `{number}`, `_meta` | Solo Functions | partite, risultati (anche HT), quote ufficiali, deadline |
-| `schedine` | `{uid}_{matchday}` | Solo Functions | pronostici, power-up, risultati valutati |
+| `schedine` | `{uid}_{matchday}` o `{uid}_{matchday}_{lega}` | Solo Functions | pronostici, power-up, risultati valutati |
 | `leagues` | auto | Client (rules vincolate) | leghe private, codici invito, membri |
+| `leagues/{id}/standings` | `{uid}` | Solo Functions | classifica di lega, alimentata dalle schedine di lega |
 | `wallet_transactions` | auto | Solo Functions | audit trail gettoni |
 | `prizes` | `weekly_{n}`, … | Solo Functions | albo d'oro premi |
 | `quiz_questions` | `q001…` | Seed script | pool domande quiz |
