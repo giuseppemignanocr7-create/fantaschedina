@@ -359,12 +359,42 @@ export async function getWalletTransactions(
   return snap.docs.map(d => d.data() as WalletTransactionDoc);
 }
 
+export interface PodioEntry {
+  position: number;
+  userId: string;
+  username: string;
+  points: number;
+  prize: string;
+  emoji?: string | null;
+}
+
 export interface PrizeDoc {
   type: 'weekly_winner';
   matchday: number;
   winnerId: string;
   points?: number;
+  /** Podio della giornata con il premio assegnato a ciascuna posizione. */
+  podio?: PodioEntry[];
   createdAt: Timestamp | null;
+}
+
+export interface WeeklyPrizeItem {
+  position: number;
+  label: string;
+  emoji?: string;
+}
+
+/**
+ * Premi in palio per una giornata, decisi dall'admin. Assenti = la giornata
+ * non è ancora stata configurata e valgono quelli di partenza del client.
+ */
+export async function getWeeklyPrizes(
+  matchdayNumber: number
+): Promise<WeeklyPrizeItem[] | null> {
+  const snap = await getDoc(doc(db, 'weekly_prizes', String(matchdayNumber)));
+  if (!snap.exists()) return null;
+  const items = snap.data()?.items as WeeklyPrizeItem[] | undefined;
+  return items && items.length > 0 ? items : null;
 }
 
 export async function getPrizes(): Promise<PrizeDoc[]> {

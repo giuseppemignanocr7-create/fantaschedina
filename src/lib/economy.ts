@@ -74,6 +74,16 @@ export const POWERUPS: Record<PowerUpId, PowerUpInfo> = {
   },
 };
 
+/**
+ * Premi settimanali di partenza (mirror di functions/src/config.ts).
+ * L'admin li ridefinisce giornata per giornata dal pannello.
+ */
+export const DEFAULT_WEEKLY_PRIZES = [
+  { position: 1, label: 'Felpa', emoji: '🧥' },
+  { position: 2, label: 'T-shirt', emoji: '👕' },
+  { position: 3, label: 'Cappellino', emoji: '🧢' },
+];
+
 // Selezione power-up allegata alla schedina
 export interface PowerUpSelection {
   jolly?: string; // matchId

@@ -17,6 +17,7 @@ Tutta la logica che tocca **punti e gettoni** gira server-side su Cloud Function
 | Sync giornata + quote | scheduled `syncMatchday` (ogni 6h) | le quote sono generate SOLO server-side |
 | Minigiochi | callable `playMinigame` | esiti estratti dal server, cooldown 1/giorno su Firestore |
 | Missioni | callable `claimMission` | verifica progressi dal profilo, accredita gettoni |
+| Premi settimanali | callable `adminManageWeeklyPrizes` | l'admin decide cosa si vince in una giornata; il settlement li assegna al podio |
 | Classifica | callable `getRankings` | calcolata una volta sola dal server, anche per lega: il client non scarica più tutti i profili |
 | Pulizia duelli | scheduled `cleanupPenaltyDuels` (ogni ora) | chiude le sfide ferme e cancella quelle mai iniziate |
 | Cambio Last-Minute | callable `changePrediction` | addebita 100 gettoni, consuma il power-up e cambia 1 pronostico dopo la deadline, solo su partite non iniziate |
@@ -145,7 +146,8 @@ npm run build     # produzione
 | `leagues` | auto | Client (rules vincolate) | leghe private, codici invito, membri |
 | `leagues/{id}/standings` | `{uid}` | Solo Functions | classifica di lega, alimentata dalle schedine di lega |
 | `wallet_transactions` | auto | Solo Functions | audit trail gettoni |
-| `prizes` | `weekly_{n}`, … | Solo Functions | albo d'oro premi |
+| `prizes` | `weekly_{n}`, … | Solo Functions | albo d'oro: podio di giornata e premio assegnato |
+| `weekly_prizes` | `{matchday}` | Solo Functions (admin) | premi in palio per una giornata |
 | `quiz_questions` | `q001…` | Seed script | pool domande quiz |
 | `quiz_sessions` | `{uid}` | Solo Functions | sessione quiz anti-cheat |
 

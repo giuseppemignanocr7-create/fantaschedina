@@ -29,8 +29,17 @@ export interface WeeklyCandidate {
 export function pickWeeklyWinner(
   candidates: WeeklyCandidate[]
 ): WeeklyCandidate | null {
-  if (candidates.length === 0) return null;
-  return candidates.slice().sort(confrontaCandidati)[0];
+  return rankWeeklyCandidates(candidates)[0] ?? null;
+}
+
+/**
+ * Classifica di giornata completa, con gli stessi criteri del vincitore.
+ * Serve per il podio: i premi settimanali sono tre, non uno.
+ */
+export function rankWeeklyCandidates(
+  candidates: WeeklyCandidate[]
+): WeeklyCandidate[] {
+  return candidates.slice().sort(confrontaCandidati);
 }
 
 function confrontaCandidati(a: WeeklyCandidate, b: WeeklyCandidate): number {

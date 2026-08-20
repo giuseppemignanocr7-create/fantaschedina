@@ -125,6 +125,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ============================================
+    // WEEKLY PRIZES — cosa si vince in una data giornata. Li decide l'admin
+    // (adminManageWeeklyPrizes) e devono essere visibili a chi gioca.
+    // ============================================
+    match /weekly_prizes/{matchday} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
     function isAdmin() {
       return isAuth() && exists(/databases/$(database)/documents/profiles/$(request.auth.uid))
         && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin';

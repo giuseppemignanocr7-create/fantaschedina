@@ -436,6 +436,26 @@ export async function adminResetSeasonFn(): Promise<{ ok: boolean; profili: numb
   return res.data;
 }
 
+export interface WeeklyPrizeItem {
+  position: number;
+  label: string;
+  emoji?: string;
+}
+
+/** Premi settimanali di una giornata: lettura e scrittura, solo admin. */
+export async function adminManageWeeklyPrizesFn(
+  action: 'get' | 'set',
+  matchdayNumber: number,
+  items?: WeeklyPrizeItem[]
+): Promise<{ matchdayNumber: number; items: WeeklyPrizeItem[]; personalizzati?: boolean }> {
+  const fn = httpsCallable<
+    { action: string; matchdayNumber: number; items?: WeeklyPrizeItem[] },
+    { matchdayNumber: number; items: WeeklyPrizeItem[]; personalizzati?: boolean }
+  >(functions, 'adminManageWeeklyPrizes');
+  const res = await fn({ action, matchdayNumber, items });
+  return res.data;
+}
+
 export async function adminManageSponsorFn(
   action: 'list' | 'create' | 'update' | 'delete' | 'toggle',
   data: Partial<SponsorData> & { sponsorId?: string } = {}

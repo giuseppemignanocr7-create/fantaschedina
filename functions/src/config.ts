@@ -100,6 +100,27 @@ export interface PowerUpSelection {
   insurance?: boolean;
 }
 
+// --- PREMI SETTIMANALI ---
+export interface WeeklyPrize {
+  /** 1 = primo posto della giornata. */
+  position: number;
+  label: string;
+  emoji?: string;
+}
+
+/**
+ * Premi di partenza. L'amministratore li ridefinisce giornata per giornata in
+ * base a quanti stanno giocando, quindi questi valgono solo finché non lo fa.
+ */
+export const DEFAULT_WEEKLY_PRIZES: WeeklyPrize[] = [
+  { position: 1, label: 'Felpa', emoji: '🧥' },
+  { position: 2, label: 'T-shirt', emoji: '👕' },
+  { position: 3, label: 'Cappellino', emoji: '🧢' },
+];
+
+/** Tetto ai premi definibili per una giornata: un podio, non un catalogo. */
+export const MAX_WEEKLY_PRIZES = 10;
+
 // --- MISSIONI ---
 export interface MissionDef {
   id: string;

@@ -278,7 +278,7 @@ export async function wipe(): Promise<void> {
   for (const name of [
     'profiles', 'schedine', 'matchdays', 'wallet_transactions',
     'rate_limits', 'prizes', 'penalty_duels', 'leagues', 'season_resets',
-    'sfide_cooldowns',
+    'sfide_cooldowns', 'weekly_prizes',
   ]) {
     await db.recursiveDelete(db.collection(name));
   }

@@ -26,6 +26,7 @@ import { secureIndex, securePick, secureShuffle } from './random';
 
 import {
   COINS, MISSIONS, POWERUPS, PowerUpSelection,
+  DEFAULT_WEEKLY_PRIZES, MAX_WEEKLY_PRIZES, type WeeklyPrize,
   COMPETITIONS, DEFAULT_ACTIVE_COMPETITIONS, MAX_PICKS_PER_SCHEDINA,
 } from './config';
 import { ALL_QUIZ_QUESTIONS } from './quizData';
@@ -37,7 +38,7 @@ import {
 import { generateMatchdayOdds, MatchOdds } from './odds';
 import { computePowerupCharge, isLastMinuteWindowOpen, powerupCost } from './powerups';
 import { intInRange } from './input';
-import { pickWeeklyWinner } from './settlement';
+import { pickWeeklyWinner, rankWeeklyCandidates } from './settlement';
 import { computeRankings, type RankableProfile } from './rankings';
 import { attackerForRound, canFinishAtRound, type DuelMode } from './duels';
 import { fetchRealMatchdayOdds } from './realOdds';
@@ -513,6 +514,13 @@ export const updateLiveScores = onSchedule(
 );
 
 /** Valuta le schedine della giornata. Restituisce quante ne ha valutate. */
+/** Premi definiti dall'admin per la giornata, o quelli di partenza. */
+async function leggiPremiSettimanali(matchdayNumber: number): Promise<WeeklyPrize[]> {
+  const snap = await db.collection('weekly_prizes').doc(String(matchdayNumber)).get();
+  const items = snap.exists ? (snap.data()?.items as WeeklyPrize[] | undefined) : undefined;
+  return items && items.length > 0 ? items : DEFAULT_WEEKLY_PRIZES;
+}
+
 async function settleSchedine(
   matchdayNumber: number,
   matches: StoredMatch[]
@@ -567,8 +575,9 @@ async function settleSchedine(
   const generali = evaluations.filter(e => !e.schedina.leagueId);
   const diLega = evaluations.filter(e => !!e.schedina.leagueId);
 
-  // Vincitore di giornata con criteri espliciti: vedi pickWeeklyWinner.
-  const vincitore = pickWeeklyWinner(
+  // Classifica di giornata del circuito generale: serve sia il vincitore (per
+  // i gettoni) sia il podio completo (per i premi settimanali dell'admin).
+  const classificaGiornata = rankWeeklyCandidates(
     generali.map(e => ({
       userId: e.schedina.userId,
       finalPoints: e.score.finalPoints,
@@ -576,6 +585,7 @@ async function settleSchedine(
       submittedAtMs: e.schedina.submittedAt?.toMillis(),
     }))
   );
+  const vincitore = classificaGiornata[0] ?? null;
   const bestUserId = vincitore?.userId ?? null;
   const bestPoints = vincitore?.finalPoints ?? 0;
 
@@ -731,14 +741,36 @@ async function settleSchedine(
     if (batch.docs.length < batchSize) break;
   }
 
-  // Storico premi
+  // Storico premi: chi ha vinto la giornata e cosa si porta a casa. I premi
+  // sono definiti dall'admin giornata per giornata (adminManageWeeklyPrizes);
+  // se non li ha ancora scelti valgono quelli di partenza.
   const prizes = db.collection('prizes');
   if (bestUserId) {
+    const premi = await leggiPremiSettimanali(matchdayNumber);
+    const nomiPerUid = new Map(generali.map(e => [e.schedina.userId, e.schedina.username]));
+    const podio = premi
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map(premio => {
+        const riga = classificaGiornata[premio.position - 1];
+        if (!riga) return null;
+        return {
+          position: premio.position,
+          userId: riga.userId,
+          username: nomiPerUid.get(riga.userId) ?? 'player',
+          points: riga.finalPoints,
+          prize: premio.label,
+          emoji: premio.emoji ?? null,
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+
     await prizes.doc(`weekly_${matchdayNumber}`).set({
       type: 'weekly_winner',
       matchday: matchdayNumber,
       winnerId: bestUserId,
       points: bestPoints,
+      podio,
       createdAt: FieldValue.serverTimestamp(),
     });
   }
@@ -2201,6 +2233,83 @@ export const adminResetSeason = onCall(callableOpts, async request => {
   logger.warn('adminResetSeason', { uid, profili: azzerati });
 
   return { ok: true, profili: azzerati };
+});
+
+/**
+ * Premi settimanali di una giornata (admin).
+ *
+ * L'amministratore li decide in base a quanti stanno giocando quella
+ * settimana, quindi vivono per giornata e non nel codice. Finché non li
+ * imposta valgono quelli di partenza (felpa, t-shirt, cappellino).
+ */
+export const adminManageWeeklyPrizes = onCall(callableOpts, async request => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireAdmin(uid);
+
+  const action = request.data?.action as string;
+  const matchdayNumber = intInRange(request.data?.matchdayNumber, 0, 38);
+  if (matchdayNumber < 1) {
+    throw new HttpsError('invalid-argument', 'Giornata non valida');
+  }
+  const ref = db.collection('weekly_prizes').doc(String(matchdayNumber));
+
+  if (action === 'get') {
+    const snap = await ref.get();
+    const items = snap.exists ? (snap.data()?.items as WeeklyPrize[] | undefined) : undefined;
+    const personalizzati = !!items && items.length > 0;
+    return {
+      matchdayNumber,
+      personalizzati,
+      items: personalizzati ? items : DEFAULT_WEEKLY_PRIZES,
+    };
+  }
+
+  if (action === 'set') {
+    const grezzi = request.data?.items;
+    if (!Array.isArray(grezzi) || grezzi.length === 0) {
+      throw new HttpsError('invalid-argument', 'Serve almeno un premio');
+    }
+    if (grezzi.length > MAX_WEEKLY_PRIZES) {
+      throw new HttpsError(
+        'invalid-argument',
+        `Non più di ${MAX_WEEKLY_PRIZES} premi per giornata`
+      );
+    }
+
+    const posizioni = new Set<number>();
+    const items: WeeklyPrize[] = grezzi.map((grezzo: unknown) => {
+      const p = (grezzo ?? {}) as { position?: unknown; label?: unknown; emoji?: unknown };
+      const position = intInRange(p.position, 0, MAX_WEEKLY_PRIZES);
+      if (position < 1) {
+        throw new HttpsError('invalid-argument', 'Posizione del premio non valida');
+      }
+      if (posizioni.has(position)) {
+        throw new HttpsError('invalid-argument', `Posizione ${position} ripetuta`);
+      }
+      posizioni.add(position);
+
+      const label = typeof p.label === 'string' ? p.label.trim() : '';
+      if (!label) throw new HttpsError('invalid-argument', 'Ogni premio ha bisogno di un nome');
+      if (label.length > 60) {
+        throw new HttpsError('invalid-argument', 'Nome del premio troppo lungo (max 60)');
+      }
+      const emoji = typeof p.emoji === 'string' ? p.emoji.trim().slice(0, 8) : '';
+      return emoji ? { position, label, emoji } : { position, label };
+    });
+
+    items.sort((a, b) => a.position - b.position);
+    await ref.set({
+      matchday: matchdayNumber,
+      items,
+      byUid: uid,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    logger.info('adminManageWeeklyPrizes:set', { uid, matchdayNumber, premi: items.length });
+    return { ok: true, matchdayNumber, items };
+  }
+
+  throw new HttpsError('invalid-argument', `Azione sconosciuta: ${action}`);
 });
 
 /** Ban/unban utente (admin). */
