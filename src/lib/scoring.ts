@@ -22,7 +22,7 @@ export const DEFAULT_TOURNAMENT_CONFIG: TournamentConfig = {
   weeklyFeeToPool: 5,
   weeklyFeeToOrganizer: 5,
   minValidOdds: 1.30,
-  oddsCap: 5.00,             // tetto al contributo di una singola giocata nel combo
+  oddsCap: 5.00,             // tetto ai punti di una singola giocata indovinata
   penaltyOddsMin: 1.25,
   penaltyMultiplierPerThree: 0.9, // ogni 3 giocate in fascia 1.25-1.29
   bonus9Multiplier: 1.2,
@@ -39,12 +39,9 @@ export const DEFAULT_TOURNAMENT_CONFIG: TournamentConfig = {
 };
 
 /**
- * Contributo al moltiplicatore combo di una singola giocata.
- * Formula ufficiale: le quote delle giocate corrette si MOLTIPLICANO tra
- * loro (stile schedina reale) invece di sommarsi — ogni giocata vinta
- * contribuisce la propria quota (cappata a oddsCap) come fattore
- * moltiplicativo; una giocata persa non contribuisce (viene esclusa dal
- * prodotto, non conta come fattore 0).
+ * Punti di una singola giocata: la propria quota se indovinata (cappata a
+ * oddsCap), zero se sbagliata. I punti della schedina sono la SOMMA di questi
+ * contributi.
  */
 export function calculateBetPoints(
   odds: number,
@@ -119,12 +116,11 @@ export function calculateBonusPoints(
 
 /**
  * Calcola il punteggio completo di una schedina.
- * Il combo di base è il PRODOTTO delle quote (cappate) delle giocate
- * corrette (0 se nessuna corretta) — non la somma. Bonus e penalità restano
- * espressi come impatto assoluto in punti (non moltiplicatori grezzi), così
- * `finalPoints` resta sempre `basePoints + bonusPoints + penaltyPoints` e i
- * totali cumulativi di profilo (bonusPointsTotal/penaltyPointsTotal) restano
- * sommabili nel tempo.
+ * I punti base sono la SOMMA delle quote (cappate) delle giocate corrette.
+ * Bonus e penalità restano espressi come impatto assoluto in punti (non
+ * moltiplicatori grezzi), così `finalPoints` resta sempre
+ * `basePoints + bonusPoints + penaltyPoints` e i totali cumulativi di profilo
+ * (bonusPointsTotal/penaltyPointsTotal) restano sommabili nel tempo.
  */
 export function calculateSchedinaScore(
   predictions: PredictionResult[],
@@ -132,9 +128,12 @@ export function calculateSchedinaScore(
 ): ScoreCalculation {
   const correctPredictions = predictions.filter(p => p.isCorrect).length;
 
-  const comboMultiplier = correctPredictions === 0
-    ? 0
-    : predictions.reduce((product, pred) => pred.isCorrect ? product * pred.pointsEarned : product, 1);
+  // Punti della schedina: somma delle quote indovinate (vedi
+  // functions/src/scoring.ts, che è la fonte di verità del calcolo).
+  const puntiBase = predictions.reduce(
+    (somma, pred) => (pred.isCorrect ? somma + pred.pointsEarned : somma),
+    0
+  );
 
   // Conta quote nella fascia penalità (composizione della schedina, a prescindere dall'esito)
   const penaltyRangeBets = countPenaltyRangeBets(predictions, config);
@@ -148,7 +147,7 @@ export function calculateSchedinaScore(
   // Arrotonda ogni passaggio in modo progressivo (non i 4 valori indipendentemente
   // dai loro grezzi non arrotondati): altrimenti basePoints+bonusPoints+penaltyPoints
   // può divergere di qualche centesimo da finalPoints per arrotondamenti scorrelati.
-  const basePoints = Math.round(comboMultiplier * 100) / 100;
+  const basePoints = Math.round(puntiBase * 100) / 100;
   const afterBonus = Math.round(basePoints * bonusMultiplier * 100) / 100;
   const bonusPoints = Math.round((afterBonus - basePoints) * 100) / 100;
   const afterPenalty = Math.round(afterBonus * penaltyMultiplier * 100) / 100;
@@ -230,8 +229,8 @@ export function evaluateSchedina(
     }
     const evalResult = evaluateBet(pred.betType, pred.outcome, match.result);
     if (evalResult === null) {
-      // Void: quota 1.00 → contributo neutro (×1) al moltiplicatore combo
-      return { ...pred, isCorrect: true, pointsEarned: 1 };
+      // Void: contributo neutro. Nella somma il neutro è 0, non 1.
+      return { ...pred, isCorrect: true, pointsEarned: 0 };
     }
     const pointsEarned = calculateBetPoints(pred.odds, evalResult, config);
     

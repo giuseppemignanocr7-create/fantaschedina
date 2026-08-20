@@ -139,7 +139,7 @@ function makeSchedina(predictions: Prediction[]): Schedina {
 }
 
 describe('evaluateSchedina', () => {
-  it('10/10 corretti: le quote si moltiplicano e il bonus è ×1.5', () => {
+  it('10/10 corretti: le quote si sommano e il bonus è ×1.5', () => {
     const matches = Array.from({ length: 10 }, (_, i) => makeMatch(`m${i}`, 2, 0));
     const predictions: Prediction[] = matches.map(m => ({
       matchId: m.id,
@@ -149,12 +149,12 @@ describe('evaluateSchedina', () => {
     }));
     const r = evaluateSchedina(makeSchedina(predictions), matches);
     expect(r.correctPredictions).toBe(10);
-    expect(r.totalPoints).toBeCloseTo(1024); // 2.0^10
-    expect(r.bonusPoints).toBeCloseTo(512); // 1024 × (1.5 - 1)
-    expect(r.finalPoints).toBeCloseTo(1536); // 1024 × 1.5
+    expect(r.totalPoints).toBeCloseTo(20); // 10 × 2.00
+    expect(r.bonusPoints).toBeCloseTo(10); // 20 × (1.5 - 1)
+    expect(r.finalPoints).toBeCloseTo(30); // 20 × 1.5
   });
 
-  it('valuta correttamente mercati misti: le quote corrette si moltiplicano tra loro', () => {
+  it('valuta correttamente mercati misti: le quote corrette si sommano', () => {
     const matches = [makeMatch('m1', 2, 1), makeMatch('m2', 0, 0)];
     const predictions: Prediction[] = [
       { matchId: 'm1', betType: 'over_under', outcome: 'OVER', odds: 1.85 },
@@ -162,7 +162,7 @@ describe('evaluateSchedina', () => {
     ];
     const r = evaluateSchedina(makeSchedina(predictions), matches);
     expect(r.correctPredictions).toBe(2);
-    expect(r.totalPoints).toBeCloseTo(1.85 * 2.0);
+    expect(r.totalPoints).toBeCloseTo(1.85 + 2.0);
   });
 
   it('penalità applicata con 3 quote in fascia 1.25-1.29 (moltiplicatore ×0.9)', () => {
@@ -174,21 +174,21 @@ describe('evaluateSchedina', () => {
       odds: 1.27,
     }));
     const r = evaluateSchedina(makeSchedina(predictions), matches);
-    const combo = 1.27 ** 3;
-    expect(r.penaltyPoints).toBeCloseTo(Math.round((combo * 0.9 - combo) * 100) / 100, 2);
+    const base = 3 * 1.27;
+    expect(r.penaltyPoints).toBeCloseTo(Math.round((base * 0.9 - base) * 100) / 100, 2);
   });
 
-  it('mercato 1T senza dato HT → void = contributo neutro (1)', () => {
+  it('mercato 1T senza dato HT → void = contributo neutro (0 punti)', () => {
     const matches = [makeMatch('m1', 2, 1)];
     const predictions: Prediction[] = [
       { matchId: 'm1', betType: 'esito_1t', outcome: '1', odds: 2.5 },
     ];
     const r = evaluateSchedina(makeSchedina(predictions), matches);
-    expect(r.predictions[0].pointsEarned).toBe(1);
+    expect(r.predictions[0].pointsEarned).toBe(0);
     expect(r.predictions[0].isCorrect).toBe(true);
   });
 
-  it('0 corretti su 10 → punteggio 0 (non 1, anche se il prodotto di fattori neutri sarebbe 1)', () => {
+  it('0 corretti su 10 → punteggio 0', () => {
     const matches = Array.from({ length: 10 }, (_, i) => makeMatch(`m${i}`, 2, 0));
     const predictions: Prediction[] = matches.map(m => ({
       matchId: m.id,
@@ -204,7 +204,7 @@ describe('evaluateSchedina', () => {
 
 // ---------- calcolo aggregato ----------
 describe('calculateSchedinaScore', () => {
-  it('combo = prodotto delle sole giocate corrette (cappate a oddsCap)', () => {
+  it('punti base = somma delle sole giocate corrette (cappate a oddsCap)', () => {
     const preds: PredictionResult[] = [
       { matchId: 'a', betType: 'esito', outcome: '1', odds: 1.1, isCorrect: true, pointsEarned: 1.1 },
       { matchId: 'b', betType: 'esito', outcome: '1', odds: 1.27, isCorrect: false, pointsEarned: 0 },
@@ -213,7 +213,7 @@ describe('calculateSchedinaScore', () => {
     const score = calculateSchedinaScore(preds);
     expect(score.details.penaltyRangeBets).toBe(1);
     expect(score.details.cappedBets).toBe(1);
-    expect(score.basePoints).toBeCloseTo(1.1 * 5); // 'b' è sbagliata, esclusa dal prodotto
+    expect(score.basePoints).toBeCloseTo(1.1 + 5); // 'b' è sbagliata, non somma nulla
   });
   it('countPenaltyRangeBets', () => {
     const preds: Prediction[] = [

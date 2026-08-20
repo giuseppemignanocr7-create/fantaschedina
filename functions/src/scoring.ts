@@ -87,9 +87,8 @@ export function evaluateBet(
 }
 
 /**
- * Contributo al moltiplicatore combo di una singola giocata vinta: la quota
- * stessa (cappata a oddsCap), non più quota×10 sommata alle altre — le quote
- * corrette si moltiplicano tra loro (stile schedina reale).
+ * Punti di una singola giocata vinta: la quota stessa, cappata a oddsCap.
+ * I punti della schedina sono la somma di questi contributi.
  */
 export function calculateBetPoints(odds: number, isCorrect: boolean): number {
   if (!isCorrect) return 0;
@@ -98,8 +97,8 @@ export function calculateBetPoints(odds: number, isCorrect: boolean): number {
 
 /**
  * Valuta una schedina completa contro i risultati.
- * - combo = prodotto delle quote (cappate) delle giocate corrette, 0 se nessuna corretta
- * - void (mercato non valutabile) = quota 1.00 → contributo neutro, conta come corretto
+ * - punti base = somma delle quote (cappate) delle giocate corrette
+ * - void (mercato non valutabile) = 0 punti, ma conta come corretto
  * - jolly power-up: raddoppia il contributo della giocata selezionata (se vinta)
  * - shield: annulla il moltiplicatore di penalità quote basse
  * - insurance: con 8/10 corretti applica comunque il moltiplicatore bonus del 9/10
@@ -119,8 +118,9 @@ export function evaluateSchedina(
     }
     const evalResult = evaluateBet(pred.betType, pred.outcome, r);
     if (evalResult === null) {
-      // Mercato non valutabile → rimborso (quota 1.00), contributo neutro
-      return { ...pred, isCorrect: true, isVoid: true, pointsEarned: 1 };
+      // Mercato non valutabile → rimborso: contributo neutro. In una somma il
+      // neutro è 0, non 1 come quando le quote si moltiplicavano.
+      return { ...pred, isCorrect: true, isVoid: true, pointsEarned: 0 };
     }
     let points = calculateBetPoints(pred.odds, evalResult);
     if (evalResult && powerups.jolly === pred.matchId) {
@@ -135,9 +135,14 @@ export function evaluateSchedina(
   });
 
   const correctPredictions = predictionResults.filter(p => p.isCorrect).length;
-  const comboMultiplier = correctPredictions === 0
-    ? 0
-    : predictionResults.reduce((product, p) => p.isCorrect ? product * p.pointsEarned : product, 1);
+  // Punti della schedina: somma delle quote indovinate (ognuna cappata a
+  // oddsCap, raddoppiata dal Jolly). Fino al 20/08/2026 si moltiplicavano:
+  // dieci quote da 2.00 valevano 1024 punti invece di 20, e una sola giocata
+  // sbagliata azzerava tutto.
+  const puntiBase = predictionResults.reduce(
+    (somma, p) => (p.isCorrect ? somma + p.pointsEarned : somma),
+    0
+  );
 
   // Bonus 9/10 e 10/10 (insurance: 8 corretti → bonus 9)
   let bonusMultiplier = 1;
@@ -155,7 +160,7 @@ export function evaluateSchedina(
   let penaltyMultiplier = Math.pow(TOURNAMENT.penaltyMultiplierPerThree, Math.floor(penaltyRange / 3));
   if (powerups.shield) penaltyMultiplier = 1;
 
-  const totalPoints = Math.round(comboMultiplier * 100) / 100;
+  const totalPoints = Math.round(puntiBase * 100) / 100;
   const afterBonus = Math.round(totalPoints * bonusMultiplier * 100) / 100;
   const bonusPoints = Math.round((afterBonus - totalPoints) * 100) / 100;
   const afterPenalty = Math.round(afterBonus * penaltyMultiplier * 100) / 100;

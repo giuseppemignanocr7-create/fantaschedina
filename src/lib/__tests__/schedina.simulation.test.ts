@@ -131,9 +131,9 @@ describe('Simulazione 200 schedine casuali (2000 pronostici) — confronto con o
   it.each(SIMULATIONS.map(s => ({ seed: s.seed, sim: s })))('schedina seed $seed', ({ sim }) => {
     const r = evaluateSchedina(sim.schedina, sim.matches);
 
-    // Oracle indipendente: le quote delle giocate corrette si moltiplicano
-    // tra loro invece di sommarsi (una persa/void contribuisce ×1, neutro).
-    let expectedCombo = 1;
+    // Oracle indipendente: i punti sono la somma delle quote indovinate
+    // (una persa non contribuisce, una void contribuisce 0: neutro).
+    let expectedCombo = 0;
     let expectedCorrect = 0;
     let penaltyBets = 0;
     sim.schedina.predictions.forEach((pred, i) => {
@@ -141,13 +141,13 @@ describe('Simulazione 200 schedine casuali (2000 pronostici) — confronto con o
       let pts: number;
       let correct: boolean;
       if (evalRes === null) {
-        pts = 1; // void: quota 1.00 → contributo neutro
+        pts = 0; // void: contributo neutro in una somma
         correct = true;
       } else {
         pts = oracleBetPoints(pred.odds, evalRes);
         correct = evalRes;
       }
-      if (correct) expectedCombo *= pts;
+      if (correct) expectedCombo += pts;
       if (correct) expectedCorrect++;
       if (pred.odds >= 1.25 && pred.odds < 1.30) penaltyBets++;
 
@@ -155,7 +155,6 @@ describe('Simulazione 200 schedine casuali (2000 pronostici) — confronto con o
       expect(r.predictions[i].pointsEarned).toBeCloseTo(pts, 8);
       expect(r.predictions[i].isCorrect).toBe(correct);
     });
-    if (expectedCorrect === 0) expectedCombo = 0;
 
     const expectedBonusMultiplier = expectedCorrect === 10 ? 1.5 : expectedCorrect === 9 ? 1.2 : 1;
     const expectedPenaltyMultiplier = Math.pow(0.9, Math.floor(penaltyBets / 3));
@@ -175,13 +174,13 @@ describe('Simulazione 200 schedine casuali (2000 pronostici) — confronto con o
 });
 
 describe('Simulazione — proprietà globali', () => {
-  it('nessuna schedina produce punti negativi: il combo moltiplicativo è sempre ≥ 0', () => {
+  it('nessuna schedina produce punti negativi', () => {
     SIMULATIONS.forEach(sim => {
       const r = evaluateSchedina(sim.schedina, sim.matches);
       expect(r.finalPoints).toBeGreaterThanOrEqual(0);
     });
   });
-  it('nessun pronostico contribuisce oltre oddsCap (5.00) al combo', () => {
+  it('nessun pronostico contribuisce oltre oddsCap (5.00) al totale', () => {
     SIMULATIONS.forEach(sim => {
       const r = evaluateSchedina(sim.schedina, sim.matches);
       r.predictions.forEach(p => expect(p.pointsEarned).toBeLessThanOrEqual(5));
