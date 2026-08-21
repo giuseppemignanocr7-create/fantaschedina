@@ -146,11 +146,12 @@ export interface TournamentConfig {
   weeklyFeeToPool: number; // 5€
   weeklyFeeToOrganizer: number; // 5€
   minValidOdds: number; // 1.30
-  oddsCap: number; // 5.00 — tetto al contributo di una singola giocata nel combo
+  oddsCap: number; // 5.00 — tetto alla quota di una singola giocata
+  pointsMultiplier: number; // ×10: una quota 2.00 indovinata vale 20 punti
   penaltyOddsMin: number; // 1.25
   penaltyMultiplierPerThree: number; // ×0.9 ogni 3 giocate in fascia 1.25-1.29
-  bonus9Multiplier: number; // ×1.2
-  bonus10Multiplier: number; // ×1.5
+  bonus9Points: number; // +5 punti con 9/10
+  bonus10Points: number; // +10 punti con 10/10
   maxJoinMatchday: number; // 10
   lateJoinFeePerMatchday: number; // 5€
   minParticipantsForGuarantee: number; // 30

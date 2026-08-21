@@ -862,12 +862,12 @@ export function SchedinaPage() {
                   <div className="text-xs text-white/60">
                     <p className="mb-2 font-bold text-white text-sm">Formula Punteggio</p>
                     <ul className="space-y-1">
-                      <li>• <span className="text-primary-400 font-bold">Le quote corrette si sommano</span></li>
-                      <li>• Es: 3 esatti a quota 2.00 → 2+2+2 = 6 pt</li>
-                      <li>• Ogni quota cappata a 5.00</li>
+                      <li>• <span className="text-primary-400 font-bold">Le quote corrette si sommano, ×10</span></li>
+                      <li>• Es: 3 esatti a quota 2.00 → 20+20+20 = 60 pt</li>
+                      <li>• Ogni quota cappata a 5.00 (max 50 pt a giocata)</li>
                       <li>• Quote &lt;1.30: non valide</li>
-                      <li>• 9/10 esatti: bonus ×1.2</li>
-                      <li>• 10/10 esatti: bonus ×1.5</li>
+                      <li>• 9/10 esatti: +5 punti</li>
+                      <li>• 10/10 esatti: +10 punti</li>
                     </ul>
                   </div>
                 </div>

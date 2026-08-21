@@ -120,9 +120,10 @@ describe('calculateBetPoints — griglia quote 1.00→6.00 (step 0.05)', () => {
   const oddsGrid: number[] = [];
   for (let o = 100; o <= 600; o += 5) oddsGrid.push(o / 100);
 
-  it.each(oddsGrid.map(o => ({ o })))('quota $o vinta → contributo da regolamento (cappato a 5.00)', ({ o }) => {
-    // Regolamento: le quote corrette si sommano, ognuna cappata a oddsCap
-    const expected = Math.min(o, 5);
+  it.each(oddsGrid.map(o => ({ o })))('quota $o vinta → contributo da regolamento (quota cappata a 5.00, ×10)', ({ o }) => {
+    // Regolamento: le quote corrette si sommano, ognuna cappata a 5.00 e
+    // moltiplicata per 10 (una giocata a 2.00 vale 20 punti).
+    const expected = Math.min(o, 5) * 10;
     expect(calculateBetPoints(o, true)).toBeCloseTo(expected, 10);
   });
 
@@ -133,7 +134,8 @@ describe('calculateBetPoints — griglia quote 1.00→6.00 (step 0.05)', () => {
 
 describe('calculateBonusPoints — tutti i conteggi 0→10', () => {
   it.each(Array.from({ length: 11 }, (_, n) => ({ n })))('%s corrette', ({ n }) => {
-    const expected = n === 10 ? 1.5 : n === 9 ? 1.2 : 1;
+    // Bonus in punti pieni: +10 con 10/10, +5 con 9/10, niente sotto.
+    const expected = n === 10 ? 10 : n === 9 ? 5 : 0;
     expect(calculateBonusPoints(n)).toBe(expected);
   });
 });

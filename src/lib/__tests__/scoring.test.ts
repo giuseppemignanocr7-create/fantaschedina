@@ -17,17 +17,17 @@ describe('calculateBetPoints', () => {
   it('quota persa vale 0', () => {
     expect(calculateBetPoints(2.5, false)).toBe(0);
   });
-  it('quota vinta contribuisce la quota stessa al combo', () => {
-    expect(calculateBetPoints(2.2, true)).toBeCloseTo(2.2);
+  it('quota vinta vale la quota × 10', () => {
+    expect(calculateBetPoints(2.2, true)).toBeCloseTo(22);
   });
-  it('cap a oddsCap (5.00)', () => {
-    expect(calculateBetPoints(8.0, true)).toBe(5);
+  it('cap alla quota (5.00) → 50 punti', () => {
+    expect(calculateBetPoints(8.0, true)).toBe(50);
   });
-  it('quota bassa (1.1) contribuisce comunque la quota reale, nessun floor', () => {
-    expect(calculateBetPoints(1.1, true)).toBeCloseTo(1.1);
+  it('quota bassa (1.1) vale comunque la quota reale, nessun floor', () => {
+    expect(calculateBetPoints(1.1, true)).toBeCloseTo(11);
   });
-  it('quota 1.25 (fascia penalità) contribuisce la quota stessa', () => {
-    expect(calculateBetPoints(1.25, true)).toBeCloseTo(1.25);
+  it('quota 1.25 (fascia penalità) vale la quota stessa', () => {
+    expect(calculateBetPoints(1.25, true)).toBeCloseTo(12.5);
   });
 });
 
@@ -52,14 +52,14 @@ describe('odds ranges', () => {
 
 // ---------- bonus ----------
 describe('calculateBonusPoints', () => {
-  it('9 corretti → ×1.2', () => {
-    expect(calculateBonusPoints(9)).toBe(1.2);
+  it('9 corretti → +5 punti', () => {
+    expect(calculateBonusPoints(9)).toBe(5);
   });
-  it('10 corretti → ×1.5', () => {
-    expect(calculateBonusPoints(10)).toBe(1.5);
+  it('10 corretti → +10 punti', () => {
+    expect(calculateBonusPoints(10)).toBe(10);
   });
-  it('8 corretti → ×1 (nessun bonus)', () => {
-    expect(calculateBonusPoints(8)).toBe(1);
+  it('8 corretti → nessun bonus', () => {
+    expect(calculateBonusPoints(8)).toBe(0);
   });
 });
 
@@ -139,7 +139,7 @@ function makeSchedina(predictions: Prediction[]): Schedina {
 }
 
 describe('evaluateSchedina', () => {
-  it('10/10 corretti: le quote si sommano e il bonus è ×1.5', () => {
+  it('10/10 corretti: le quote ×10 si sommano e il bonus è +10 punti', () => {
     const matches = Array.from({ length: 10 }, (_, i) => makeMatch(`m${i}`, 2, 0));
     const predictions: Prediction[] = matches.map(m => ({
       matchId: m.id,
@@ -149,9 +149,9 @@ describe('evaluateSchedina', () => {
     }));
     const r = evaluateSchedina(makeSchedina(predictions), matches);
     expect(r.correctPredictions).toBe(10);
-    expect(r.totalPoints).toBeCloseTo(20); // 10 × 2.00
-    expect(r.bonusPoints).toBeCloseTo(10); // 20 × (1.5 - 1)
-    expect(r.finalPoints).toBeCloseTo(30); // 20 × 1.5
+    expect(r.totalPoints).toBeCloseTo(200); // 10 × (2.00 × 10)
+    expect(r.bonusPoints).toBe(10); // bonus 10/10 in punti pieni
+    expect(r.finalPoints).toBeCloseTo(210);
   });
 
   it('valuta correttamente mercati misti: le quote corrette si sommano', () => {
@@ -162,7 +162,7 @@ describe('evaluateSchedina', () => {
     ];
     const r = evaluateSchedina(makeSchedina(predictions), matches);
     expect(r.correctPredictions).toBe(2);
-    expect(r.totalPoints).toBeCloseTo(1.85 + 2.0);
+    expect(r.totalPoints).toBeCloseTo(18.5 + 20);
   });
 
   it('penalità applicata con 3 quote in fascia 1.25-1.29 (moltiplicatore ×0.9)', () => {
@@ -174,7 +174,7 @@ describe('evaluateSchedina', () => {
       odds: 1.27,
     }));
     const r = evaluateSchedina(makeSchedina(predictions), matches);
-    const base = 3 * 1.27;
+    const base = 3 * 12.7;
     expect(r.penaltyPoints).toBeCloseTo(Math.round((base * 0.9 - base) * 100) / 100, 2);
   });
 
@@ -213,7 +213,7 @@ describe('calculateSchedinaScore', () => {
     const score = calculateSchedinaScore(preds);
     expect(score.details.penaltyRangeBets).toBe(1);
     expect(score.details.cappedBets).toBe(1);
-    expect(score.basePoints).toBeCloseTo(1.1 + 5); // 'b' è sbagliata, non somma nulla
+    expect(score.basePoints).toBeCloseTo(1.1 + 5); // punti già passati in input, non ricalcolati
   });
   it('countPenaltyRangeBets', () => {
     const preds: Prediction[] = [

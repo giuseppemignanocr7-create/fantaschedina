@@ -34,20 +34,24 @@ function resultsMap(correct: number): Map<string, MatchResult> {
 }
 
 // Stesso arrotondamento progressivo usato da evaluateSchedina, per calcolare
-// i valori attesi senza duplicare la logica interna a mano.
-function expectedTotals(base: number, bonusMultiplier: number, penaltyMultiplier: number) {
+// i valori attesi senza duplicare la logica interna a mano. `base` è già in
+// punti (quota × 10), `bonus` è in punti pieni.
+function expectedTotals(base: number, bonus: number, penaltyMultiplier: number) {
   const totalPoints = Math.round(base * 100) / 100;
-  const afterBonus = Math.round(totalPoints * bonusMultiplier * 100) / 100;
-  const bonusPoints = Math.round((afterBonus - totalPoints) * 100) / 100;
-  const afterPenalty = Math.round(afterBonus * penaltyMultiplier * 100) / 100;
-  const penaltyPoints = Math.round((afterPenalty - afterBonus) * 100) / 100;
-  return { totalPoints, bonusPoints, penaltyPoints, finalPoints: afterPenalty };
+  const afterPenalty = Math.round(totalPoints * penaltyMultiplier * 100) / 100;
+  const penaltyPoints = Math.round((afterPenalty - totalPoints) * 100) / 100;
+  return {
+    totalPoints,
+    bonusPoints: bonus,
+    penaltyPoints,
+    finalPoints: Math.round((afterPenalty + bonus) * 100) / 100,
+  };
 }
 
 describe('functions evaluateSchedina', () => {
-  it('senza power-up: 10/10 → le quote si sommano, bonus ×1.5', () => {
+  it('senza power-up: 10/10 → quote ×10 sommate, più 10 punti di bonus', () => {
     const s = evaluateSchedina(tenPredictions(), resultsMap(10));
-    const expected = expectedTotals(10 * 2.0, 1.5, 1);
+    const expected = expectedTotals(10 * 20, 10, 1);
     expect(s.totalPoints).toBeCloseTo(expected.totalPoints);
     expect(s.bonusPoints).toBeCloseTo(expected.bonusPoints);
     expect(s.finalPoints).toBeCloseTo(expected.finalPoints);
@@ -55,43 +59,43 @@ describe('functions evaluateSchedina', () => {
 
   it('jolly raddoppia il contributo del pronostico scelto (se vinto)', () => {
     const s = evaluateSchedina(tenPredictions(), resultsMap(10), { jolly: 'm0' });
-    // m0: 2.0 → 4.0 (raddoppiato), le altre 9 restano 2.0
-    const base = 4.0 + 9 * 2.0;
-    const expected = expectedTotals(base, 1.5, 1);
+    // m0: 20 → 40 punti (raddoppiato), le altre 9 restano da 20
+    const base = 40 + 9 * 20;
+    const expected = expectedTotals(base, 10, 1);
     expect(s.totalPoints).toBeCloseTo(expected.totalPoints);
   });
 
   it('jolly su pronostico perso non raddoppia nulla', () => {
     const s = evaluateSchedina(tenPredictions(), resultsMap(5), { jolly: 'm9' });
     // m9 è tra le perse (solo m0-m4 corrette): il jolly non si applica
-    const expected = expectedTotals(5 * 2.0, 1, 1);
+    const expected = expectedTotals(5 * 20, 0, 1);
     expect(s.totalPoints).toBeCloseTo(expected.totalPoints);
   });
 
   it('shield annulla il moltiplicatore di penalità quote basse', () => {
     const preds = tenPredictions(1.27); // fascia penalità, tutte e 10
-    const combo = 10 * 1.27;
+    const combo = 10 * 12.7;
     const noShield = evaluateSchedina(preds, resultsMap(10));
-    // 10/10 corrette → bonus ×1.5 SI applica comunque; la penalità (10 giocate
-    // in fascia → 3 set → ×0.9^3) si applica DOPO il bonus.
-    const expectedNoShield = expectedTotals(combo, 1.5, Math.pow(0.9, 3));
+    // 10/10 corrette → il bonus di 10 punti si somma comunque; la penalità
+    // (10 giocate in fascia → 3 set → ×0.9^3) colpisce solo i punti giocati.
+    const expectedNoShield = expectedTotals(combo, 10, Math.pow(0.9, 3));
     expect(noShield.penaltyPoints).toBeCloseTo(expectedNoShield.penaltyPoints);
     expect(noShield.finalPoints).toBeCloseTo(expectedNoShield.finalPoints);
 
     const withShield = evaluateSchedina(preds, resultsMap(10), { shield: true });
-    const expectedShield = expectedTotals(combo, 1.5, 1);
+    const expectedShield = expectedTotals(combo, 10, 1);
     expect(withShield.penaltyPoints).toBe(0);
     expect(withShield.finalPoints).toBeCloseTo(expectedShield.finalPoints);
   });
 
-  it('insurance: 8/10 riceve il moltiplicatore bonus del 9/10 (×1.2)', () => {
+  it('insurance: 8/10 riceve il bonus del 9/10 (+5 punti)', () => {
     const without = evaluateSchedina(tenPredictions(), resultsMap(8));
     expect(without.bonusPoints).toBe(0);
 
     const withIns = evaluateSchedina(tenPredictions(), resultsMap(8), {
       insurance: true,
     });
-    const expected = expectedTotals(8 * 2.0, 1.2, 1);
+    const expected = expectedTotals(8 * 20, 5, 1);
     expect(withIns.bonusPoints).toBeCloseTo(expected.bonusPoints);
   });
 
