@@ -295,8 +295,8 @@ vero (profilo davvero assente) resta un errore. Coperto da
 | # | Voce | Perché non è chiusa |
 |---|---|---|
 | A | **App Check spento** (`ENFORCE_APP_CHECK = false`) | Prerequisiti fuori dal repo: chiave reCAPTCHA Enterprise, site key su Vercel, 48h di metriche. Attivarlo prima respinge ogni chiamata. Procedura in [`docs/runbook/app-check.md`](docs/runbook/app-check.md). |
-| B | **Fine partita dei duelli** | `canFinish` chiude solo a round dispari dopo i tiri regolari: la fase regolare non decide mai la sfida e lo spareggio si chiude dopo il tiro di uno solo dei due. Sistemarlo cambia l'esito delle partite e nelle modalità bot (asimmetriche) va deciso caso per caso. |
-| C | **Sfide 1vs1 non collegate** | `sfida_start` e `sfida_play` sono deployate ma nessuna pagina le chiama. O si completa la feature o si rimuove la superficie. |
+| B | ~~Fine partita dei duelli~~ | **Chiusa**: `canFinishAtRound` in `functions/src/duels.ts` confronta il punteggio solo quando entrambi hanno tirato lo stesso numero di volte (fine regolari + coppie di spareggio). Le modalità bot asimmetriche restano com'erano, per costruzione. |
+| C | ~~Sfide 1vs1 non collegate~~ | **Chiusa**: `SfidePage` (`/minigiochi/sfide`, linkata dalla sala giochi) ora chiama `sfida_start`/`sfida_play`. |
 | D | ~~Classifiche O(N)~~ | **Chiusa**: vedi sotto. |
 | E | ~~Duelli orfani~~ | **Chiusa**: vedi sotto. |
 
