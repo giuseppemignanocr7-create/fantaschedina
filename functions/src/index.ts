@@ -274,21 +274,16 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
   }
 
   if (number === null) {
-    // Nuova giornata: max esistente + 1, altrimenti stima dalle settimane
+    // Nuova giornata: max esistente + 1. Con il database vuoto (inizio
+    // stagione, dopo l'azzeramento) si parte da 1: la stima "settimane
+    // dall'inizio stagione" usava la seasonStart nominale di ESPN (es.
+    // 5 giugno per la Serie A) e battezzava la prima giornata come 12.
     const all = await db
       .collection('matchdays')
       .orderBy('number', 'desc')
       .limit(1)
       .get();
-    if (!all.empty) {
-      number = (all.docs[0].data() as MatchdayDoc).number + 1;
-    } else {
-      const weeks = Math.round(
-        (api.matches[0].scheduledAt.getTime() - api.seasonStart.getTime()) /
-          (7 * 24 * 60 * 60 * 1000)
-      );
-      number = Math.max(1, Math.min(38, weeks + 1));
-    }
+    number = all.empty ? 1 : (all.docs[0].data() as MatchdayDoc).number + 1;
   }
 
   const ref = db.collection('matchdays').doc(String(number));
