@@ -1,18 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   RefreshCw, Users, Trophy, Calendar, Megaphone, Ban, Plus, Trash2,
-  ToggleLeft, ToggleRight, Zap, AlertTriangle, BarChart3, Globe,
+  ToggleLeft, ToggleRight, Zap, AlertTriangle, BarChart3, Globe, RotateCcw,
 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import {
   adminGetStatsFn, adminSyncMatchdayFn, adminForceSettleFn,
   adminManageSponsorFn, adminToggleBanFn, seedQuizQuestionsFn,
-  adminManageCompetitionsFn, type AdminStats, type SponsorData,
-  type CompetitionStatus,
+  adminManageCompetitionsFn, adminResetSeasonFn, adminManageWeeklyPrizesFn,
+  type AdminStats, type SponsorData, type CompetitionStatus, type WeeklyPrizeItem,
 } from '@/lib/gameApi';
 import { callableErrorMessage } from '@/lib/gameApi';
 import { getPublicProfilesFn, type PublicProfileData } from '@/lib/gameApi';
 import { cn } from '@/lib/utils';
+import { COINS } from '@/lib/economy';
+
+const STARTING_COINS = COINS.starting;
 
 type Tab = 'stats' | 'matchday' | 'competitions' | 'sponsors' | 'users';
 
@@ -172,6 +175,9 @@ function MatchdayTab({ onError, onSuccess }: {
   const [syncing, setSyncing] = useState(false);
   const [settling, setSettling] = useState(false);
   const [settleNumber, setSettleNumber] = useState('');
+  const [settleWarning, setSettleWarning] = useState<string | null>(null);
+  const [resetConferma, setResetConferma] = useState('');
+  const [resetting, setResetting] = useState(false);
   const [seeding, setSeeding] = useState(false);
 
   const handleSync = async (forceOdds = false) => {
@@ -191,18 +197,40 @@ function MatchdayTab({ onError, onSuccess }: {
     }
   };
 
-  const handleSettle = async () => {
+  const handleSettle = async (force = false) => {
     const n = parseInt(settleNumber, 10);
     if (!n) { onError('Inserisci un numero di giornata valido'); return; }
     setSettling(true);
     onError('');
     try {
-      const res = await adminForceSettleFn(n);
+      const res = await adminForceSettleFn(n, force);
+      setSettleWarning(null);
       onSuccess(`Giornata ${res.matchday} settleata: ${res.settled} schedine valutate`);
+    } catch (e) {
+      const messaggio = callableErrorMessage(e);
+      // Il server rifiuta le giornate con partite ancora in corso: la richiesta
+      // va ripetuta con `force`, ma deve essere una scelta esplicita.
+      if (messaggio.includes('non concluse')) {
+        setSettleWarning(messaggio);
+      } else {
+        onError(messaggio);
+      }
+    } finally {
+      setSettling(false);
+    }
+  };
+
+  const handleResetStagione = async () => {
+    setResetting(true);
+    onError('');
+    try {
+      const res = await adminResetSeasonFn();
+      setResetConferma('');
+      onSuccess(`Stagione azzerata: ${res.profili} profili riportati allo stato iniziale`);
     } catch (e) {
       onError(callableErrorMessage(e));
     } finally {
-      setSettling(false);
+      setResetting(false);
     }
   };
 
@@ -261,7 +289,7 @@ function MatchdayTab({ onError, onSuccess }: {
             className="flex-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
           />
           <button
-            onClick={handleSettle}
+            onClick={() => handleSettle(false)}
             disabled={settling}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
           >
@@ -269,7 +297,64 @@ function MatchdayTab({ onError, onSuccess }: {
             {settling ? 'Settlement...' : 'Settle'}
           </button>
         </div>
+
+        {settleWarning && (
+          <div className="mt-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
+            <p className="text-red-300 text-sm font-bold mb-1">{settleWarning}</p>
+            <p className="text-white/50 text-xs mb-3">
+              Valutare adesso conta come sbagliati i pronostici sulle partite non
+              ancora giocate. L'operazione non è reversibile.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleSettle(true)}
+                disabled={settling}
+                className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-bold hover:bg-red-500/30 transition-colors disabled:opacity-50"
+              >
+                Valuta comunque
+              </button>
+              <button
+                onClick={() => setSettleWarning(null)}
+                className="px-3 py-1.5 rounded-lg bg-white/5 text-white/60 border border-white/10 text-xs font-bold hover:bg-white/10 transition-colors"
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+      <PremiSettimanaliCard onError={onError} onSuccess={onSuccess} />
+
+      <div className="glass-card p-5 border-red-500/30">
+        <h2 className="text-lg font-bold text-white mb-1">Azzera stagione</h2>
+        <p className="text-white/50 text-sm mb-1">
+          Riporta <span className="font-bold text-white">tutti</span> i profili allo stato
+          iniziale: punti, statistiche e missioni riscosse a zero, gettoni a {STARTING_COINS}.
+        </p>
+        <p className="text-white/40 text-xs mb-3">
+          Schedine, giornate e premi passati restano come storico. L'operazione non è
+          reversibile: scrivi AZZERA per abilitare il pulsante.
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={resetConferma}
+            onChange={e => setResetConferma(e.target.value)}
+            placeholder="AZZERA"
+            aria-label="Conferma azzeramento stagione"
+            className="flex-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-red-500/50 outline-none"
+          />
+          <button
+            onClick={handleResetStagione}
+            disabled={resetting || resetConferma !== 'AZZERA'}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <RotateCcw size={16} className={resetting ? 'animate-spin' : ''} />
+            {resetting ? 'Azzeramento...' : 'Azzera'}
+          </button>
+        </div>
+      </div>
+
       <div className="glass-card p-5">
         <h2 className="text-lg font-bold text-white mb-1">Seed Quiz DB</h2>
         <p className="text-white/50 text-sm mb-3">
@@ -617,6 +702,157 @@ function UsersTab({ onError, onSuccess }: {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ============================================
+// PREMI SETTIMANALI (admin)
+// ============================================
+/**
+ * I premi della giornata li decide l'amministratore in base a quanti stanno
+ * giocando quella settimana: qui si scrivono, e il settlement li assegna al
+ * podio della giornata.
+ */
+function PremiSettimanaliCard({ onError, onSuccess }: {
+  onError: (s: string) => void;
+  onSuccess: (s: string) => void;
+}) {
+  const [giornata, setGiornata] = useState('');
+  const [premi, setPremi] = useState<WeeklyPrizeItem[]>([]);
+  const [personalizzati, setPersonalizzati] = useState(false);
+  const [caricando, setCaricando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+
+  const carica = async () => {
+    const n = parseInt(giornata, 10);
+    if (!n) { onError('Inserisci un numero di giornata valido'); return; }
+    setCaricando(true);
+    onError('');
+    try {
+      const res = await adminManageWeeklyPrizesFn('get', n);
+      setPremi(res.items);
+      setPersonalizzati(!!res.personalizzati);
+    } catch (e) {
+      onError(callableErrorMessage(e));
+    } finally {
+      setCaricando(false);
+    }
+  };
+
+  const salva = async () => {
+    const n = parseInt(giornata, 10);
+    if (!n) { onError('Inserisci un numero di giornata valido'); return; }
+    setSalvando(true);
+    onError('');
+    try {
+      const res = await adminManageWeeklyPrizesFn('set', n, premi);
+      setPremi(res.items);
+      setPersonalizzati(true);
+      onSuccess(`Premi della giornata ${n} salvati (${res.items.length})`);
+    } catch (e) {
+      onError(callableErrorMessage(e));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const aggiorna = (indice: number, campo: 'label' | 'emoji', valore: string) => {
+    setPremi(premi.map((p, i) => (i === indice ? { ...p, [campo]: valore } : p)));
+  };
+
+  return (
+    <div className="glass-card p-5">
+      <h2 className="text-lg font-bold text-white mb-1">Premi settimanali</h2>
+      <p className="text-white/50 text-sm mb-3">
+        Cosa si vince in una giornata. Il primo premio va a chi fa più punti in
+        quella giornata, il secondo al secondo e così via.
+      </p>
+
+      <div className="flex gap-2 mb-3">
+        <input
+          type="number"
+          min={1}
+          max={38}
+          value={giornata}
+          onChange={e => setGiornata(e.target.value)}
+          placeholder="N. giornata"
+          aria-label="Giornata dei premi"
+          className="flex-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
+        />
+        <button
+          onClick={carica}
+          disabled={caricando}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-500/20 text-primary-300 border border-primary-500/30 hover:bg-primary-500/30 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={16} className={caricando ? 'animate-spin' : ''} />
+          Carica
+        </button>
+      </div>
+
+      {premi.length > 0 && (
+        <>
+          <p className="text-white/40 text-xs mb-2">
+            {personalizzati
+              ? 'Premi già impostati per questa giornata.'
+              : 'Nessun premio impostato: questi sono quelli di partenza, salvali per confermarli.'}
+          </p>
+          <div className="space-y-2 mb-3">
+            {premi.map((premio, i) => (
+              <div key={premio.position} className="flex items-center gap-2">
+                <span className="w-8 text-center font-black text-white/70">
+                  {premio.position}°
+                </span>
+                <input
+                  type="text"
+                  value={premio.label}
+                  onChange={e => aggiorna(i, 'label', e.target.value)}
+                  maxLength={60}
+                  aria-label={`Premio ${premio.position}° posto`}
+                  className="flex-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-white outline-none focus:border-primary-500/50"
+                />
+                <input
+                  type="text"
+                  value={premio.emoji ?? ''}
+                  onChange={e => aggiorna(i, 'emoji', e.target.value)}
+                  maxLength={8}
+                  placeholder="🎁"
+                  aria-label={`Emoji premio ${premio.position}° posto`}
+                  className="w-16 px-2 py-2 rounded-xl bg-surface border border-white/10 text-white text-center outline-none focus:border-primary-500/50"
+                />
+                <button
+                  onClick={() => setPremi(premi.filter((_, j) => j !== i))}
+                  aria-label={`Rimuovi premio ${premio.position}° posto`}
+                  className="p-2 rounded-lg text-red-400 hover:bg-red-500/10"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() =>
+                setPremi([
+                  ...premi,
+                  { position: premi.length + 1, label: '', emoji: '' },
+                ])
+              }
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/70 text-xs font-bold hover:bg-white/10"
+            >
+              <Plus size={14} />
+              Aggiungi posizione
+            </button>
+            <button
+              onClick={salva}
+              disabled={salvando}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-bold hover:bg-green-500/30 disabled:opacity-50"
+            >
+              {salvando ? 'Salvataggio...' : 'Salva premi'}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

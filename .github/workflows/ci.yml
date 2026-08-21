@@ -148,6 +148,36 @@ jobs:
       - name: Build
         run: npm run build
 
+  # Le callable toccano soldi e stato: la logica pura ha i suoi unit test, ma
+  # transazioni, idempotenza e interazione profilo/schedina si vedono solo
+  # contro un Firestore vero. L'emulatore richiede Java, come per gli E2E.
+  integrazione:
+    name: Integrazione functions (emulatore Firestore)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      # I test importano da functions/src: firebase-admin e firebase-functions
+      # sono installati solo li'.
+      - name: Install functions dependencies
+        run: npm --prefix functions ci
+
+      - name: Test di integrazione
+        run: npm run test:integration
+
   e2e:
     name: E2E (Playwright + Firebase emulators)
     runs-on: ubuntu-latest

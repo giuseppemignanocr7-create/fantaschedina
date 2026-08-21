@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:integration": "firebase emulators:exec --only firestore --project fantaschedina-itest \"vitest run --config vitest.integration.config.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "check": "npm run typecheck && eslint . --max-warnings 0 && vitest run --coverage",
     "check:bundle": "node scripts/check-bundle-size.mjs",

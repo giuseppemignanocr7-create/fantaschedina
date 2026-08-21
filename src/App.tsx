@@ -26,6 +26,7 @@ const AccountPage = lazy(() => import('@/pages/AccountPage').then(m => ({ defaul
 const QuizCalcioPage = lazy(() => import('@/pages/QuizCalcioPage').then(m => ({ default: m.QuizCalcioPage })));
 const RuotaGiornalieraPage = lazy(() => import('@/pages/RuotaGiornalieraPage').then(m => ({ default: m.RuotaGiornalieraPage })));
 const RigoriDuelPage = lazy(() => import('@/pages/RigoriDuelPage').then(m => ({ default: m.RigoriDuelPage })));
+const SfidePage = lazy(() => import('@/pages/SfidePage').then(m => ({ default: m.SfidePage })));
 const MemoriaCalcioPage = lazy(() => import('@/pages/MemoriaCalcioPage').then(m => ({ default: m.MemoriaCalcioPage })));
 const PrivacyPage = lazy(() => import('@/pages/PrivacyPage').then(m => ({ default: m.PrivacyPage })));
 const NegozioPage = lazy(() => import('@/pages/NegozioPage').then(m => ({ default: m.NegozioPage })));
@@ -87,7 +88,7 @@ function App() {
         <Route path="/minigiochi/ruota" element={<RuotaGiornalieraPage />} />
         <Route path="/minigiochi/rigori-duello" element={<RigoriDuelPage />} />
         <Route path="/minigiochi/rigori" element={<Navigate to="/minigiochi/rigori-duello" replace />} />
-        <Route path="/minigiochi/sfide" element={<Navigate to="/minigiochi/rigori-duello" replace />} />
+        <Route path="/minigiochi/sfide" element={<SfidePage />} />
         <Route path="/minigiochi/memoria" element={<MemoriaCalcioPage />} />
         <Route path="/missioni" element={<MissioniPage />} />
         <Route path="/premi" element={<PremiPage />} />

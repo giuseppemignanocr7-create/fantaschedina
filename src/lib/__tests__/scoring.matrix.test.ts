@@ -121,12 +121,12 @@ describe('calculateBetPoints — griglia quote 1.00→6.00 (step 0.05)', () => {
   for (let o = 100; o <= 600; o += 5) oddsGrid.push(o / 100);
 
   it.each(oddsGrid.map(o => ({ o })))('quota $o vinta → contributo da regolamento (cappato a 5.00)', ({ o }) => {
-    // Regolamento: le quote corrette si moltiplicano tra loro, cappate a oddsCap
+    // Regolamento: le quote corrette si sommano, ognuna cappata a oddsCap
     const expected = Math.min(o, 5);
     expect(calculateBetPoints(o, true)).toBeCloseTo(expected, 10);
   });
 
-  it.each(oddsGrid.map(o => ({ o })))('quota $o persa → 0 (esclusa dal prodotto)', ({ o }) => {
+  it.each(oddsGrid.map(o => ({ o })))('quota $o persa → 0 punti', ({ o }) => {
     expect(calculateBetPoints(o, false)).toBe(0);
   });
 });

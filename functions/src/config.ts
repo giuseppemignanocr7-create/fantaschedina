@@ -67,6 +67,17 @@ export const COINS = {
   memoriaPerLevel: 5, // gettoni per livello completato
   memoriaTimeBonus: 1, // gettoni per 5 secondi rimanenti
   memoriaDailyCap: 40, // max gettoni al giorno da memoria
+  // Secondi a disposizione per livello. Il server ne ha bisogno per sapere
+  // quanto tempo residuo è fisicamente possibile: il client dichiara il
+  // proprio risultato, e senza questo tetto potrebbe dichiarare qualunque cosa.
+  memoriaLevelTimes: [30, 45, 60] as number[],
+  // Duelli rigori 1v1 (anche contro bot)
+  duelWin: 50,
+  duelDraw: 25,
+  // Un duello contro il bot si crea e si chiude in circa un minuto: senza
+  // tetto giornaliero è la sorgente di gettoni più redditizia del gioco,
+  // molto sopra rigori (50) e memoria (40).
+  duelDailyCap: 150,
 } as const;
 
 // --- POWER-UP ---
@@ -88,6 +99,27 @@ export interface PowerUpSelection {
   shield?: boolean;
   insurance?: boolean;
 }
+
+// --- PREMI SETTIMANALI ---
+export interface WeeklyPrize {
+  /** 1 = primo posto della giornata. */
+  position: number;
+  label: string;
+  emoji?: string;
+}
+
+/**
+ * Premi di partenza. L'amministratore li ridefinisce giornata per giornata in
+ * base a quanti stanno giocando, quindi questi valgono solo finché non lo fa.
+ */
+export const DEFAULT_WEEKLY_PRIZES: WeeklyPrize[] = [
+  { position: 1, label: 'Felpa', emoji: '🧥' },
+  { position: 2, label: 'T-shirt', emoji: '👕' },
+  { position: 3, label: 'Cappellino', emoji: '🧢' },
+];
+
+/** Tetto ai premi definibili per una giornata: un podio, non un catalogo. */
+export const MAX_WEEKLY_PRIZES = 10;
 
 // --- MISSIONI ---
 export interface MissionDef {

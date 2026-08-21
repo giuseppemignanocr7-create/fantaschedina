@@ -12,40 +12,50 @@ import type { PenaltyZone } from './penalty';
 export interface SubmitSchedinaResponse {
   ok: boolean;
   matchday: number;
+  leagueId: string | null;
   coinsSpent: number;
 }
 
+/**
+ * `leagueId` sceglie il circuito: assente = classifica generale, altrimenti la
+ * schedina vale solo per quella lega. Sono schedine distinte sulla stessa
+ * giornata, ognuna con i propri power-up.
+ */
 export async function submitSchedinaFn(
   predictions: Prediction[],
-  powerups: PowerUpSelection = {}
+  powerups: PowerUpSelection = {},
+  leagueId?: string | null
 ): Promise<SubmitSchedinaResponse> {
   const fn = httpsCallable<
-    { predictions: Prediction[]; powerups: PowerUpSelection },
+    { predictions: Prediction[]; powerups: PowerUpSelection; leagueId?: string | null },
     SubmitSchedinaResponse
   >(functions, 'submitSchedina');
-  const res = await fn({ predictions, powerups });
+  const res = await fn({ predictions, powerups, leagueId: leagueId ?? null });
   return res.data;
 }
 
 export async function changePredictionFn(
   matchId: string,
   betType: string,
-  outcome: string
+  outcome: string,
+  leagueId?: string | null
 ): Promise<{ ok: boolean; coinsSpent: number }> {
   const fn = httpsCallable<
-    { matchId: string; betType: string; outcome: string },
+    { matchId: string; betType: string; outcome: string; leagueId?: string | null },
     { ok: boolean; coinsSpent: number }
   >(functions, 'changePrediction');
-  const res = await fn({ matchId, betType, outcome });
+  const res = await fn({ matchId, betType, outcome, leagueId: leagueId ?? null });
   return res.data;
 }
 
-export async function cancelSchedinaFn(): Promise<{ ok: boolean; refund: boolean }> {
-  const fn = httpsCallable<Record<string, never>, { ok: boolean; refund: boolean }>(
+export async function cancelSchedinaFn(
+  leagueId?: string | null
+): Promise<{ ok: boolean; refund: boolean }> {
+  const fn = httpsCallable<{ leagueId?: string | null }, { ok: boolean; refund: boolean }>(
     functions,
     'cancelSchedina'
   );
-  const res = await fn({});
+  const res = await fn({ leagueId: leagueId ?? null });
   return res.data;
 }
 
@@ -139,7 +149,6 @@ export interface SfidaStartResponse {
   opponent: {
     uid: string;
     displayName: string;
-    coins: number;
   };
   myCoins: number;
 }
@@ -209,9 +218,34 @@ export interface PublicProfileData {
   weeklyWins: number;
   bestMatchdayPoints: number;
   correctPredictions: number;
-  coins: number;
-  coinsEarned: number;
   isActive?: boolean;
+}
+
+export interface RankingRow {
+  rank: number;
+  participantId: string;
+  username: string;
+  totalPoints: number;
+  matchdaysPlayed: number;
+  correctPredictions: number;
+  averagePointsPerMatchday: number;
+  bestMatchdayPoints: number;
+  perfectSchedine: number;
+  bonusPointsTotal: number;
+  penaltyPointsTotal: number;
+  weeklyWins: number;
+}
+
+/** Classifica calcolata dal server. Con `leagueId` è ristretta a quella lega. */
+export async function getRankingsFn(
+  leagueId?: string
+): Promise<{ rankings: RankingRow[] }> {
+  const fn = httpsCallable<{ leagueId?: string }, { rankings: RankingRow[] }>(
+    functions,
+    'getRankings'
+  );
+  const res = await fn(leagueId ? { leagueId } : {});
+  return res.data;
 }
 
 export async function getPublicProfilesFn(
@@ -259,6 +293,8 @@ export interface PenaltyDuelState {
   startedAt: number;
   deadlineAt: number;
   winner: 1 | 2 | 'draw' | null;
+  /** Chiusa dalla pulizia perché nessuno ha più giocato: non è una sconfitta. */
+  abandoned?: boolean;
   reward: number;
   lastRound: {
     round: number;
@@ -370,11 +406,53 @@ export async function adminSyncMatchdayFn(forceOdds = false): Promise<{ ok: bool
   return res.data;
 }
 
-export async function adminForceSettleFn(matchdayNumber: number): Promise<{ ok: boolean; settled: number; matchday: number }> {
-  const fn = httpsCallable<{ matchdayNumber: number }, { ok: boolean; settled: number; matchday: number }>(
-    functions, 'adminForceSettle'
+/**
+ * `force` valuta la giornata anche con partite non ancora concluse: i relativi
+ * pronostici risultano sbagliati e l'operazione non è reversibile, quindi il
+ * server la rifiuta se non è chiesta esplicitamente.
+ */
+export async function adminForceSettleFn(
+  matchdayNumber: number,
+  force = false
+): Promise<{ ok: boolean; settled: number; matchday: number }> {
+  const fn = httpsCallable<
+    { matchdayNumber: number; force?: boolean },
+    { ok: boolean; settled: number; matchday: number }
+  >(functions, 'adminForceSettle');
+  const res = await fn({ matchdayNumber, force });
+  return res.data;
+}
+
+/**
+ * Azzeramento di inizio stagione: irreversibile, riporta tutti i profili allo
+ * stato iniziale. Il server pretende la parola di conferma.
+ */
+export async function adminResetSeasonFn(): Promise<{ ok: boolean; profili: number }> {
+  const fn = httpsCallable<{ confirm: string }, { ok: boolean; profili: number }>(
+    functions,
+    'adminResetSeason'
   );
-  const res = await fn({ matchdayNumber });
+  const res = await fn({ confirm: 'AZZERA' });
+  return res.data;
+}
+
+export interface WeeklyPrizeItem {
+  position: number;
+  label: string;
+  emoji?: string;
+}
+
+/** Premi settimanali di una giornata: lettura e scrittura, solo admin. */
+export async function adminManageWeeklyPrizesFn(
+  action: 'get' | 'set',
+  matchdayNumber: number,
+  items?: WeeklyPrizeItem[]
+): Promise<{ matchdayNumber: number; items: WeeklyPrizeItem[]; personalizzati?: boolean }> {
+  const fn = httpsCallable<
+    { action: string; matchdayNumber: number; items?: WeeklyPrizeItem[] },
+    { matchdayNumber: number; items: WeeklyPrizeItem[]; personalizzati?: boolean }
+  >(functions, 'adminManageWeeklyPrizes');
+  const res = await fn({ action, matchdayNumber, items });
   return res.data;
 }
 

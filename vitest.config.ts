@@ -21,6 +21,13 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text-summary', 'json-summary', 'html'],
       include: ['src/lib/**/*.ts', 'functions/src/**/*.ts'],
+      // Conta tutti i file inclusi, anche quelli che nessun test importa.
+      // Senza, la percentuale dipende da quali file un test tira dentro: il
+      // primo test su `db.ts` ha fatto crollare la copertura per funzione dal
+      // 78% al 61% pur avendo aggiunto copertura, perché quel file prima non
+      // entrava nel denominatore. Un numero che si muove per motivi opposti a
+      // quelli reali non serve a nessuno.
+      all: true,
       exclude: [
         '**/__tests__/**',
         '**/*.d.ts',
@@ -28,20 +35,27 @@ export default defineConfig({
         'functions/src/quizData.ts',
         'src/lib/privacy.ts',
       ],
-      // Soglie fissate al livello misurato il 26/07/2026: servono a impedire
+      // Soglie fissate al livello misurato il 20/08/2026: servono a impedire
       // regressioni, non a certificare che la copertura sia buona.
       //
-      // Il valore di `lines` è basso perché `functions/src/index.ts` (~2000
-      // righe: settlement, economia, callable) non ha ancora test: richiede
-      // l'emulatore Firestore. È il prossimo intervento prioritario.
+      // `lines` resta basso perché questo è il conteggio dei soli test
+      // unitari, e `functions/src/index.ts` (~2200 righe) è coperto dai test
+      // di integrazione, che girano a parte contro l'emulatore Firestore
+      // (`npm run test:integration`) e non contribuiscono a questo numero.
       // Branch e function sono alti perché la logica pura — scoring, quote,
-      // economia, random, penalty, http — è coperta bene.
+      // economia, power-up, settlement, random, penalty, http — è coperta bene.
       //
-      // Queste soglie si alzano, non si abbassano.
+      // Queste soglie si alzano, non si abbassano — con un'eccezione già
+      // capitata: il 20/08/2026 `functions` è sceso da 78% a 61% *aggiungendo*
+      // test. Il primo test su `db.ts` lo ha reso analizzabile (prima l'import
+      // falliva senza mock di Firebase) e le sue ~20 funzioni sono entrate nel
+      // denominatore. Righe e branch infatti sono salite. Abbassare la soglia
+      // è lecito solo così: quando cambia cosa viene misurato, mai quando
+      // peggiora quanto è coperto.
       thresholds: {
-        lines: 19,
-        functions: 74,
-        branches: 80,
+        lines: 21,
+        functions: 62,
+        branches: 85,
       },
     },
   },

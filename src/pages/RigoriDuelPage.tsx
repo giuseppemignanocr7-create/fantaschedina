@@ -235,15 +235,25 @@ export function RigoriDuelPage() {
     const oppScore = iAmP1 ? duel.p2.score : duel.p1.score;
     const iWon = duel.winner === playerNum;
     const isDraw = duel.winner === 'draw';
+    // Partita chiusa dalla pulizia perché ferma da troppo: non è una sconfitta,
+    // e mostrarla come tale sarebbe una bugia verso chi era rimasto a giocare.
+    const isAbandoned = duel.abandoned === true;
     return (
       <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-primary-900/25 via-transparent to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/90 to-background" />
         <div className="glass-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in relative z-10">
-          <div className="text-7xl animate-heartbeat">{iWon ? '🏆' : isDraw ? '🤝' : '😢'}</div>
+          <div className="text-7xl animate-heartbeat">
+            {isAbandoned ? '🕒' : iWon ? '🏆' : isDraw ? '🤝' : '😢'}
+          </div>
           <h2 className="font-display font-black text-3xl text-white uppercase">
-            {iWon ? 'HAI VINTO!' : isDraw ? 'PAREGGIO!' : 'HAI PERSO!'}
+            {isAbandoned ? 'PARTITA ABBANDONATA' : iWon ? 'HAI VINTO!' : isDraw ? 'PAREGGIO!' : 'HAI PERSO!'}
           </h2>
+          {isAbandoned && (
+            <p className="text-white/50 text-sm">
+              Nessuno ha più giocato: la sfida è stata chiusa senza premio.
+            </p>
+          )}
           <div className="flex items-center justify-center gap-6">
             <div className="text-center">
               <p className="text-xs text-white/40 uppercase">Tu</p>

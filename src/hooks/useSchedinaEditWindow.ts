@@ -18,6 +18,12 @@ export function useSchedinaEditWindow() {
   const isSubmitted = !!(currentSchedina?.isLocked || currentSchedina?.submittedAt);
   const canEdit = isSubmitted && !isDeadlinePassed;
 
+  // Dopo la deadline la schedina si tocca solo con il power-up Cambio
+  // Last-Minute: a pagamento, una volta sola, e solo su partite non iniziate.
+  // Il server rifiuta comunque i casi limite: qui si decide solo cosa mostrare.
+  const lastMinuteUsed = currentSchedina?.lastMinuteUsed === true;
+  const canUseLastMinute = isSubmitted && isDeadlinePassed && !lastMinuteUsed;
+
   const handleEdit = () => {
     unlockSchedina();
     toast.info('Puoi modificare la schedina. Re-invia per confermare le modifiche.');
@@ -33,5 +39,14 @@ export function useSchedinaEditWindow() {
     }
   };
 
-  return { isSubmitted, canEdit, isSubmitting, handleEdit, handleCancel };
+  return {
+    isSubmitted,
+    canEdit,
+    isDeadlinePassed,
+    lastMinuteUsed,
+    canUseLastMinute,
+    isSubmitting,
+    handleEdit,
+    handleCancel,
+  };
 }

@@ -32,7 +32,12 @@ import {
   profileToParticipant,
   type ProfileDoc,
 } from '@/lib/db';
-import { submitSchedinaFn, cancelSchedinaFn, callableErrorMessage } from '@/lib/gameApi';
+import {
+  submitSchedinaFn,
+  cancelSchedinaFn,
+  changePredictionFn,
+  callableErrorMessage,
+} from '@/lib/gameApi';
 import { MAX_PICKS_PER_SCHEDINA, type PowerUpSelection } from '@/lib/economy';
 import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
 import { getCached, setCached, invalidate, invalidatePrefix, CACHE_TTL } from '@/lib/cache';
@@ -54,6 +59,11 @@ interface AppStore {
   currentSchedina: Partial<Schedina> | null;
   schedinaHistory: (Schedina | SchedinaResult)[];
   selectedPowerups: PowerUpSelection;
+  /**
+   * Circuito in compilazione: null = classifica generale, altrimenti l'id
+   * della lega. Ogni circuito ha la sua schedina sulla stessa giornata.
+   */
+  currentLeagueId: string | null;
 
   // UI state
   isLoading: boolean;
@@ -74,6 +84,15 @@ interface AppStore {
   resetSchedina: () => void;
   unlockSchedina: () => void;
   cancelSchedina: () => Promise<void>;
+  applyLastMinuteChange: (
+    matchId: string,
+    betType: string,
+    outcome: string
+  ) => Promise<boolean>;
+  /** Cambia circuito e carica la schedina corrispondente. */
+  setCircuito: (leagueId: string | null) => Promise<void>;
+  /** Ricopia i pronostici della schedina generale in quella in compilazione. */
+  copiaDaGenerale: () => Promise<boolean>;
   loadUserSchedina: () => Promise<void>;
   loadSchedinaHistory: () => Promise<void>;
 
@@ -121,6 +140,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   currentSchedina: null,
   schedinaHistory: [],
   selectedPowerups: {},
+  currentLeagueId: null,
   isLoading: false,
   isLoadingOdds: false,
   isLoadingRankings: false,
@@ -185,21 +205,25 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       return;
     }
 
+    const { currentLeagueId } = get();
     set({ isSubmitting: true, error: null });
     try {
       // Invio validato server-side (deadline, quote ufficiali, power-up)
-      await submitSchedinaFn(predictions, selectedPowerups);
+      await submitSchedinaFn(predictions, selectedPowerups, currentLeagueId);
       invalidatePrefix('schedinaHistory_');
       invalidate('rankings');
       set({
         currentSchedina: {
-          id: `${currentUser.id}_${currentMatchday.number}`,
+          id: currentLeagueId
+            ? `${currentUser.id}_${currentMatchday.number}_${currentLeagueId}`
+            : `${currentUser.id}_${currentMatchday.number}`,
           participantId: currentUser.id,
           matchday: currentMatchday.number,
           predictions,
           submittedAt: new Date(),
           isLocked: true,
           powerups: selectedPowerups,
+          lastMinuteUsed: false,
         },
         selectedPowerups: {},
         isSubmitting: false,
@@ -232,7 +256,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     if (!currentUser || !currentMatchday) return;
     set({ isSubmitting: true, error: null });
     try {
-      await cancelSchedinaFn();
+      await cancelSchedinaFn(get().currentLeagueId);
       invalidatePrefix('schedinaHistory_');
       invalidate('rankings');
       set({
@@ -245,11 +269,94 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     }
   },
 
-  loadUserSchedina: async () => {
+  /**
+   * Power-up "Cambio Last-Minute": cambia un pronostico dopo la deadline,
+   * a pagamento e una volta sola. Il costo e il consumo li applica il server
+   * (callable `changePrediction`); qui si rilegge la schedina autorevole
+   * invece di indovinare la nuova quota lato client.
+   */
+  applyLastMinuteChange: async (matchId, betType, outcome) => {
     const { currentUser, currentMatchday } = get();
+    if (!currentUser || !currentMatchday) return false;
+    set({ isSubmitting: true, error: null });
+    try {
+      await changePredictionFn(matchId, betType, outcome, get().currentLeagueId);
+      invalidatePrefix('schedinaHistory_');
+      await get().loadUserSchedina();
+      set({ isSubmitting: false });
+      return true;
+    } catch (e) {
+      set({ error: callableErrorMessage(e), isSubmitting: false });
+      return false;
+    }
+  },
+
+  /**
+   * Passa da un circuito all'altro. I power-up in selezione non seguono: si
+   * acquistano per singola schedina, quindi trascinarli sarebbe un addebito a
+   * sorpresa sul circuito sbagliato.
+   */
+  setCircuito: async (leagueId: string | null) => {
+    if (get().currentLeagueId === leagueId) return;
+    const { currentMatchday, currentUser } = get();
+    set({
+      currentLeagueId: leagueId,
+      selectedPowerups: {},
+      currentSchedina: emptyDraft(currentMatchday?.number ?? 1, currentUser?.id),
+      error: null,
+    });
+    await get().loadUserSchedina();
+  },
+
+  /**
+   * Copia i pronostici della schedina generale in quella in compilazione.
+   * Serve a chi gioca più leghe: dieci pronostici per circuito, a mano, sono
+   * un lavoro inutile quando si vuole giocare la stessa schedina ovunque.
+   */
+  copiaDaGenerale: async () => {
+    const { currentUser, currentMatchday, currentSchedina, currentLeagueId } = get();
+    if (!currentUser || !currentMatchday) return false;
+    if (!currentLeagueId) {
+      set({ error: 'Sei già sulla schedina generale' });
+      return false;
+    }
+    if (currentSchedina?.isLocked) {
+      set({ error: 'Schedina già inviata: sbloccala prima di ricopiarla' });
+      return false;
+    }
+    try {
+      const generale = await getUserSchedinaForMatchday(
+        currentUser.id,
+        currentMatchday.number,
+        null
+      );
+      if (!generale || generale.predictions.length === 0) {
+        set({ error: 'Non hai ancora compilato la schedina generale' });
+        return false;
+      }
+      set({
+        currentSchedina: {
+          ...(currentSchedina ?? emptyDraft(currentMatchday.number, currentUser.id)),
+          predictions: generale.predictions.map(p => ({ ...p })),
+        },
+        error: null,
+      });
+      return true;
+    } catch (e) {
+      set({ error: callableErrorMessage(e) });
+      return false;
+    }
+  },
+
+  loadUserSchedina: async () => {
+    const { currentUser, currentMatchday, currentLeagueId } = get();
     if (!currentUser || !currentMatchday) return;
     try {
-      const saved = await getUserSchedinaForMatchday(currentUser.id, currentMatchday.number);
+      const saved = await getUserSchedinaForMatchday(
+        currentUser.id,
+        currentMatchday.number,
+        currentLeagueId
+      );
       if (saved) {
         set({
           currentSchedina: {
@@ -260,6 +367,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
             submittedAt: saved.submittedAt?.toDate(),
             isLocked: saved.isLocked,
             powerups: saved.powerups,
+            lastMinuteUsed: saved.lastMinuteUsed,
           },
         });
       } else if (
