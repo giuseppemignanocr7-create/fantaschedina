@@ -5,6 +5,8 @@
 
 import {
   collection,
+  doc,
+  getDoc,
   getDocs,
   query,
   Timestamp,
@@ -52,6 +54,16 @@ export async function getUserLeagues(uid: string): Promise<LeagueDoc[]> {
     query(collection(db, 'leagues'), where('memberIds', 'array-contains', uid))
   );
   return snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<LeagueDoc, 'id'>) }));
+}
+
+/**
+ * Una singola lega, per la sua pagina dedicata. Le regole Firestore la
+ * lasciano leggere solo a chi ne è membro (o se è pubblica): fuori da quei
+ * casi il documento risulta assente, ed è il comportamento voluto.
+ */
+export async function getLeague(leagueId: string): Promise<LeagueDoc | null> {
+  const snap = await getDoc(doc(db, 'leagues', leagueId));
+  return snap.exists() ? { id: snap.id, ...(snap.data() as Omit<LeagueDoc, 'id'>) } : null;
 }
 
 export async function getPublicLeagues(): Promise<LeagueDoc[]> {

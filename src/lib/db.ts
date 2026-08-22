@@ -83,7 +83,7 @@ export async function ensureProfile(
 ): Promise<ProfileDoc> {
   const ref = doc(db, COL.profiles, uid);
   const snap = await getDoc(ref);
-  if (snap.exists()) return snap.data() as ProfileDoc;
+  if (snap.exists()) return { ...(snap.data() as ProfileDoc), id: uid };
 
   const profile: Omit<ProfileDoc, 'createdAt' | 'updatedAt'> & {
     createdAt: ReturnType<typeof serverTimestamp>;
@@ -132,7 +132,10 @@ export async function ensureProfile(
 
 export async function getProfile(uid: string): Promise<ProfileDoc | null> {
   const snap = await getDoc(doc(db, COL.profiles, uid));
-  return snap.exists() ? (snap.data() as ProfileDoc) : null;
+  // `id` viene dall’uid, che e’ l’id del documento: cosi’ e’ sempre valorizzato
+  // anche per i profili scritti dalle Functions, che non ripetono l’uid nei
+  // campi. Senza, `profile.id` restava undefined e le leghe non si caricavano.
+  return snap.exists() ? { ...(snap.data() as ProfileDoc), id: uid } : null;
 }
 
 export async function updateProfile(

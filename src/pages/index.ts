@@ -7,6 +7,7 @@ export { ProfiloPage } from './ProfiloPage';
 export { StoricoPage } from './StoricoPage';
 export { LivePage } from './LivePage';
 export { LeghePage } from './LeghePage';
+export { LegaPage } from './LegaPage';
 export { PronosticiPage } from './PronosticiPage';
 export { MatchPage } from './MatchPage';
 export { MinigiochiPage } from './MinigiochiPage';

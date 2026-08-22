@@ -358,7 +358,7 @@ export function PronosticiPage() {
   } = useAppStore();
 
   const toast = useToast();
-  const { profile } = useAuthContext();
+  const { user } = useAuthContext();
   const refreshProfile = useSilentProfileRefresh('PronosticiPage');
   const {
     canEdit, canUseLastMinute, lastMinuteUsed, isDeadlinePassed, isSubmitted,
@@ -371,11 +371,15 @@ export function PronosticiPage() {
 
   // Leghe di cui l'utente fa parte: ognuna ha la sua schedina sulla stessa
   // giornata, e si compila da qui — non da un'altra pagina.
+  // L'identita’ viene dall’autenticazione, non dal profilo: un documento
+  // profilo senza il campo `id` faceva sparire il selettore di circuito senza
+  // un errore, e la schedina di lega diventava irraggiungibile.
   const [mieLeghe, setMieLeghe] = useState<LeagueDoc[]>([]);
+  const uid = user?.uid ?? null;
   useEffect(() => {
-    if (!profile?.id) return;
+    if (!uid) return;
     let annullato = false;
-    getUserLeagues(profile.id)
+    getUserLeagues(uid)
       .then(l => {
         if (!annullato) setMieLeghe(l);
       })
@@ -383,7 +387,7 @@ export function PronosticiPage() {
     return () => {
       annullato = true;
     };
-  }, [profile?.id]);
+  }, [uid]);
 
   // `?lega=<id>` permette a Leghe di aprire direttamente la schedina giusta.
   const [searchParams, setSearchParams] = useSearchParams();

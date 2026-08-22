@@ -13,6 +13,7 @@ const ProfiloPage = lazy(() => import('@/pages/ProfiloPage').then(m => ({ defaul
 const StoricoPage = lazy(() => import('@/pages/StoricoPage').then(m => ({ default: m.StoricoPage })));
 const LivePage = lazy(() => import('@/pages/LivePage').then(m => ({ default: m.LivePage })));
 const LeghePage = lazy(() => import('@/pages/LeghePage').then(m => ({ default: m.LeghePage })));
+const LegaPage = lazy(() => import('@/pages/LegaPage').then(m => ({ default: m.LegaPage })));
 const PronosticiPage = lazy(() => import('@/pages/PronosticiPage').then(m => ({ default: m.PronosticiPage })));
 const MatchPage = lazy(() => import('@/pages/MatchPage').then(m => ({ default: m.MatchPage })));
 const MinigiochiPage = lazy(() => import('@/pages/MinigiochiPage').then(m => ({ default: m.MinigiochiPage })));
@@ -84,6 +85,7 @@ function App() {
             funzioni. Una sola pagina, un solo comportamento. */}
         <Route path="/schedina" element={<Navigate to="/pronostici" replace />} />
         <Route path="/leghe" element={<LeghePage />} />
+        <Route path="/leghe/:leagueId" element={<LegaPage />} />
         <Route path="/classifica" element={<ClassificaPage />} />
         <Route path="/minigiochi" element={<MinigiochiPage />} />
         <Route path="/minigiochi/quiz" element={<QuizCalcioPage />} />
