@@ -22,11 +22,12 @@ export const DEFAULT_TOURNAMENT_CONFIG: TournamentConfig = {
   weeklyFeeToPool: 5,
   weeklyFeeToOrganizer: 5,
   minValidOdds: 1.30,
-  oddsCap: 5.00,             // tetto ai punti di una singola giocata indovinata
+  oddsCap: 5.00,             // tetto alla quota di una singola giocata
+  pointsMultiplier: 10,      // una quota 2.00 indovinata vale 20 punti
   penaltyOddsMin: 1.25,
   penaltyMultiplierPerThree: 0.9, // ogni 3 giocate in fascia 1.25-1.29
-  bonus9Multiplier: 1.2,
-  bonus10Multiplier: 1.5,
+  bonus9Points: 5,
+  bonus10Points: 10,
   maxJoinMatchday: 10,
   lateJoinFeePerMatchday: 5,
   minParticipantsForGuarantee: 30,
@@ -39,9 +40,9 @@ export const DEFAULT_TOURNAMENT_CONFIG: TournamentConfig = {
 };
 
 /**
- * Punti di una singola giocata: la propria quota se indovinata (cappata a
- * oddsCap), zero se sbagliata. I punti della schedina sono la SOMMA di questi
- * contributi.
+ * Punti di una singola giocata: la propria quota (cappata a oddsCap)
+ * moltiplicata per 10 se indovinata, zero se sbagliata. I punti della
+ * schedina sono la SOMMA di questi contributi.
  */
 export function calculateBetPoints(
   odds: number,
@@ -49,7 +50,7 @@ export function calculateBetPoints(
   config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG
 ): number {
   if (!isCorrect) return 0;
-  return Math.min(odds, config.oddsCap);
+  return Math.min(odds, config.oddsCap) * config.pointsMultiplier;
 }
 
 /**
@@ -97,26 +98,26 @@ export function calculatePenaltyPoints(
 }
 
 /**
- * Moltiplicatore bonus per esiti corretti.
- * - 9 esiti corretti su 10: ×1.2
- * - 10 esiti corretti su 10: ×1.5
+ * Bonus in punti pieni per esiti corretti, aggiunto in fondo al totale.
+ * - 9 esiti corretti su 10: +5
+ * - 10 esiti corretti su 10: +10
  */
 export function calculateBonusPoints(
   correctPredictions: number,
   config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG
 ): number {
   if (correctPredictions >= 10) {
-    return config.bonus10Multiplier;
+    return config.bonus10Points;
   }
   if (correctPredictions === 9) {
-    return config.bonus9Multiplier;
+    return config.bonus9Points;
   }
-  return 1;
+  return 0;
 }
 
 /**
  * Calcola il punteggio completo di una schedina.
- * I punti base sono la SOMMA delle quote (cappate) delle giocate corrette.
+ * I punti base sono la SOMMA delle quote (cappate) × 10 delle giocate corrette.
  * Bonus e penalità restano espressi come impatto assoluto in punti (non
  * moltiplicatori grezzi), così `finalPoints` resta sempre
  * `basePoints + bonusPoints + penaltyPoints` e i totali cumulativi di profilo
@@ -141,23 +142,22 @@ export function calculateSchedinaScore(
   // Conta giocate cappate (quota oltre il tetto oddsCap)
   const cappedBets = predictions.filter(p => p.odds > config.oddsCap).length;
 
-  const bonusMultiplier = calculateBonusPoints(correctPredictions, config);
+  const bonusPoints = calculateBonusPoints(correctPredictions, config);
   const penaltyMultiplier = calculatePenaltyPoints(penaltyRangeBets, config);
 
-  // Arrotonda ogni passaggio in modo progressivo (non i 4 valori indipendentemente
-  // dai loro grezzi non arrotondati): altrimenti basePoints+bonusPoints+penaltyPoints
-  // può divergere di qualche centesimo da finalPoints per arrotondamenti scorrelati.
+  // La penalità agisce sulla composizione della schedina (quote basse) e si
+  // applica ai punti delle giocate; il bonus premia la precisione e si somma
+  // in fondo. Arrotondamento progressivo, così basePoints + bonusPoints +
+  // penaltyPoints resta uguale a finalPoints.
   const basePoints = Math.round(puntiBase * 100) / 100;
-  const afterBonus = Math.round(basePoints * bonusMultiplier * 100) / 100;
-  const bonusPoints = Math.round((afterBonus - basePoints) * 100) / 100;
-  const afterPenalty = Math.round(afterBonus * penaltyMultiplier * 100) / 100;
-  const penaltyPoints = Math.round((afterPenalty - afterBonus) * 100) / 100;
+  const afterPenalty = Math.round(basePoints * penaltyMultiplier * 100) / 100;
+  const penaltyPoints = Math.round((afterPenalty - basePoints) * 100) / 100;
 
   return {
     basePoints,
     bonusPoints,
     penaltyPoints,
-    finalPoints: afterPenalty,
+    finalPoints: Math.round((afterPenalty + bonusPoints) * 100) / 100,
     details: {
       correctPredictions,
       penaltyRangeBets,
@@ -215,7 +215,7 @@ export function evaluateBet(
 
 /**
  * Valuta i risultati di una schedina confrontandola con i risultati delle partite.
- * Mercati non valutabili (void) = quota 1.00 → 10 punti, contano come corretti.
+ * Mercati non valutabili (void) = 0 punti, ma contano come corretti.
  */
 export function evaluateSchedina(
   schedina: Schedina,

@@ -7,10 +7,16 @@
 export const TOURNAMENT = {
   minValidOdds: 1.3,
   oddsCap: 5.0,
+  /**
+   * Ogni quota indovinata vale la quota × 10: una giocata a 2.00 dà 20 punti.
+   * Serve a lavorare con numeri interi e leggibili invece che con decimali.
+   */
+  pointsMultiplier: 10,
   penaltyOddsMin: 1.25,
   penaltyMultiplierPerThree: 0.9,
-  bonus9Multiplier: 1.2,
-  bonus10Multiplier: 1.5,
+  /** Bonus in punti pieni, non moltiplicatori: +5 con 9/10, +10 con 10/10. */
+  bonus9Points: 5,
+  bonus10Points: 10,
 } as const;
 
 // --- CAMPIONATI / COMPETIZIONI ---

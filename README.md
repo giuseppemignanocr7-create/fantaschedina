@@ -24,6 +24,18 @@ Tutta la logica che tocca **punti e gettoni** gira server-side su Cloud Function
 
 Le **Firestore Rules** (`firestore.rules`) bloccano ogni scrittura client su punti, gettoni, schedine e giornate. Le schedine altrui sono leggibili **solo dopo la deadline** (anti-copia).
 
+## Come si fanno i punti
+
+I punti di una schedina sono la **somma delle quote indovinate, moltiplicata
+per 10**: una giocata a 2.00 vale 20 punti, dieci giocate a 2.00 ne valgono
+200. Ogni quota è cappata a 5.00 (quindi max 50 punti a giocata) e le quote
+sotto 1.30 non sono valide. Chi indovina 9 pronostici su 10 prende **+5
+punti**, chi li indovina tutti e 10 **+10 punti**. I punti si sommano giornata
+dopo giornata in classifica generale.
+
+I punti sono una cosa, i **gettoni** un'altra: i primi fanno la classifica, i
+secondi si spendono in power-up e si guadagnano coi minigiochi.
+
 ## Due circuiti: generale e leghe
 
 Ogni giornata un utente compila **una schedina per la classifica generale** e
@@ -57,7 +69,7 @@ ricompilare dieci pronostici per ogni lega.
 | Duelli rigori 1v1 | 50 a vittoria, 25 a pareggio | 150 gettoni al giorno |
 | Sfide 1vs1 | 5–30 secondo la prestazione | una per avversario a settimana |
 | Missioni | 50–500 una tantum | una volta per missione |
-| Schedina | +2 a pronostico esatto, +50 con 9/10, +150 con 10/10, +100 al vincitore di giornata | per giornata |
+| Schedina | +2 gettoni a pronostico esatto, +50 con 9/10, +150 con 10/10, +100 al vincitore di giornata | per giornata |
 
 I valori vivono in `functions/src/config.ts` e sono verificati dai test: se
 cambi quelli, questa tabella va aggiornata a mano.

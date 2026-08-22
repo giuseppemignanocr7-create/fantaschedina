@@ -64,7 +64,8 @@ function oracleEvaluate(betType: string, outcome: string, r: Result): boolean | 
 
 function oracleBetPoints(odds: number, won: boolean): number {
   if (!won) return 0;
-  return Math.min(odds, 5);
+  // Quota cappata a 5.00 e moltiplicata per 10.
+  return Math.min(odds, 5) * 10;
 }
 
 interface Sim {
@@ -156,20 +157,20 @@ describe('Simulazione 200 schedine casuali (2000 pronostici) — confronto con o
       expect(r.predictions[i].isCorrect).toBe(correct);
     });
 
-    const expectedBonusMultiplier = expectedCorrect === 10 ? 1.5 : expectedCorrect === 9 ? 1.2 : 1;
+    const expectedBonus = expectedCorrect === 10 ? 10 : expectedCorrect === 9 ? 5 : 0;
     const expectedPenaltyMultiplier = Math.pow(0.9, Math.floor(penaltyBets / 3));
     // Arrotondamento progressivo: vedi lo stesso schema in calculateSchedinaScore.
+    // La penalità agisce sui punti delle giocate, il bonus si somma in fondo.
     const expectedBase = Math.round(expectedCombo * 100) / 100;
-    const expectedAfterBonus = Math.round(expectedBase * expectedBonusMultiplier * 100) / 100;
-    const expectedBonus = Math.round((expectedAfterBonus - expectedBase) * 100) / 100;
-    const expectedAfterPenalty = Math.round(expectedAfterBonus * expectedPenaltyMultiplier * 100) / 100;
-    const expectedPenalty = Math.round((expectedAfterPenalty - expectedAfterBonus) * 100) / 100;
+    const expectedAfterPenalty = Math.round(expectedBase * expectedPenaltyMultiplier * 100) / 100;
+    const expectedPenalty = Math.round((expectedAfterPenalty - expectedBase) * 100) / 100;
+    const expectedFinal = Math.round((expectedAfterPenalty + expectedBonus) * 100) / 100;
 
     expect(r.correctPredictions).toBe(expectedCorrect);
     expect(r.totalPoints).toBeCloseTo(expectedBase, 6);
     expect(r.bonusPoints).toBeCloseTo(expectedBonus, 6);
     expect(r.penaltyPoints).toBeCloseTo(expectedPenalty, 6);
-    expect(r.finalPoints).toBeCloseTo(expectedAfterPenalty, 6);
+    expect(r.finalPoints).toBeCloseTo(expectedFinal, 6);
   });
 });
 
@@ -180,10 +181,10 @@ describe('Simulazione — proprietà globali', () => {
       expect(r.finalPoints).toBeGreaterThanOrEqual(0);
     });
   });
-  it('nessun pronostico contribuisce oltre oddsCap (5.00) al totale', () => {
+  it('nessun pronostico contribuisce oltre il tetto (5.00 × 10) al totale', () => {
     SIMULATIONS.forEach(sim => {
       const r = evaluateSchedina(sim.schedina, sim.matches);
-      r.predictions.forEach(p => expect(p.pointsEarned).toBeLessThanOrEqual(5));
+      r.predictions.forEach(p => expect(p.pointsEarned).toBeLessThanOrEqual(50));
     });
   });
   it('i punti finali sono sempre base + bonus + penalità', () => {

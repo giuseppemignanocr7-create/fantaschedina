@@ -87,24 +87,24 @@ export function evaluateBet(
 }
 
 /**
- * Punti di una singola giocata vinta: la quota stessa, cappata a oddsCap.
- * I punti della schedina sono la somma di questi contributi.
+ * Punti di una singola giocata vinta: la quota (cappata a oddsCap)
+ * moltiplicata per 10. Una giocata a 2.00 vale 20 punti, una a 5.00 o più ne
+ * vale 50. I punti della schedina sono la somma di questi contributi.
  */
 export function calculateBetPoints(odds: number, isCorrect: boolean): number {
   if (!isCorrect) return 0;
-  return Math.min(odds, TOURNAMENT.oddsCap);
+  return Math.min(odds, TOURNAMENT.oddsCap) * TOURNAMENT.pointsMultiplier;
 }
 
 /**
  * Valuta una schedina completa contro i risultati.
- * - punti base = somma delle quote (cappate) delle giocate corrette
+ * - punti base = somma delle quote (cappate) × 10 delle giocate corrette
  * - void (mercato non valutabile) = 0 punti, ma conta come corretto
  * - jolly power-up: raddoppia il contributo della giocata selezionata (se vinta)
  * - shield: annulla il moltiplicatore di penalità quote basse
- * - insurance: con 8/10 corretti applica comunque il moltiplicatore bonus del 9/10
- * Bonus e penalità restano espressi come impatto assoluto in punti (non come
- * moltiplicatori grezzi), arrotondati in modo progressivo, così finalPoints
- * resta sempre totalPoints + bonusPoints + penaltyPoints.
+ * - insurance: con 8/10 corretti dà comunque il bonus del 9/10
+ * Bonus e penalità restano espressi come impatto assoluto in punti, così
+ * finalPoints resta sempre totalPoints + bonusPoints + penaltyPoints.
  */
 export function evaluateSchedina(
   predictions: Prediction[],
@@ -144,12 +144,13 @@ export function evaluateSchedina(
     0
   );
 
-  // Bonus 9/10 e 10/10 (insurance: 8 corretti → bonus 9)
-  let bonusMultiplier = 1;
-  if (correctPredictions >= 10) bonusMultiplier = TOURNAMENT.bonus10Multiplier;
-  else if (correctPredictions === 9) bonusMultiplier = TOURNAMENT.bonus9Multiplier;
+  // Bonus 9/10 e 10/10: punti pieni aggiunti in fondo, non moltiplicatori
+  // (insurance: con 8 corretti si prende comunque il bonus del 9).
+  let bonusPunti = 0;
+  if (correctPredictions >= 10) bonusPunti = TOURNAMENT.bonus10Points;
+  else if (correctPredictions === 9) bonusPunti = TOURNAMENT.bonus9Points;
   else if (correctPredictions === 8 && powerups.insurance) {
-    bonusMultiplier = TOURNAMENT.bonus9Multiplier;
+    bonusPunti = TOURNAMENT.bonus9Points;
   }
 
   // Penalità quote 1.25-1.29 (composizione della schedina, a prescindere
@@ -160,17 +161,19 @@ export function evaluateSchedina(
   let penaltyMultiplier = Math.pow(TOURNAMENT.penaltyMultiplierPerThree, Math.floor(penaltyRange / 3));
   if (powerups.shield) penaltyMultiplier = 1;
 
+  // La penalità colpisce la composizione della schedina, quindi si applica ai
+  // punti delle giocate; il bonus premia la precisione e si somma in fondo,
+  // senza essere eroso dalla penalità.
   const totalPoints = Math.round(puntiBase * 100) / 100;
-  const afterBonus = Math.round(totalPoints * bonusMultiplier * 100) / 100;
-  const bonusPoints = Math.round((afterBonus - totalPoints) * 100) / 100;
-  const afterPenalty = Math.round(afterBonus * penaltyMultiplier * 100) / 100;
-  const penaltyPoints = Math.round((afterPenalty - afterBonus) * 100) / 100;
+  const afterPenalty = Math.round(totalPoints * penaltyMultiplier * 100) / 100;
+  const penaltyPoints = Math.round((afterPenalty - totalPoints) * 100) / 100;
+  const bonusPoints = bonusPunti;
 
   return {
     totalPoints,
     bonusPoints,
     penaltyPoints,
-    finalPoints: afterPenalty,
+    finalPoints: Math.round((afterPenalty + bonusPoints) * 100) / 100,
     correctPredictions,
     predictionResults,
   };
