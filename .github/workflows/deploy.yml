@@ -97,6 +97,12 @@ jobs:
     name: Deploy (richiede approvazione)
     needs: gates
     runs-on: ubuntu-latest
+    # Il token del workflow è di sola lettura per impostazione predefinita:
+    # senza questo, l'ultimo passo (tag della release) fallisce con
+    # "Permission to ... denied to github-actions[bot]" e marca come fallito
+    # un deploy in realtà riuscito.
+    permissions:
+      contents: write
     # Environment dedicato, distinto da "Production" usato dall'integrazione
     # Vercel: le protection rules qui devono valere solo per questo workflow.
     environment: production-deploy
