@@ -94,7 +94,19 @@ artifactregistry.admin    immagini di build
 cloudbuild.builds.editor  build delle functions
 iam.serviceAccountUser    impersonare la SA di runtime
 serviceusage.serviceUsageConsumer
+cloudscheduler.admin      job delle functions schedulate
 ```
+
+> `cloudscheduler.admin` mancava fino al 22/08/2026 e il deploy delle quattro
+> funzioni schedulate (`syncMatchday`, `settleMatchdays`, `updateLiveScores`,
+> `cleanupPenaltyDuels`) falliva con
+> `403 ... lacks IAM permission "cloudscheduler.jobs.update"`, mentre le
+> callable passavano. Un deploy a metà così è insidioso: il job risulta
+> fallito, ma le funzioni riuscite sono già online. Per assegnarlo:
+>
+> ```bash
+> gcloud projects add-iam-policy-binding fantaschedina-4a1b2 >   --member="serviceAccount:github-deploy@fantaschedina-4a1b2.iam.gserviceaccount.com" >   --role="roles/cloudscheduler.admin"
+> ```
 
 ```bash
 gcloud projects get-iam-policy fantaschedina-4a1b2 \
