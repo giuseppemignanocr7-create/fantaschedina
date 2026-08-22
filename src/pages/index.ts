@@ -1,6 +1,5 @@
 export { HomePage } from './HomePage';
 export { DashboardPage } from './DashboardPage';
-export { SchedinaPage } from './SchedinaPage';
 export { ClassificaPage } from './ClassificaPage';
 export { RegolamentoPage } from './RegolamentoPage';
 export { LoginPage } from './LoginPage';
@@ -8,6 +7,7 @@ export { ProfiloPage } from './ProfiloPage';
 export { StoricoPage } from './StoricoPage';
 export { LivePage } from './LivePage';
 export { LeghePage } from './LeghePage';
+export { LegaPage } from './LegaPage';
 export { PronosticiPage } from './PronosticiPage';
 export { MatchPage } from './MatchPage';
 export { MinigiochiPage } from './MinigiochiPage';

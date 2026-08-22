@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ArrowLeft, Plus, Users, Trophy, Copy, Check, LogOut, Trash2, Loader2, KeyRound,
+  ArrowLeft, Plus, Users, Trophy, LogOut, Trash2, Loader2, KeyRound,
+  ChevronRight, Target,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -9,14 +10,12 @@ import { burstConfetti, vibrate } from '@/lib/juice';
 import {
   createLeague,
   deleteLeague,
-  getLeagueStandings,
   getPublicLeagues,
   getUserLeagues,
   joinLeague,
   joinLeagueByCode,
   leaveLeague,
   type LeagueDoc,
-  type LeagueStanding,
 } from '@/lib/leagues';
 
 const TABS = ['LE MIE LEGHE', 'CREA LEGA', 'UNISCITI'] as const;
@@ -28,12 +27,9 @@ export function LeghePage() {
   const [activeTab, setActiveTab] = useState(0);
   const [myLeagues, setMyLeagues] = useState<LeagueDoc[]>([]);
   const [publicLeagues, setPublicLeagues] = useState<LeagueDoc[]>([]);
-  const [standings, setStandings] = useState<Record<string, LeagueStanding[]>>({});
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   // Form crea lega
   const [nome, setNome] = useState('');
@@ -62,22 +58,6 @@ export function LeghePage() {
     const t = setTimeout(() => refresh(), 0);
     return () => clearTimeout(t);
   }, [refresh]);
-
-  const toggleStandings = async (league: LeagueDoc) => {
-    if (expandedId === league.id) {
-      setExpandedId(null);
-      return;
-    }
-    setExpandedId(league.id);
-    if (!standings[league.id]) {
-      try {
-        const s = await getLeagueStandings(league);
-        setStandings(prev => ({ ...prev, [league.id]: s }));
-      } catch {
-        /* standings best-effort */
-      }
-    }
-  };
 
   const handleCreate = async () => {
     if (!nome.trim() || busy) return;
@@ -159,12 +139,6 @@ export function LeghePage() {
     }
   };
 
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code).catch(() => undefined);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2000);
-  };
-
   return (
     <div className="min-h-screen">
       <div className="max-w-2xl mx-auto px-3 py-3">
@@ -235,12 +209,18 @@ export function LeghePage() {
             ) : (
               myLeagues.map((league, li) => {
                 const isOwner = league.ownerId === uid;
-                const s = standings[league.id];
                 return (
-                  <div key={league.id} className="glass-card overflow-hidden animate-slide-up" style={{ animationDelay: `${li * 60}ms`, animationFillMode: 'backwards' }}>
-                    <button
-                      onClick={() => toggleStandings(league)}
-                      className="w-full p-4 text-left hover:bg-white/5 transition-colors"
+                  <div
+                    key={league.id}
+                    className="glass-card overflow-hidden animate-slide-up"
+                    style={{ animationDelay: `${li * 60}ms`, animationFillMode: 'backwards' }}
+                  >
+                    {/* La scheda porta dentro la lega: schedina, classifica,
+                        partite e membri stanno tutti li’, come in un
+                        fantacalcio. Prima si apriva a fisarmonica e finiva li’. */}
+                    <Link
+                      to={`/leghe/${league.id}`}
+                      className="block p-4 hover:bg-white/5 transition-colors active:scale-[0.99]"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -252,106 +232,50 @@ export function LeghePage() {
                               </span>
                             )}
                           </p>
-                          <p className="text-xs text-white/40 truncate">{league.description}</p>
-                        </div>
-                        <div className="flex items-center gap-1 text-xs text-white/50 flex-shrink-0">
-                          <Users size={12} />
-                          {league.memberCount}/{league.maxMembers}
-                        </div>
-                      </div>
-                    </button>
-
-                    {expandedId === league.id && (
-                      <div className="border-t border-white/5 p-4 space-y-3">
-                        {/* Codice invito */}
-                        <div className="flex items-center justify-between bg-white/5 rounded-xl p-3">
-                          <div className="flex items-center gap-2">
-                            <KeyRound size={14} className="text-primary-400" />
-                            <span className="font-mono font-black text-primary-400 tracking-[0.3em]">
-                              {league.inviteCode}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => copyCode(league.inviteCode)}
-                            className="flex items-center gap-1 text-xs text-white/50 hover:text-white transition-colors"
-                          >
-                            {copiedCode === league.inviteCode ? (
-                              <>
-                                <Check size={12} className="text-primary-400" /> Copiato
-                              </>
-                            ) : (
-                              <>
-                                <Copy size={12} /> Copia
-                              </>
-                            )}
-                          </button>
-                        </div>
-
-                        {/* Classifica di lega */}
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2 flex items-center gap-1">
-                            <Trophy size={11} className="text-yellow-400" /> Classifica lega
+                          <p className="text-xs text-white/40 truncate">
+                            {league.description || 'Schedina, classifica e partite della lega'}
                           </p>
-                          {!s ? (
-                            <Loader2 size={16} className="text-white/40 animate-spin mx-auto" />
-                          ) : (
-                            <div className="space-y-1">
-                              {s.map(row => (
-                                <div
-                                  key={row.userId}
-                                  className={cn(
-                                    'flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm',
-                                    row.userId === uid ? 'bg-primary-500/10' : ''
-                                  )}
-                                >
-                                  <span
-                                    className={cn(
-                                      'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black',
-                                      row.rank === 1
-                                        ? 'bg-yellow-500 text-black'
-                                        : row.rank === 2
-                                        ? 'bg-gray-400 text-black'
-                                        : row.rank === 3
-                                        ? 'bg-orange-500 text-black'
-                                        : 'bg-white/10 text-white/60'
-                                    )}
-                                  >
-                                    {row.rank}
-                                  </span>
-                                  <span className="flex-1 truncate font-medium text-white/80">
-                                    {row.username}
-                                  </span>
-                                  <span className="font-bold gradient-text">
-                                    {row.totalPoints.toFixed(1)} pt
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
                         </div>
-
-                        {/* Azioni */}
-                        <div className="flex justify-end gap-2 pt-1">
-                          {isOwner ? (
-                            <button
-                              onClick={() => handleDelete(league)}
-                              disabled={busy}
-                              className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
-                            >
-                              <Trash2 size={12} /> Elimina lega
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleLeave(league)}
-                              disabled={busy}
-                              className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
-                            >
-                              <LogOut size={12} /> Abbandona
-                            </button>
-                          )}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="flex items-center gap-1 text-xs text-white/50">
+                            <Users size={12} />
+                            {league.memberCount}/{league.maxMembers}
+                          </span>
+                          <ChevronRight size={18} className="text-primary-300" />
                         </div>
                       </div>
-                    )}
+                      <div className="mt-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white/35">
+                        <span className="flex items-center gap-1">
+                          <Target size={10} /> Schedina
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Trophy size={10} /> Classifica
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <KeyRound size={10} /> {league.inviteCode}
+                        </span>
+                      </div>
+                    </Link>
+
+                    <div className="flex justify-end gap-2 px-4 pb-3 -mt-1">
+                      {isOwner ? (
+                        <button
+                          onClick={() => handleDelete(league)}
+                          disabled={busy}
+                          className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
+                        >
+                          <Trash2 size={12} /> Elimina lega
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleLeave(league)}
+                          disabled={busy}
+                          className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
+                        >
+                          <LogOut size={12} /> Abbandona
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })

@@ -52,10 +52,11 @@ export default defineConfig({
       // denominatore. Righe e branch infatti sono salite. Abbassare la soglia
       // è lecito solo così: quando cambia cosa viene misurato, mai quando
       // peggiora quanto è coperto.
+      // Ricalibrate il 22/08/2026 dopo i test su lib/markets.ts.
       thresholds: {
-        lines: 21,
-        functions: 62,
-        branches: 85,
+        lines: 21.7,
+        functions: 64,
+        branches: 86,
       },
     },
   },
