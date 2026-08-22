@@ -1,9 +1,9 @@
-import { memo, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Target, Clock, CheckCircle2, Send, RotateCcw,
   ChevronRight, Trophy, RefreshCw,
-  ListChecks, TrendingUp, Pencil, Trash2,
+  ListChecks, TrendingUp, Pencil, Trash2, Copy,
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -16,6 +16,10 @@ import { useSchedinaEditWindow } from '@/hooks';
 import { MAX_PICKS_PER_SCHEDINA } from '@/lib/economy';
 import { calculateBetPoints, calculateSchedinaScore } from '@/lib/scoring';
 import { competitionName } from '@/lib/competitions';
+import { getUserLeagues, type LeagueDoc } from '@/lib/leagues';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { useSilentProfileRefresh } from '@/hooks/useSilentProfileRefresh';
+import { POWERUPS } from '@/lib/economy';
 
 const BET_TYPES: {
   key: BetType;
@@ -347,14 +351,99 @@ export function PronosticiPage() {
     isLoadingOdds,
     lastOddsUpdate,
     refreshOdds,
+    currentLeagueId,
+    setCircuito,
+    copiaDaGenerale,
+    applyLastMinuteChange,
   } = useAppStore();
 
   const toast = useToast();
-  const { canEdit, isSubmitting: isCancelling, handleEdit, handleCancel } = useSchedinaEditWindow();
+  const { profile } = useAuthContext();
+  const refreshProfile = useSilentProfileRefresh('PronosticiPage');
+  const {
+    canEdit, canUseLastMinute, lastMinuteUsed, isDeadlinePassed, isSubmitted,
+    isSubmitting: isCancelling, handleEdit, handleCancel,
+  } = useSchedinaEditWindow();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedBetType, setSelectedBetType] = useState<BetType>('esito');
   const [selectedCompetition, setSelectedCompetition] = useState<string>('all');
+
+  // Leghe di cui l'utente fa parte: ognuna ha la sua schedina sulla stessa
+  // giornata, e si compila da qui — non da un'altra pagina.
+  const [mieLeghe, setMieLeghe] = useState<LeagueDoc[]>([]);
+  useEffect(() => {
+    if (!profile?.id) return;
+    let annullato = false;
+    getUserLeagues(profile.id)
+      .then(l => {
+        if (!annullato) setMieLeghe(l);
+      })
+      .catch(e => console.warn('[Pronostici] leghe:', e));
+    return () => {
+      annullato = true;
+    };
+  }, [profile?.id]);
+
+  // `?lega=<id>` permette a Leghe di aprire direttamente la schedina giusta.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const legaDaUrl = searchParams.get('lega');
+  useEffect(() => {
+    const richiesta = legaDaUrl && legaDaUrl.length > 0 ? legaDaUrl : null;
+    if (richiesta !== currentLeagueId) void setCircuito(richiesta);
+  }, [legaDaUrl, currentLeagueId, setCircuito]);
+
+  const cambiaCircuito = (leagueId: string | null) => {
+    setSearchParams(leagueId ? { lega: leagueId } : {}, { replace: true });
+  };
+
+  // --- Cambio Last-Minute: dopo la deadline, a pagamento, una volta sola ---
+  const [lastMinuteMode, setLastMinuteMode] = useState(false);
+  const [pendingChange, setPendingChange] = useState<{
+    matchId: string;
+    betType: BetType;
+    outcome: BetOutcome;
+    odds: number;
+  } | null>(null);
+  // L'orologio sta nello stato: leggerlo durante il render rende il componente
+  // impuro, e l'idoneità deve comunque decadere quando una partita inizia.
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const isMatchOpen = (matchId: string): boolean => {
+    const m = currentMatchday?.matches.find(x => x.id === matchId);
+    if (!m || now === 0) return false;
+    return m.status === 'scheduled' && new Date(m.scheduledAt).getTime() > now;
+  };
+
+  const confermaLastMinute = async () => {
+    if (!pendingChange) return;
+    const ok = await applyLastMinuteChange(
+      pendingChange.matchId,
+      pendingChange.betType,
+      pendingChange.outcome
+    );
+    if (ok) {
+      vibrate([40, 20, 40]);
+      toast.success(`Pronostico cambiato! −${POWERUPS.lastminute.cost} gettoni`);
+      refreshProfile();
+      setPendingChange(null);
+      setLastMinuteMode(false);
+    } else {
+      toast.error(useAppStore.getState().error || 'Cambio non riuscito');
+    }
+  };
+
+  const handleCopiaDaGenerale = async () => {
+    const ok = await copiaDaGenerale();
+    if (ok) toast.success('Pronostici copiati dalla schedina generale');
+    else toast.error(useAppStore.getState().error || 'Copia non riuscita');
+  };
 
   const predictions = useMemo(() => currentSchedina?.predictions || [], [currentSchedina?.predictions]);
   const total = MAX_PICKS_PER_SCHEDINA;
@@ -397,6 +486,14 @@ export function PronosticiPage() {
   }, [currentMatchday?.matches, selectedCompetition, pickedMatches]);
 
   const handleSelect = (matchId: string, betType: BetType, outcome: BetOutcome) => {
+    // In modalità Cambio Last-Minute il click non modifica la schedina: propone
+    // la sostituzione, che poi va confermata perché costa gettoni.
+    if (lastMinuteMode && isMatchOpen(matchId) && predictions.some(p => p.matchId === matchId)) {
+      const mOdds = matchOdds[matchId];
+      const typeOdds = mOdds?.[betType] as Record<string, number> | undefined;
+      setPendingChange({ matchId, betType, outcome, odds: typeOdds?.[outcome] || 2.0 });
+      return;
+    }
     if (currentSchedina?.isLocked) return;
     const isNewMatch = !predictions.some(p => p.matchId === matchId);
     if (isNewMatch && predictions.length >= MAX_PICKS_PER_SCHEDINA) {
@@ -497,6 +594,113 @@ export function PronosticiPage() {
                 </button>
               </div>
             </div>
+
+            {/* Circuito: una schedina per la generale, una per ogni lega */}
+            {mieLeghe.length > 0 && (
+              <div className="glass-card p-3">
+                <p className="text-white/40 text-[10px] uppercase tracking-wide mb-2">
+                  Per quale classifica stai giocando
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[{ id: null as string | null, nome: 'Generale' },
+                    ...mieLeghe.map(l => ({ id: l.id as string | null, nome: l.name }))].map(circuito => (
+                    <button
+                      key={circuito.id ?? 'generale'}
+                      onClick={() => cambiaCircuito(circuito.id)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-lg text-xs font-bold border transition-all',
+                        currentLeagueId === circuito.id
+                          ? 'bg-primary-500 border-primary-400 text-white'
+                          : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'
+                      )}
+                    >
+                      {circuito.nome}
+                    </button>
+                  ))}
+                </div>
+                {currentLeagueId && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={handleCopiaDaGenerale}
+                      disabled={!!currentSchedina?.isLocked}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/70 text-xs font-bold hover:bg-white/10 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Copy size={12} />
+                      Copia dalla schedina generale
+                    </button>
+                    <span className="text-[10px] text-white/40">
+                      Vale solo per la lega: niente gettoni dai pronostici.
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Cambio Last-Minute: dopo la deadline è l'unico modo di toccare la schedina */}
+            {isSubmitted && isDeadlinePassed && (
+              <div className="glass-card p-3 border-accent-500/30 bg-accent-500/5">
+                {lastMinuteUsed ? (
+                  <p className="text-white/50 text-xs">
+                    Cambio Last-Minute già usato per questa giornata.
+                  </p>
+                ) : pendingChange ? (
+                  <>
+                    <p className="text-accent-300 font-bold text-sm mb-1">Confermi il cambio?</p>
+                    <p className="text-white/60 text-xs mb-2">
+                      Nuovo pronostico {pendingChange.outcome} @{pendingChange.odds.toFixed(2)} ·{' '}
+                      <span className="text-accent-400 font-bold">
+                        −{POWERUPS.lastminute.cost} gettoni
+                      </span>
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={confermaLastMinute}
+                        className="px-3 py-1.5 rounded-lg bg-accent-500/20 border border-accent-500/30 text-accent-300 text-xs font-bold hover:bg-accent-500/30"
+                      >
+                        Conferma (−{POWERUPS.lastminute.cost} 🪙)
+                      </button>
+                      <button
+                        onClick={() => setPendingChange(null)}
+                        className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 text-xs font-bold hover:bg-white/10"
+                      >
+                        Scegli un'altra quota
+                      </button>
+                    </div>
+                  </>
+                ) : lastMinuteMode ? (
+                  <>
+                    <p className="text-accent-300 font-bold text-sm mb-1">Scegli la nuova quota</p>
+                    <p className="text-white/60 text-xs mb-2">
+                      Tocca una quota su una partita che hai giocato e non è ancora iniziata.
+                    </p>
+                    <button
+                      onClick={() => setLastMinuteMode(false)}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 text-xs font-bold hover:bg-white/10"
+                    >
+                      Annulla
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-accent-300 font-bold text-sm mb-1">
+                      Cambio Last-Minute disponibile
+                    </p>
+                    <p className="text-white/60 text-xs mb-2">
+                      La deadline è passata: con {POWERUPS.lastminute.cost} gettoni cambi{' '}
+                      <span className="font-bold">un solo</span> pronostico, su una partita non
+                      ancora iniziata.
+                    </p>
+                    <button
+                      onClick={() => setLastMinuteMode(true)}
+                      disabled={!canUseLastMinute}
+                      className="px-3 py-1.5 rounded-lg bg-accent-500/20 border border-accent-500/30 text-accent-300 text-xs font-bold hover:bg-accent-500/30 disabled:opacity-40"
+                    >
+                      Usa Cambio Last-Minute ({POWERUPS.lastminute.cost} 🪙)
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Progress + Countdown */}
             <div className="glass-card p-3 space-y-2">
@@ -609,7 +813,7 @@ export function PronosticiPage() {
                 odds={matchOdds[match.id]}
                 betType={selectedBetType}
                 betDef={currentBetDef}
-                isLocked={!!currentSchedina?.isLocked}
+                isLocked={!!currentSchedina?.isLocked && !lastMinuteMode}
                 onSelect={handleSelect}
               />
             ))}

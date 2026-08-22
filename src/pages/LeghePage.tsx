@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ArrowLeft, Plus, Users, Trophy, Copy, Check, LogOut, Trash2, Loader2, KeyRound,
+  ChevronRight,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -286,6 +287,22 @@ export function LeghePage() {
                             )}
                           </button>
                         </div>
+
+                        {/* La cosa da fare dopo essersi uniti: giocare. */}
+                        <Link
+                          to={`/pronostici?lega=${league.id}`}
+                          className="flex items-center justify-between gap-2 rounded-xl bg-primary-500/15 border border-primary-500/30 p-3 hover:bg-primary-500/25 transition-colors active:scale-[0.99]"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-bold text-primary-300 text-sm">
+                              Compila la schedina di questa lega
+                            </p>
+                            <p className="text-[10px] text-white/50">
+                              Stesse partite della generale, punti solo per questa lega
+                            </p>
+                          </div>
+                          <ChevronRight size={18} className="text-primary-300 flex-shrink-0" />
+                        </Link>
 
                         {/* Classifica di lega */}
                         <div>

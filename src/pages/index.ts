@@ -1,6 +1,5 @@
 export { HomePage } from './HomePage';
 export { DashboardPage } from './DashboardPage';
-export { SchedinaPage } from './SchedinaPage';
 export { ClassificaPage } from './ClassificaPage';
 export { RegolamentoPage } from './RegolamentoPage';
 export { LoginPage } from './LoginPage';

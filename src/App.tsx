@@ -7,7 +7,6 @@ import { Layout } from '@/components/layout';
 
 // Route lazy-loaded per code splitting
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
-const SchedinaPage = lazy(() => import('@/pages/SchedinaPage').then(m => ({ default: m.SchedinaPage })));
 const ClassificaPage = lazy(() => import('@/pages/ClassificaPage').then(m => ({ default: m.ClassificaPage })));
 const RegolamentoPage = lazy(() => import('@/pages/RegolamentoPage').then(m => ({ default: m.RegolamentoPage })));
 const ProfiloPage = lazy(() => import('@/pages/ProfiloPage').then(m => ({ default: m.ProfiloPage })));
@@ -80,7 +79,10 @@ function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/pronostici" element={<PronosticiPage />} />
-        <Route path="/schedina" element={<SchedinaPage />} />
+        {/* Esisteva una seconda pagina schedina raggiungibile solo da alcuni
+            pulsanti: chi arrivava dal menu (/pronostici) non vedeva le stesse
+            funzioni. Una sola pagina, un solo comportamento. */}
+        <Route path="/schedina" element={<Navigate to="/pronostici" replace />} />
         <Route path="/leghe" element={<LeghePage />} />
         <Route path="/classifica" element={<ClassificaPage />} />
         <Route path="/minigiochi" element={<MinigiochiPage />} />

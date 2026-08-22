@@ -778,7 +778,10 @@ async function settleSchedine(
 export const submitSchedina = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
-  await enforceRateLimit(uid, 'submitSchedina', 3, 60_000);
+  // Il tetto era 3 al minuto, pensato quando esisteva una sola schedina. Con i
+  // circuiti un utente ne compila una per la generale e una per ogni lega: chi
+  // sta in tre leghe veniva bloccato al quarto invio, cioè giocando normalmente.
+  await enforceRateLimit(uid, 'submitSchedina', 15, 60_000);
   logger.info('submitSchedina:start', { uid });
 
   const predictions = request.data?.predictions as Prediction[] | undefined;
@@ -910,7 +913,7 @@ export const submitSchedina = onCall(callableOpts, async request => {
 export const changePrediction = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
-  await enforceRateLimit(uid, 'changePrediction', 5, 60_000);
+  await enforceRateLimit(uid, 'changePrediction', 15, 60_000);
   logger.info('changePrediction:start', { uid });
 
   const { matchId, betType, outcome } = (request.data ?? {}) as {
@@ -997,7 +1000,7 @@ export const changePrediction = onCall(callableOpts, async request => {
 export const cancelSchedina = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
-  await enforceRateLimit(uid, 'cancelSchedina', 5, 60_000);
+  await enforceRateLimit(uid, 'cancelSchedina', 15, 60_000);
   logger.info('cancelSchedina:start', { uid });
 
   const md = await getCurrentMatchday();
