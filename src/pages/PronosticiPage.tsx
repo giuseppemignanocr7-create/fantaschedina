@@ -419,6 +419,18 @@ export function PronosticiPage() {
     return () => clearInterval(id);
   }, []);
 
+  // Quote vive: si aggiornano da sole ogni due minuti finche’ la giornata e’
+  // aperta. Prima si muovevano solo premendo il pulsante, e una schedina con
+  // quote ferme da ore non invoglia nessuno. I pronostici gia’ scelti restano
+  // dove sono, e i punti veri restano quelli che il server fissa all’invio.
+  useEffect(() => {
+    if (isDeadlinePassed) return;
+    const id = setInterval(() => {
+      if (!isSubmitting) void refreshOdds();
+    }, 120_000);
+    return () => clearInterval(id);
+  }, [isDeadlinePassed, isSubmitting, refreshOdds]);
+
   const isMatchOpen = (matchId: string): boolean => {
     const m = currentMatchday?.matches.find(x => x.id === matchId);
     if (!m || now === 0) return false;

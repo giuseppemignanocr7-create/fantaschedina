@@ -163,6 +163,13 @@ export function ClassificaPage() {
   const cfg = DEFAULT_TOURNAMENT_CONFIG;
   const displayed = activeTab === 'settimanale' ? weekly?.entries ?? [] : rankings;
 
+  // La propria riga, presa dalla classifica che si sta guardando. Prima la
+  // posizione veniva calcolata nello store e non mostrata da nessuna parte:
+  // chi non era nel podio non sapeva dove fosse finito.
+  const mioPosto = currentUser
+    ? displayed.find(r => r.participantId === currentUser.id) ?? null
+    : null;
+
   
   return (
     <div className="min-h-screen py-8">
@@ -203,8 +210,52 @@ export function ClassificaPage() {
           </div>
         </div>
 
+        {/* La tua posizione */}
+        {currentUser && (
+          <div className="mt-4 glass-card p-4 border-l-4 border-primary-500 flex items-center gap-4">
+            <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-primary-600/20 border border-primary-500/30 flex flex-col items-center justify-center">
+              {mioPosto ? (
+                <>
+                  <span className="text-xl font-black text-primary-300 leading-none">
+                    {mioPosto.rank}
+                  </span>
+                  <span className="text-[9px] text-primary-400/70 font-bold uppercase">posto</span>
+                </>
+              ) : (
+                <User size={22} className="text-primary-400/60" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+                La tua posizione
+              </p>
+              {mioPosto ? (
+                <p className="text-sm text-white">
+                  <span className="font-black">{mioPosto.totalPoints.toFixed(1)} punti</span>
+                  <span className="text-white/40">
+                    {' '}su {displayed.length}{' '}
+                    {displayed.length === 1 ? 'giocatore' : 'giocatori'}
+                  </span>
+                </p>
+              ) : (
+                <p className="text-sm text-white/60">
+                  Non sei ancora in classifica: gioca una schedina e comparirai
+                  qui dalla prossima giornata valutata.
+                </p>
+              )}
+              {mioPosto && mioPosto.matchdaysPlayed > 0 && (
+                <p className="text-[11px] text-white/40 mt-0.5">
+                  {mioPosto.matchdaysPlayed}{' '}
+                  {mioPosto.matchdaysPlayed === 1 ? 'giornata giocata' : 'giornate giocate'} ·{' '}
+                  {mioPosto.correctPredictions} pronostici esatti
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
-        <div className="flex p-1 bg-surface/50 rounded-xl mb-8 border border-white/5 backdrop-blur-sm" role="tablist" aria-label="Tipo classifica">
+        <div className="flex p-1 bg-surface/50 rounded-xl mb-8 mt-6 border border-white/5 backdrop-blur-sm" role="tablist" aria-label="Tipo classifica">
           <button
             onClick={() => setActiveTab('generale')}
             role="tab"

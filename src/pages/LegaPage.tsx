@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useLiveMatchday } from '@/hooks/useLiveMatchday';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { CountdownTimer, EmptyState, ErrorState, TeamLogo } from '@/components/ui';
 import { competitionName } from '@/lib/competitions';
@@ -57,6 +58,8 @@ export function LegaPage() {
   useEffect(() => {
     if (!currentMatchday) void loadMatchday();
   }, [currentMatchday, loadMatchday]);
+
+  useLiveMatchday();
 
   const carica = useCallback(async () => {
     if (!leagueId || !uid) return;

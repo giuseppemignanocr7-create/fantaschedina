@@ -10,7 +10,7 @@ const DashboardPage = lazy(() => import('@/pages/DashboardPage').then(m => ({ de
 const ClassificaPage = lazy(() => import('@/pages/ClassificaPage').then(m => ({ default: m.ClassificaPage })));
 const RegolamentoPage = lazy(() => import('@/pages/RegolamentoPage').then(m => ({ default: m.RegolamentoPage })));
 const ProfiloPage = lazy(() => import('@/pages/ProfiloPage').then(m => ({ default: m.ProfiloPage })));
-const StoricoPage = lazy(() => import('@/pages/StoricoPage').then(m => ({ default: m.StoricoPage })));
+const FantaschedinePage = lazy(() => import('@/pages/FantaschedinePage').then(m => ({ default: m.FantaschedinePage })));
 const LivePage = lazy(() => import('@/pages/LivePage').then(m => ({ default: m.LivePage })));
 const LeghePage = lazy(() => import('@/pages/LeghePage').then(m => ({ default: m.LeghePage })));
 const LegaPage = lazy(() => import('@/pages/LegaPage').then(m => ({ default: m.LegaPage })));
@@ -104,7 +104,8 @@ function App() {
         <Route path="/account" element={<AccountPage />} />
         <Route path="/regolamento" element={<RegolamentoPage />} />
         <Route path="/profilo" element={<ProfiloPage />} />
-        <Route path="/storico" element={<StoricoPage />} />
+        <Route path="/fantaschedine" element={<FantaschedinePage />} />
+        <Route path="/storico" element={<Navigate to="/fantaschedine" replace />} />
         <Route path="/live" element={<LivePage />} />
         <Route path="/admin" element={<AdminPage />} />
       </Route>

@@ -4,7 +4,7 @@ export { ClassificaPage } from './ClassificaPage';
 export { RegolamentoPage } from './RegolamentoPage';
 export { LoginPage } from './LoginPage';
 export { ProfiloPage } from './ProfiloPage';
-export { StoricoPage } from './StoricoPage';
+export { FantaschedinePage } from './FantaschedinePage';
 export { LivePage } from './LivePage';
 export { LeghePage } from './LeghePage';
 export { LegaPage } from './LegaPage';

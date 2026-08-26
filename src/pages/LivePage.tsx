@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useLiveMatchday } from '@/hooks/useLiveMatchday';
 import { calculateBetPoints, calculateSchedinaScore } from '@/lib/scoring';
 import { LiveTracker, CountdownTimer, WinSimulator, SkeletonList } from '@/components/ui';
 
@@ -22,28 +23,13 @@ export function LivePage() {
     isLoadingOdds,
     isLoadingRankings,
     loadRankings,
-    refreshLiveScores,
-    subscribeMatchday,
   } = useAppStore();
+
+  useLiveMatchday();
 
   useEffect(() => {
     if (rankings.length === 0) loadRankings();
   }, [rankings.length, loadRankings]);
-
-  // A: polling ESPN dei punteggi live reali (subito + ogni 45s)
-  useEffect(() => {
-    refreshLiveScores();
-    const interval = setInterval(() => refreshLiveScores(), 45_000);
-    return () => clearInterval(interval);
-  }, [refreshLiveScores]);
-
-  // B: realtime dal doc giornata Firestore (updateLiveScores lato server)
-  const matchdayNumber = currentMatchday?.number;
-  useEffect(() => {
-    if (!matchdayNumber) return;
-    const unsubscribe = subscribeMatchday(matchdayNumber);
-    return () => unsubscribe();
-  }, [matchdayNumber, subscribeMatchday]);
 
   const predictions = useMemo(() => currentSchedina?.predictions || [], [currentSchedina?.predictions]);
   const potentialScore = useMemo(() => {
