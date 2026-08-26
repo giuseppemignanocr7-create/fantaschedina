@@ -600,9 +600,17 @@ async function settleSchedine(
     if (migliore) vincitoriLega.set(leagueId, migliore.userId);
   }
 
+  // Una schedina che non si riesce a valutare non deve fermare le altre.
+  // Prima un singolo profilo mancante faceva esplodere l’intera funzione: le
+  // schedine successive restavano senza punti e, siccome le leghe vengono
+  // dopo, NESSUNA classifica di lega veniva aggiornata. Un utente cancellato
+  // bastava a bloccare il circuito delle leghe per tutti.
+  const nonValutate: { schedinaId: string; motivo: string }[] = [];
+
   // Aggiorna profili in transaction (uno per utente)
   for (const { sSnap, schedina, score, outcome } of generali) {
-    await db.runTransaction(async tx => {
+    try {
+      await db.runTransaction(async tx => {
       const freshSchedina = await tx.get(sSnap.ref);
       if (!freshSchedina.exists || (freshSchedina.data() as SchedinaDoc).settled) return;
 
@@ -653,7 +661,15 @@ async function settleSchedine(
           }
         );
       }
-    });
+      });
+    } catch (e) {
+      nonValutate.push({ schedinaId: sSnap.id, motivo: (e as Error).message });
+      logger.error('settlement: schedina generale non valutata', {
+        schedinaId: sSnap.id,
+        userId: schedina.userId,
+        motivo: (e as Error).message,
+      });
+    }
   }
 
   // Schedine di lega: i punti restano nella classifica della lega. Niente
@@ -661,7 +677,8 @@ async function settleSchedine(
   // generale è l'unica strada per i gettoni.
   for (const { sSnap, schedina, score } of diLega) {
     const leagueId = schedina.leagueId as string;
-    await db.runTransaction(async tx => {
+    try {
+      await db.runTransaction(async tx => {
       const freshSchedina = await tx.get(sSnap.ref);
       if (!freshSchedina.exists || (freshSchedina.data() as SchedinaDoc).settled) return;
 
@@ -703,6 +720,23 @@ async function settleSchedine(
         },
         { merge: true }
       );
+      });
+    } catch (e) {
+      nonValutate.push({ schedinaId: sSnap.id, motivo: (e as Error).message });
+      logger.error('settlement: schedina di lega non valutata', {
+        schedinaId: sSnap.id,
+        userId: schedina.userId,
+        leagueId,
+        motivo: (e as Error).message,
+      });
+    }
+  }
+
+  if (nonValutate.length > 0) {
+    logger.error('settlement: alcune schedine non sono state valutate', {
+      matchdayNumber,
+      quante: nonValutate.length,
+      schedine: nonValutate.slice(0, 20),
     });
   }
 
@@ -1563,12 +1597,18 @@ export const getRankings = onCall(callableOpts, async request => {
   const profili: RankableProfile[] = [];
   let cursore: FirebaseFirestore.QueryDocumentSnapshot | null = null;
   for (;;) {
-    let q = db.collection('profiles').where('isActive', '==', true).limit(300);
+    // Niente filtro `where('isActive','==',true)`: in Firestore un documento
+    // privo del campo non soddisfa l’uguaglianza, quindi ogni profilo scritto
+    // senza `isActive` spariva dalla classifica. La classifica di lega qui
+    // sopra usa gia’ `isActive !== false`, cioe’ “attivo salvo prova
+    // contraria”: le due devono dire la stessa cosa.
+    let q = db.collection('profiles').limit(300);
     if (cursore) q = q.startAfter(cursore);
     const pagina = await q.get();
     if (pagina.empty) break;
     for (const d of pagina.docs) {
       const p = d.data();
+      if (p.isActive === false) continue;
       profili.push({
         id: d.id,
         username: typeof p.username === 'string' ? p.username : 'player',
@@ -2222,15 +2262,44 @@ export const adminResetSeason = onCall(callableOpts, async request => {
     if (pagina.docs.length < 300) break;
   }
 
+  // Anche le classifiche di lega, che sono l’altro circuito: azzerare solo i
+  // profili lasciava le leghe coi punti della stagione precedente, e siccome
+  // le schedine gia’ valutate non si rivalutano quei punti non tornavano piu’
+  // in riga con niente. Una stagione nuova azzera entrambi i circuiti.
+  let classificheDiLega = 0;
+  const leghe = await db.collection('leagues').get();
+  for (const lega of leghe.docs) {
+    const standings = await lega.ref.collection('standings').get();
+    if (standings.empty) continue;
+    const batch = db.batch();
+    for (const riga of standings.docs) {
+      batch.update(riga.ref, {
+        totalPoints: 0,
+        weeklyPoints: 0,
+        matchdaysPlayed: 0,
+        correctPredictions: 0,
+        perfectSchedine: 0,
+        bonusPointsTotal: 0,
+        penaltyPointsTotal: 0,
+        bestMatchdayPoints: 0,
+        weeklyWins: 0,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    classificheDiLega += standings.docs.length;
+  }
+
   // Traccia dell'operazione: è irreversibile e cambia la classifica di tutti.
   await db.collection('season_resets').add({
     byUid: uid,
     profili: azzerati,
+    classificheDiLega,
     createdAt: FieldValue.serverTimestamp(),
   });
-  logger.warn('adminResetSeason', { uid, profili: azzerati });
+  logger.warn('adminResetSeason', { uid, profili: azzerati, classificheDiLega });
 
-  return { ok: true, profili: azzerati };
+  return { ok: true, profili: azzerati, classificheDiLega };
 });
 
 /**
