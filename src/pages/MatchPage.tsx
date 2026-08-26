@@ -11,6 +11,7 @@ import { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, Clock, Loader2, Target } from 'lucide-react';
 import { useAppStore } from '@/store';
+import { useLiveMatchday } from '@/hooks/useLiveMatchday';
 import { cn } from '@/lib/utils';
 import { CountdownTimer, TeamLogo } from '@/components/ui';
 import { competitionName } from '@/lib/competitions';
@@ -44,6 +45,8 @@ export function MatchPage() {
   useEffect(() => {
     if (!currentMatchday) void loadMatchday();
   }, [currentMatchday, loadMatchday]);
+
+  useLiveMatchday();
 
   const giornate = useMemo(
     () => raggruppaPerGiorno(currentMatchday?.matches ?? []),

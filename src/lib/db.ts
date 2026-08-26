@@ -255,6 +255,8 @@ export interface SchedinaDoc {
   userId: string;
   username: string;
   matchdayNumber: number;
+  /** Circuito: assente o null = classifica generale, altrimenti la lega. */
+  leagueId?: string | null;
   predictions: Prediction[];
   predictionResults: PredictionResult[] | null;
   isLocked: boolean;
@@ -318,6 +320,7 @@ export function schedinaDocToResult(d: SchedinaDoc): SchedinaResult | Schedina {
     id: d.id,
     participantId: d.userId,
     matchday: d.matchdayNumber,
+    leagueId: d.leagueId ?? null,
     predictions: d.predictions,
     submittedAt: d.submittedAt?.toDate() ?? new Date(),
     isLocked: d.isLocked,

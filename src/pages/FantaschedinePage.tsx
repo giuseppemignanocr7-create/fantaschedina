@@ -10,6 +10,8 @@ import {
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
 import { getPrizes, getMatchday } from '@/lib/db';
+import { getUserLeagues } from '@/lib/leagues';
+import { betLabel } from '@/lib/markets';
 import type { Schedina, SchedinaResult, Match } from '@/types';
 import { SkeletonList, EmptyState } from '@/components/ui';
 
@@ -19,12 +21,25 @@ function isResult(s: Schedina | SchedinaResult): s is SchedinaResult {
   return (s as SchedinaResult).finalPoints !== undefined;
 }
 
-export function StoricoPage() {
+export function FantaschedinePage() {
   const { currentUser, currentMatchday, schedinaHistory, isLoadingHistory, loadSchedinaHistory } = useAppStore();
   const [filter, setFilter] = useState<FilterType>('tutti');
-  const [expandedMatchday, setExpandedMatchday] = useState<number | null>(null);
+  // Chiave della riga aperta: con i circuiti la giornata non identifica piu’
+  // una sola schedina (generale + una per ogni lega), quindi si usa l’id.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [winnerMatchdays, setWinnerMatchdays] = useState<Set<number>>(new Set());
   const [matchesById, setMatchesById] = useState<Map<string, Match>>(new Map());
+  // Nome della lega per ogni circuito: una schedina archiviata deve dire per
+  // quale classifica e’ stata giocata, altrimenti generale e leghe si
+  // confondono fra loro.
+  const [nomiLeghe, setNomiLeghe] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    if (!currentUser) return;
+    getUserLeagues(currentUser.id)
+      .then(l => setNomiLeghe(new Map(l.map(x => [x.id, x.name]))))
+      .catch(() => setNomiLeghe(new Map()));
+  }, [currentUser]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -62,6 +77,10 @@ export function StoricoPage() {
       return {
         raw: s,
         matchday: s.matchday,
+        leagueId: s.leagueId ?? null,
+        circuito: s.leagueId
+          ? nomiLeghe.get(s.leagueId) ?? 'Lega'
+          : 'Generale',
         date: s.submittedAt
           ? new Date(s.submittedAt).toLocaleDateString('it-IT', {
               day: '2-digit',
@@ -83,7 +102,7 @@ export function StoricoPage() {
                 matchLabel: match
                   ? `${match.homeTeam.shortName || match.homeTeam.name} - ${match.awayTeam.shortName || match.awayTeam.name}`
                   : p.matchId,
-                prediction: String(p.outcome),
+                prediction: betLabel(p.betType, String(p.outcome)),
                 odds: p.odds,
                 correct: p.isCorrect,
               };
@@ -91,7 +110,7 @@ export function StoricoPage() {
           : [],
       };
     });
-  }, [schedinaHistory, winnerMatchdays, matchesById]);
+  }, [schedinaHistory, winnerMatchdays, matchesById, nomiLeghe]);
 
   const filtered = items.filter(s => {
     if (filter === 'vinte') return s.isWinner;
@@ -105,6 +124,7 @@ export function StoricoPage() {
       return {
         totalSchedine: items.length,
         wins: 0,
+        totalPoints: '0.0',
         avgPoints: '0.0',
         avgCorrect: '0.0',
       };
@@ -114,6 +134,9 @@ export function StoricoPage() {
     return {
       totalSchedine: items.length,
       wins: settled.filter(s => s.isWinner).length,
+      // I punti si sommano giornata dopo giornata: e’ il totale che conta,
+      // la media dice poco a chi vuole sapere a che punto e’ arrivato.
+      totalPoints: (Math.round(totalPts * 10) / 10).toFixed(1),
       avgPoints: (totalPts / settled.length).toFixed(1),
       avgCorrect: (totalCorr / settled.length).toFixed(1),
     };
@@ -135,15 +158,16 @@ export function StoricoPage() {
                 Archivio Giocate
               </div>
               <h1 className="text-3xl sm:text-5xl font-display font-black uppercase italic tracking-tight text-white">
-                Storico{' '}
+                Le mie{' '}
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-primary-600">
-                  Schedine
+                  Fantaschedine
                 </span>
               </h1>
             </div>
           </div>
           <p className="text-slate-400 font-medium">
-            Tutte le tue schedine della stagione {currentMatchday?.season ?? 'corrente'}
+            Tutte le schedine che hai giocato nella stagione{' '}
+            {currentMatchday?.season ?? 'corrente'}, generale e leghe
           </p>
         </div>
 
@@ -162,10 +186,13 @@ export function StoricoPage() {
             </p>
           </div>
           <div className="glass-card p-4 text-center border-t-2 border-accent-500">
-            <p className="text-3xl font-mono font-bold text-accent-400">{totalStats.avgPoints}</p>
-            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">
-              Media Punti
+            <p className="text-3xl font-mono font-bold text-accent-400">
+              {totalStats.totalPoints}
             </p>
+            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">
+              Punti accumulati
+            </p>
+            <p className="text-[9px] text-slate-600 mt-0.5">media {totalStats.avgPoints}</p>
           </div>
           <div className="glass-card p-4 text-center border-t-2 border-green-500">
             <p className="text-3xl font-mono font-bold text-green-400">{totalStats.avgCorrect}</p>
@@ -208,10 +235,10 @@ export function StoricoPage() {
         {!isLoadingHistory && (
           <div className="space-y-4">
             {filtered.map(schedina => {
-              const isExpanded = expandedMatchday === schedina.matchday;
+              const isExpanded = expandedId === schedina.raw.id;
               return (
                 <div
-                  key={schedina.matchday}
+                  key={schedina.raw.id}
                   className="glass-card overflow-hidden border border-white/5 hover:border-white/10 transition-colors"
                 >
                   <div
@@ -221,9 +248,7 @@ export function StoricoPage() {
                         ? 'bg-gradient-to-r from-yellow-500/10 to-transparent'
                         : 'hover:bg-white/5'
                     )}
-                    onClick={() =>
-                      setExpandedMatchday(isExpanded ? null : schedina.matchday)
-                    }
+                    onClick={() => setExpandedId(isExpanded ? null : schedina.raw.id)}
                   >
                     <div className="flex items-center gap-4 sm:gap-6">
                       <div
@@ -242,6 +267,16 @@ export function StoricoPage() {
                         <div className="flex items-center gap-3 mb-1">
                           <span className="font-display font-bold text-lg uppercase italic tracking-wide text-white">
                             Giornata {schedina.matchday}
+                          </span>
+                          <span
+                            className={cn(
+                              'text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border',
+                              schedina.leagueId
+                                ? 'bg-primary-500/10 text-primary-300 border-primary-500/20'
+                                : 'bg-white/5 text-slate-400 border-white/10'
+                            )}
+                          >
+                            {schedina.circuito}
                           </span>
                           {schedina.isWinner && (
                             <span className="flex items-center gap-1 text-yellow-400 text-[10px] font-bold uppercase tracking-wider bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">

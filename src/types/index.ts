@@ -80,6 +80,8 @@ export interface Schedina {
   id: string;
   participantId: string;
   matchday: number;
+  /** Circuito di gioco: null = classifica generale, altrimenti l’id della lega. */
+  leagueId?: string | null;
   predictions: Prediction[];
   submittedAt: Date;
   isLocked: boolean;

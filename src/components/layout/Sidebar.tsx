@@ -1,7 +1,8 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, Target, Trophy, BarChart2, Gamepad2, Flag, Gift, User,
-  X, TrendingUp, Calendar, FileText, LogOut, Zap, ShoppingBag, type LucideIcon,
+  X, TrendingUp, Calendar, FileText, LogOut, Zap, ShoppingBag, ClipboardList,
+  Radio, type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -16,8 +17,10 @@ interface SidebarProps {
 const navLinks = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/pronostici', label: 'Pronostici', icon: Target },
+  { to: '/fantaschedine', label: 'Le mie fantaschedine', icon: ClipboardList },
   { to: '/leghe', label: 'Leghe', icon: Trophy },
   { to: '/classifica', label: 'Classifiche', icon: TrendingUp },
+  { to: '/live', label: 'Live', icon: Radio },
   { to: '/minigiochi', label: 'Minigiochi', icon: Gamepad2 },
   { to: '/missioni', label: 'Missioni', icon: Flag },
   { to: '/premi', label: 'Premi', icon: Gift },
