@@ -29,6 +29,7 @@ const {
   submitSchedina,
   cancelSchedina,
   adminForceSettle,
+  adminResetSeason,
   getRankings,
   playMinigame,
   claimMission,
@@ -790,5 +791,83 @@ describe('invarianti dopo il settlement', () => {
         req(UTENTI[11], { predictions: schedina(5), powerups: {}, leagueId: 'lega_famiglia' })
       )
     ).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NUOVA STAGIONE — l'azzeramento riapre il gioco dalla giornata 1.
+//
+// Gira per ultimo, sullo stato lasciato dalle due giornate simulate: e' la
+// storia vera di un torneo che ricomincia. Le schedine passate vanno in
+// archivio (gli id `uid_giornata` devono liberarsi), le giornate spariscono
+// (cosi' la prossima sincronizzata e' la 1) e chi rigioca riparte da zero.
+// ---------------------------------------------------------------------------
+
+describe("nuova stagione dopo l'azzeramento", () => {
+  const RIENTRANTE = UTENTI[0];
+  let schedinePrimaDelReset = 0;
+
+  beforeAll(async () => {
+    schedinePrimaDelReset = (await db.collection('schedine').get()).size;
+
+    await adminResetSeason.run(req(ADMIN, { confirm: 'AZZERA' }));
+
+    // Il sync vero e' mockato a null: la nuova giornata 1 arriva dal seed,
+    // come farebbe il primo sync della stagione.
+    await seedMatchday({ number: 1 });
+
+    // Un utente della vecchia stagione rigioca: schedina generale e di lega
+    // con gli stessi id della stagione archiviata (sim_u1_1, sim_u1_1_lega).
+    await submitSchedina.run(req(RIENTRANTE, { predictions: schedina(7), powerups: {} }));
+    await submitSchedina.run(
+      req(RIENTRANTE, { predictions: schedina(5), powerups: {}, leagueId: LEGHE[0].id })
+    );
+
+    await setDeadline(1, -60_000);
+    await adminForceSettle.run(req(ADMIN, { matchdayNumber: 1 }));
+  });
+
+  it('le schedine della vecchia stagione stanno tutte in archivio', async () => {
+    const archivio = await db.collection('schedine_archivio').get();
+    expect(archivio.size).toBe(schedinePrimaDelReset);
+  });
+
+  it('gli id liberati si riusano senza trovare il fantasma della vecchia giornata', async () => {
+    const s = await db.collection('schedine').doc(`${RIENTRANTE}_1`).get();
+    expect(s.exists).toBe(true);
+    expect(s.data()!.settled).toBe(true);
+    expect(s.data()!.finalPoints).toBeCloseTo(puntiAttesi(7, {}), 2);
+  });
+
+  it('il profilo conta solo la nuova stagione', async () => {
+    const p = await readProfile(RIENTRANTE);
+    expect(p.totalPoints).toBeCloseTo(puntiAttesi(7, {}), 2);
+    expect(p.matchdaysPlayed).toBe(1);
+    expect(p.correctPredictions).toBe(7);
+  });
+
+  it('la classifica di lega riparte anche lei da questa stagione', async () => {
+    const standing = await db
+      .collection('leagues')
+      .doc(LEGHE[0].id)
+      .collection('standings')
+      .doc(RIENTRANTE)
+      .get();
+    expect(standing.data()!.totalPoints).toBeCloseTo(puntiAttesi(5, {}), 2);
+    expect(standing.data()!.matchdaysPlayed).toBe(1);
+  });
+
+  it('i gettoni ripartono dal saldo iniziale piu’ i guadagni nuovi', async () => {
+    const p = await readProfile(RIENTRANTE);
+    // Unico giocatore della giornata: vince anche il premio settimanale.
+    expect(p.coins).toBe(
+      COINS.starting + gettoniAttesiDaSchedina(7) + COINS.weeklyWinner
+    );
+  });
+
+  it('resta una sola giornata attiva: la 1', async () => {
+    const giornate = await db.collection('matchdays').get();
+    const numeri = giornate.docs.filter(d => d.id !== '_meta').map(d => d.data().number);
+    expect(numeri).toEqual([1]);
   });
 });

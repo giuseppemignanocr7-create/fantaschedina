@@ -423,12 +423,23 @@ export async function adminForceSettleFn(
   return res.data;
 }
 
+export interface ResetSeasonResult {
+  ok: boolean;
+  profili: number;
+  classificheDiLega: number;
+  schedineArchiviate: number;
+  /** Numero della giornata risincronizzata subito dopo, se ESPN ha risposto. */
+  prossimaGiornata: number | null;
+}
+
 /**
- * Azzeramento di inizio stagione: irreversibile, riporta tutti i profili allo
- * stato iniziale. Il server pretende la parola di conferma.
+ * Azzeramento di inizio stagione: irreversibile. Riporta i profili e le
+ * classifiche di lega allo stato iniziale, archivia le schedine passate e
+ * cancella le giornate, cosi’ la numerazione riparte dalla 1. Il server
+ * pretende la parola di conferma.
  */
-export async function adminResetSeasonFn(): Promise<{ ok: boolean; profili: number }> {
-  const fn = httpsCallable<{ confirm: string }, { ok: boolean; profili: number }>(
+export async function adminResetSeasonFn(): Promise<ResetSeasonResult> {
+  const fn = httpsCallable<{ confirm: string }, ResetSeasonResult>(
     functions,
     'adminResetSeason'
   );
