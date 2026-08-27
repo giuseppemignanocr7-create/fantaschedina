@@ -57,12 +57,14 @@ export default defineConfig({
       // azzeramento stagione hanno aggiunto ~50 righe a
       // `functions/src/index.ts`, che questo conteggio misura ma non copre:
       // quel file e’ esercitato dai test di integrazione contro l’emulatore
-      // (`npm run test:integration`, 597 test, di cui 9 scritti apposta per
-      // quei tre fix). E’ la stessa eccezione descritta sopra: si abbassa
-      // quando cambia COSA viene misurato, mai quando peggiora QUANTO e’
-      // coperto. Branch e function infatti non si sono mossi.
+      // (`npm run test:integration`). E’ la stessa eccezione descritta sopra:
+      // si abbassa quando cambia COSA viene misurato, mai quando peggiora
+      // QUANTO e’ coperto. Branch e function infatti non si sono mossi.
+      // 27/08/2026: 21.2 per lo stesso motivo — l’azzeramento che riparte
+      // dalla giornata 1 aggiunge ~60 righe a index.ts, coperte dai test di
+      // integrazione (605, di cui 9 sul nuovo contratto dell’azzeramento).
       thresholds: {
-        lines: 21.4,
+        lines: 21.2,
         functions: 64,
         branches: 86,
       },
