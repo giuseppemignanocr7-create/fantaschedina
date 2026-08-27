@@ -226,7 +226,13 @@ function MatchdayTab({ onError, onSuccess }: {
     try {
       const res = await adminResetSeasonFn();
       setResetConferma('');
-      onSuccess(`Stagione azzerata: ${res.profili} profili riportati allo stato iniziale`);
+      onSuccess(
+        `Stagione azzerata: ${res.profili} profili e ${res.classificheDiLega} righe di lega a zero, ` +
+          `${res.schedineArchiviate} schedine in archivio. ` +
+          (res.prossimaGiornata
+            ? `Si riparte dalla giornata ${res.prossimaGiornata}.`
+            : 'La giornata 1 arriva al prossimo sync (o con "Sincronizza giornata").')
+      );
     } catch (e) {
       onError(callableErrorMessage(e));
     } finally {

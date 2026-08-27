@@ -2217,7 +2217,22 @@ export const adminGetStats = onCall(callableOpts, async request => {
  * Non tocca schedine, giornate e premi passati: restano come storico.
  * Le missioni tornano riscuotibili — è voluto, è una stagione nuova.
  */
-export const adminResetSeason = onCall(callableOpts, async request => {
+/** Svuota una collezione a pagine (batch da 400, sotto il limite di 500 op). */
+async function svuotaCollezione(nome: string): Promise<number> {
+  let eliminati = 0;
+  for (;;) {
+    const pagina = await db.collection(nome).limit(400).get();
+    if (pagina.empty) break;
+    const batch = db.batch();
+    for (const d of pagina.docs) batch.delete(d.ref);
+    await batch.commit();
+    eliminati += pagina.docs.length;
+    if (pagina.docs.length < 400) break;
+  }
+  return eliminati;
+}
+
+export const adminResetSeason = onCall({ ...callableOpts, secrets: [ODDS_API_KEY] }, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await requireAdmin(uid);
@@ -2290,16 +2305,74 @@ export const adminResetSeason = onCall(callableOpts, async request => {
     classificheDiLega += standings.docs.length;
   }
 
+  // Le schedine passate vanno in archivio, non lasciate dove sono: gli id
+  // sono `uid_giornata[_lega]` e la numerazione riparte da 1, quindi la
+  // vecchia giornata 1 colliderebbe con la nuova. Lo storico resta in
+  // `schedine_archivio`, marcato con il momento dell’azzeramento.
+  const resetTag = Date.now();
+  let schedineArchiviate = 0;
+  for (;;) {
+    const pagina = await db.collection('schedine').limit(200).get();
+    if (pagina.empty) break;
+    const batch = db.batch();
+    for (const d of pagina.docs) {
+      batch.set(db.collection('schedine_archivio').doc(`${resetTag}_${d.id}`), {
+        ...d.data(),
+        resetTag,
+        archiviataAt: FieldValue.serverTimestamp(),
+      });
+      batch.delete(d.ref);
+    }
+    await batch.commit();
+    schedineArchiviate += pagina.docs.length;
+    if (pagina.docs.length < 200) break;
+  }
+
+  // Una stagione nuova riparte dalla giornata 1. Il numero della prossima
+  // giornata è “max esistente + 1” e vale 1 solo a collezione vuota (vedi
+  // syncMatchdayInternal): senza questa pulizia l’azzeramento ripartiva
+  // dalla 16. Premi e movimenti gettoni riusano gli stessi id per giornata
+  // (`weekly_{n}`, `settlement_{n}_{uid}`) e vanno via con lei.
+  const giornateEliminate = await svuotaCollezione('matchdays');
+  await svuotaCollezione('weekly_prizes');
+  await svuotaCollezione('prizes');
+  await svuotaCollezione('wallet_transactions');
+
+  // Riparte subito: con le giornate azzerate la prossima sincronizzata è la
+  // 1. Se ESPN non risponde ci pensa il sync schedulato (ogni 6 ore).
+  const nuova = await syncMatchdayInternal().catch(e => {
+    logger.warn('adminResetSeason: risincronizzazione fallita', {
+      motivo: (e as Error).message,
+    });
+    return null;
+  });
+
   // Traccia dell'operazione: è irreversibile e cambia la classifica di tutti.
   await db.collection('season_resets').add({
     byUid: uid,
     profili: azzerati,
     classificheDiLega,
+    schedineArchiviate,
+    giornateEliminate,
+    prossimaGiornata: nuova?.number ?? null,
     createdAt: FieldValue.serverTimestamp(),
   });
-  logger.warn('adminResetSeason', { uid, profili: azzerati, classificheDiLega });
+  logger.warn('adminResetSeason', {
+    uid,
+    profili: azzerati,
+    classificheDiLega,
+    schedineArchiviate,
+    giornateEliminate,
+    prossimaGiornata: nuova?.number ?? null,
+  });
 
-  return { ok: true, profili: azzerati, classificheDiLega };
+  return {
+    ok: true,
+    profili: azzerati,
+    classificheDiLega,
+    schedineArchiviate,
+    prossimaGiornata: nuova?.number ?? null,
+  };
 });
 
 /**

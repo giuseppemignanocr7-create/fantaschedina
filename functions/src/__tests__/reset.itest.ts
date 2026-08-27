@@ -4,10 +4,19 @@
 // azzeri quello che deve e non tocchi il resto.
 // ============================================
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// L'azzeramento ora risincronizza la giornata a fine corsa: senza il mock i
+// test farebbero chiamate vere a ESPN. Con il pool a null la risincronizzazione
+// non scrive nulla, ed e' il caso che i test vogliono osservare.
+vi.mock('../espn', () => ({
+  fetchResults: vi.fn(async () => new Map()),
+  fetchActiveMatchdayPool: vi.fn(async () => null),
+}));
+
 import { adminResetSeason } from '../index';
 import { COINS } from '../config';
-import { db, readProfile, readSchedina, seedProfile, wipe } from './helpers';
+import { db, readProfile, readSchedina, seedMatchday, seedProfile, wipe } from './helpers';
 
 type CallableReq = Parameters<typeof adminResetSeason.run>[0];
 
@@ -112,7 +121,7 @@ describe('adminResetSeason', () => {
     }
   });
 
-  it('lascia le schedine passate come storico', async () => {
+  it('sposta le schedine passate in archivio: gli id si liberano per la nuova stagione', async () => {
     await profiloUsato('r_utente');
     await db.collection('schedine').doc('r_utente_3').set({
       id: 'r_utente_3',
@@ -125,8 +134,45 @@ describe('adminResetSeason', () => {
 
     await adminResetSeason.run(req(admin, CONFERMA));
 
-    const schedina = await readSchedina('r_utente', 3);
-    expect(schedina).toMatchObject({ settled: true, finalPoints: 41 });
+    // Fuori da `schedine`: l’id r_utente_3 deve poter rinascere nella nuova
+    // stagione senza trovare il fantasma della vecchia giornata 3.
+    expect(await readSchedina('r_utente', 3)).toBeNull();
+
+    // Ma non persa: sta in archivio con i suoi punti.
+    const archivio = await db
+      .collection('schedine_archivio')
+      .where('userId', '==', 'r_utente')
+      .get();
+    expect(archivio.size).toBe(1);
+    expect(archivio.docs[0].data()).toMatchObject({ settled: true, finalPoints: 41 });
+  });
+
+  it('azzera le giornate: la prossima sincronizzata riparte dalla 1', async () => {
+    // Il numero della prossima giornata è "max esistente + 1", e vale 1 solo
+    // a collezione vuota (syncMatchdayInternal). Prima l’azzeramento non
+    // toccava `matchdays`: si ripartiva dalla 16 con la classifica a zero.
+    await profiloUsato('r_utente');
+    await seedMatchday({ number: 16, settled: true });
+
+    await adminResetSeason.run(req(admin, CONFERMA));
+
+    const giornate = await db.collection('matchdays').get();
+    expect(giornate.size).toBe(0); // nemmeno il doc _meta
+  });
+
+  it('svuota premi e movimenti gettoni: riusano gli id per giornata', async () => {
+    await profiloUsato('r_utente');
+    await db.collection('prizes').doc('weekly_3').set({ matchday: 3, winnerId: 'r_utente' });
+    await db.collection('wallet_transactions').doc('settlement_3_r_utente').set({
+      userId: 'r_utente',
+      amount: 70,
+      reason: 'settlement_g3',
+    });
+
+    await adminResetSeason.run(req(admin, CONFERMA));
+
+    expect((await db.collection('prizes').get()).size).toBe(0);
+    expect((await db.collection('wallet_transactions').get()).size).toBe(0);
   });
 
   it('lascia traccia di chi ha azzerato e quando', async () => {
