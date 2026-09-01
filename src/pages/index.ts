@@ -1,6 +1,7 @@
 export { HomePage } from './HomePage';
 export { DashboardPage } from './DashboardPage';
 export { ClassificaPage } from './ClassificaPage';
+export { GiocatorePage } from './GiocatorePage';
 export { RegolamentoPage } from './RegolamentoPage';
 export { LoginPage } from './LoginPage';
 export { ProfiloPage } from './ProfiloPage';
