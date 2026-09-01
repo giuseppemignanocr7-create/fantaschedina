@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Trophy, 
   Medal,
@@ -65,12 +66,16 @@ const RankingRow = memo(function RankingRow({
             <User size={14} />
           </div>
           <div className="truncate">
-            <span className={cn(
-              'font-bold text-sm block',
-              isCurrentUser ? 'text-primary-400' : 'text-white'
-            )}>
+            <Link
+              to={`/giocatore/${player.participantId}`}
+              onClick={e => e.stopPropagation()}
+              className={cn(
+                'font-bold text-sm block truncate hover:underline',
+                isCurrentUser ? 'text-primary-400' : 'text-white'
+              )}
+            >
               {player.username}
-            </span>
+            </Link>
             {isCurrentUser && (
               <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">TU</span>
             )}
@@ -104,7 +109,7 @@ const RankingRow = memo(function RankingRow({
       </div>
       <div className={cn(
         'overflow-hidden transition-all duration-300 bg-black/20',
-        isExpanded ? 'max-h-48' : 'max-h-0'
+        isExpanded ? 'max-h-72' : 'max-h-0'
       )}>
         <div className="px-4 pb-4 pt-2 border-t border-white/5">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
@@ -132,6 +137,12 @@ const RankingRow = memo(function RankingRow({
               </div>
             </div>
           </div>
+          <Link
+            to={`/giocatore/${player.participantId}`}
+            className="mt-3 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs font-bold hover:bg-primary-500/20 transition-colors"
+          >
+            Vedi le sue fantaschedine
+          </Link>
         </div>
       </div>
     </div>

@@ -293,6 +293,27 @@ export async function getUserSchedinaForMatchday(
   return snap.exists() ? (snap.data() as SchedinaDoc) : null;
 }
 
+/**
+ * Schedine valutate di un altro giocatore, solo circuito generale. Le regole
+ * lasciano leggere agli altri le schedine con `settled == true` (quelle della
+ * giornata in corso si leggono una a una, e solo dopo la deadline): la query
+ * filtra cosi’, e ordina qui invece che con orderBy, che con due filtri
+ * chiederebbe un indice composito.
+ */
+export async function getPublicSchedine(uid: string): Promise<SchedinaDoc[]> {
+  const snap = await getDocs(
+    query(
+      collection(db, COL.schedine),
+      where('userId', '==', uid),
+      where('settled', '==', true)
+    )
+  );
+  return snap.docs
+    .map(d => d.data() as SchedinaDoc)
+    .filter(s => !s.leagueId)
+    .sort((a, b) => b.matchdayNumber - a.matchdayNumber);
+}
+
 export async function getUserSchedine(uid: string): Promise<SchedinaDoc[]> {
   const snap = await getDocs(
     query(

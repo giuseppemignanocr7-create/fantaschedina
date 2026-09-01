@@ -1,17 +1,21 @@
 import { Link } from 'react-router-dom';
 import {
-  Target, Trophy, TrendingUp, Gift, Calendar, BarChart2, Flag, Gamepad2,
+  Target, Trophy, TrendingUp, Gift, Calendar, Gamepad2, Radio, ClipboardList,
   ChevronRight, Swords, CircleDot, HelpCircle, RefreshCw, ShoppingBag,
   UserPlus, Clock, Zap,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { cn } from '@/lib/utils';
 
+// Le nove icone della home, nell'ordine chiesto dal regolamento di gioco
+// (Giovanni, 01/09/2026): GIOCA al posto di PRONOSTICI, poi leghe, live,
+// classifica, premi, minigiochi, l'archivio delle proprie fantaschedine,
+// calendario e negozio.
 const featureTiles = [
   {
     to: '/pronostici',
-    label: 'PRONOSTICI',
-    sub: 'Fai i tuoi pronostici',
+    label: 'GIOCA',
+    sub: 'Crea il tuo pronostico',
     icon: Target,
     bg: '#0d2515',
     iconColor: '#22c55e',
@@ -27,22 +31,22 @@ const featureTiles = [
     border: '#1a2e5a',
   },
   {
+    to: '/live',
+    label: 'LIVE',
+    sub: 'Risultati in diretta',
+    icon: Radio,
+    bg: '#2a0a0a',
+    iconColor: '#f87171',
+    border: '#4a1a1a',
+  },
+  {
     to: '/classifica',
-    label: 'CLASSIFICHE',
+    label: 'CLASSIFICA',
     sub: 'Scopri i migliori',
     icon: TrendingUp,
     bg: '#1a0d3a',
     iconColor: '#a78bfa',
     border: '#2e1a5a',
-  },
-  {
-    to: '/minigiochi',
-    label: 'MINIGIOCHI',
-    sub: 'Sfida altri utenti',
-    icon: Gamepad2,
-    bg: '#2a1400',
-    iconColor: '#fb923c',
-    border: '#4a2a00',
   },
   {
     to: '/premi',
@@ -54,6 +58,24 @@ const featureTiles = [
     border: '#003030',
   },
   {
+    to: '/minigiochi',
+    label: 'MINIGIOCHI',
+    sub: 'Guadagna gettoni',
+    icon: Gamepad2,
+    bg: '#2a1400',
+    iconColor: '#fb923c',
+    border: '#4a2a00',
+  },
+  {
+    to: '/fantaschedine',
+    label: 'LE MIE FANTASCHEDINE',
+    sub: 'Le schedine giocate',
+    icon: ClipboardList,
+    bg: '#001028',
+    iconColor: '#60a5fa',
+    border: '#002048',
+  },
+  {
     to: '/calendario',
     label: 'CALENDARIO',
     sub: 'Tutti i match',
@@ -63,19 +85,10 @@ const featureTiles = [
     border: '#3a3000',
   },
   {
-    to: '/statistiche',
-    label: 'STATISTICHE',
-    sub: 'Analisi e dati',
-    icon: BarChart2,
-    bg: '#001028',
-    iconColor: '#60a5fa',
-    border: '#002048',
-  },
-  {
-    to: '/missioni',
-    label: 'MISSIONI',
-    sub: 'Completa e vinci',
-    icon: Flag,
+    to: '/negozio',
+    label: 'NEGOZIO',
+    sub: 'Spendi i tuoi gettoni',
+    icon: ShoppingBag,
     bg: '#1a0028',
     iconColor: '#f472b6',
     border: '#350050',
