@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { CountdownTimer, EmptyState, ErrorState } from '@/components/ui';
 import { betLabel } from '@/lib/markets';
@@ -39,7 +40,12 @@ export function GiocatorePage() {
   const { uid = '' } = useParams();
   const { user } = useAuthContext();
   const sonoIo = user?.uid === uid;
-  const { rankings, currentMatchday, loadRankings, loadMatchday } = useAppStore();
+  const { rankings, currentMatchday, loadRankings, loadMatchday } = useAppStore(useShallow(s => ({
+      rankings: s.rankings,
+      currentMatchday: s.currentMatchday,
+      loadRankings: s.loadRankings,
+      loadMatchday: s.loadMatchday,
+    })));
 
   const [passate, setPassate] = useState<SchedinaDoc[]>([]);
   const [inCorso, setInCorso] = useState<SchedinaDoc | null>(null);

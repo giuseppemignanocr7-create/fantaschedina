@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
 import type { RankingEntry } from '@/types';
 import { SkeletonList, EmptyState, ErrorState } from '@/components/ui';
@@ -161,7 +162,18 @@ export function ClassificaPage() {
     clearError,
     loadRankings,
     loadWeeklyRanking,
-  } = useAppStore();
+  } = useAppStore(useShallow(s => ({
+      rankings: s.rankings,
+      weeklyRankings: s.weeklyRankings,
+      prizePool: s.prizePool,
+      currentUser: s.currentUser,
+      currentMatchday: s.currentMatchday,
+      isLoadingRankings: s.isLoadingRankings,
+      error: s.error,
+      clearError: s.clearError,
+      loadRankings: s.loadRankings,
+      loadWeeklyRanking: s.loadWeeklyRanking,
+    })));
   const [activeTab, setActiveTab] = useState<TabType>('generale');
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 

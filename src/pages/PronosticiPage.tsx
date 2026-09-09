@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { sideCannons, vibrate } from '@/lib/juice';
 import type { BetType, BetOutcome, Prediction, Match } from '@/types';
 import type { MatchOdds } from '@/data/mockData';
@@ -355,7 +356,21 @@ export function PronosticiPage() {
     setCircuito,
     copiaDaGenerale,
     applyLastMinuteChange,
-  } = useAppStore();
+  } = useAppStore(useShallow(s => ({
+      currentMatchday: s.currentMatchday,
+      matchOdds: s.matchOdds,
+      currentSchedina: s.currentSchedina,
+      updatePrediction: s.updatePrediction,
+      resetSchedina: s.resetSchedina,
+      submitSchedina: s.submitSchedina,
+      isLoadingOdds: s.isLoadingOdds,
+      lastOddsUpdate: s.lastOddsUpdate,
+      refreshOdds: s.refreshOdds,
+      currentLeagueId: s.currentLeagueId,
+      setCircuito: s.setCircuito,
+      copiaDaGenerale: s.copiaDaGenerale,
+      applyLastMinuteChange: s.applyLastMinuteChange,
+    })));
 
   const toast = useToast();
   const { user } = useAuthContext();

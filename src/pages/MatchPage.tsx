@@ -11,6 +11,7 @@ import { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, Clock, Loader2, Target } from 'lucide-react';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { useLiveMatchday } from '@/hooks/useLiveMatchday';
 import { cn } from '@/lib/utils';
 import { CountdownTimer, TeamLogo } from '@/components/ui';
@@ -40,7 +41,12 @@ function orario(d: Date | string): string {
 }
 
 export function MatchPage() {
-  const { currentMatchday, liveScores, isLoadingOdds, loadMatchday } = useAppStore();
+  const { currentMatchday, liveScores, isLoadingOdds, loadMatchday } = useAppStore(useShallow(s => ({
+      currentMatchday: s.currentMatchday,
+      liveScores: s.liveScores,
+      isLoadingOdds: s.isLoadingOdds,
+      loadMatchday: s.loadMatchday,
+    })));
 
   useEffect(() => {
     if (!currentMatchday) void loadMatchday();

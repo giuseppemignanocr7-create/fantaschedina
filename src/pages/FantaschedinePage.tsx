@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { getPrizes, getMatchday } from '@/lib/db';
 import { getUserLeagues } from '@/lib/leagues';
 import { betLabel } from '@/lib/markets';
@@ -22,7 +23,13 @@ function isResult(s: Schedina | SchedinaResult): s is SchedinaResult {
 }
 
 export function FantaschedinePage() {
-  const { currentUser, currentMatchday, schedinaHistory, isLoadingHistory, loadSchedinaHistory } = useAppStore();
+  const { currentUser, currentMatchday, schedinaHistory, isLoadingHistory, loadSchedinaHistory } = useAppStore(useShallow(s => ({
+      currentUser: s.currentUser,
+      currentMatchday: s.currentMatchday,
+      schedinaHistory: s.schedinaHistory,
+      isLoadingHistory: s.isLoadingHistory,
+      loadSchedinaHistory: s.loadSchedinaHistory,
+    })));
   const [filter, setFilter] = useState<FilterType>('tutti');
   // Chiave della riga aperta: con i circuiti la giornata non identifica piu’
   // una sola schedina (generale + una per ogni lega), quindi si usa l’id.

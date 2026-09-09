@@ -143,7 +143,7 @@ export function LoginPage() {
         
         <div className="relative z-10">
           <Link to="/">
-            <img src="/logo-full.png" alt="FantaSchedina" className="h-16 w-auto" />
+            <img src="/logo-full.png" alt="FantaSchedina" width={238} height={64} className="h-16 w-auto" />
             <p className="text-[10px] text-white/35 tracking-[0.3em] uppercase mt-2 ml-1">
               PREDICI. SFIDA. VINCI.
             </p>
@@ -190,7 +190,7 @@ export function LoginPage() {
           {/* Mobile Logo */}
           <div className="lg:hidden mb-8 flex justify-center">
             <Link to="/">
-              <img src="/logo-full.png" alt="FantaSchedina" className="h-10 w-auto" />
+              <img src="/logo-full.png" alt="FantaSchedina" width={148} height={40} className="h-10 w-auto" />
             </Link>
           </div>
           

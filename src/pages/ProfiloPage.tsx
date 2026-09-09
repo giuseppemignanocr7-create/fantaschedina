@@ -18,10 +18,14 @@ import {
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 export function ProfiloPage() {
-  const { currentUser, rankings } = useAppStore();
+  const { currentUser, rankings } = useAppStore(useShallow(s => ({
+      currentUser: s.currentUser,
+      rankings: s.rankings,
+    })));
   const {
     user: authUser,
     profile,

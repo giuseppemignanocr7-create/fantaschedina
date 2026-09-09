@@ -1,6 +1,7 @@
 import { Calendar } from 'lucide-react';
 import { cn, formatDateShort, formatTime } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 
 const STATUS_LABEL: Record<string, string> = {
   upcoming: 'IN ARRIVO',
@@ -10,7 +11,10 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export function CalendarioPage() {
-  const { currentMatchday, isLoadingOdds } = useAppStore();
+  const { currentMatchday, isLoadingOdds } = useAppStore(useShallow(s => ({
+      currentMatchday: s.currentMatchday,
+      isLoadingOdds: s.isLoadingOdds,
+    })));
 
   if (!currentMatchday) {
     if (isLoadingOdds) {

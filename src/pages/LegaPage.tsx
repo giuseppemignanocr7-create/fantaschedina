@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { useLiveMatchday } from '@/hooks/useLiveMatchday';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { CountdownTimer, EmptyState, ErrorState, TeamLogo } from '@/components/ui';
@@ -45,7 +46,11 @@ export function LegaPage() {
   const navigate = useNavigate();
   const { user } = useAuthContext();
   const uid = user?.uid ?? '';
-  const { currentMatchday, liveScores, loadMatchday } = useAppStore();
+  const { currentMatchday, liveScores, loadMatchday } = useAppStore(useShallow(s => ({
+      currentMatchday: s.currentMatchday,
+      liveScores: s.liveScores,
+      loadMatchday: s.loadMatchday,
+    })));
 
   const [sezione, setSezione] = useState<Sezione>('SCHEDINA');
   const [lega, setLega] = useState<LeagueDoc | null>(null);

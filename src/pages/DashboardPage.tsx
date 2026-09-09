@@ -4,6 +4,7 @@ import {
   UserPlus, Clock, Zap,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { cn } from '@/lib/utils';
 import { teamColor } from '@/lib/teamColors';
 
@@ -119,7 +120,14 @@ const earnCards = [
 const ICON_SHADOW = 'drop-shadow(0 2px 3px rgba(0,0,0,0.28))';
 
 export function DashboardPage() {
-  const { currentMatchday, currentUser, currentSchedina, matchOdds, isLoadingOdds, refreshOdds } = useAppStore();
+  const { currentMatchday, currentUser, currentSchedina, matchOdds, isLoadingOdds, refreshOdds } = useAppStore(useShallow(s => ({
+      currentMatchday: s.currentMatchday,
+      currentUser: s.currentUser,
+      currentSchedina: s.currentSchedina,
+      matchOdds: s.matchOdds,
+      isLoadingOdds: s.isLoadingOdds,
+      refreshOdds: s.refreshOdds,
+    })));
 
   // Prossima partita non ancora giocata
   const nextMatch = currentMatchday?.matches

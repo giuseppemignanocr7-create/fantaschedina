@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { Logo } from './Logo';
 import { useAuthContext } from '@/contexts/AuthContext';
 
@@ -67,7 +68,7 @@ function NavLink({ to, label, icon: Icon, badge, onClick }: { to: string; label:
 }
 
 export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
-  const { currentUser } = useAppStore();
+  const { currentUser } = useAppStore(useShallow(s => ({ currentUser: s.currentUser })));
   const { signOut } = useAuthContext();
   const navigate = useNavigate();
   const userInitials = currentUser?.username?.slice(0, 2).toUpperCase() ?? 'FM';

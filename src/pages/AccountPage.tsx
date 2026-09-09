@@ -6,6 +6,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { exportMyDataFn, deleteAccountFn, callableErrorMessage } from '@/lib/gameApi';
 
 const menuItems = [
@@ -17,7 +18,7 @@ const menuItems = [
 
 export function AccountPage() {
   const { profile, user, signOut } = useAuthContext();
-  const { currentUser } = useAppStore();
+  const { currentUser } = useAppStore(useShallow(s => ({ currentUser: s.currentUser })));
   const navigate = useNavigate();
   const [busy, setBusy] = useState<'export' | 'delete' | null>(null);
   const [error, setError] = useState<string | null>(null);

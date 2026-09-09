@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BarChart3, Loader2, TrendingUp } from 'lucide-react';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import type { SchedinaResult, Schedina } from '@/types';
 
 function isResult(s: Schedina | SchedinaResult): s is SchedinaResult {
@@ -8,8 +9,13 @@ function isResult(s: Schedina | SchedinaResult): s is SchedinaResult {
 }
 
 export function StatistichePage() {
-  const { currentUser, schedinaHistory, loadSchedinaHistory, rankings, loadRankings } =
-    useAppStore();
+  const { currentUser, schedinaHistory, loadSchedinaHistory, rankings, loadRankings } = useAppStore(useShallow(s => ({
+      currentUser: s.currentUser,
+      schedinaHistory: s.schedinaHistory,
+      loadSchedinaHistory: s.loadSchedinaHistory,
+      rankings: s.rankings,
+      loadRankings: s.loadRankings,
+    })));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

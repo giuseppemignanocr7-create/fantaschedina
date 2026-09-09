@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { cn, formatTime } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { useLiveMatchday } from '@/hooks/useLiveMatchday';
 import { calculateBetPoints, calculateSchedinaScore } from '@/lib/scoring';
 import { LiveTracker, CountdownTimer, WinSimulator, SkeletonList } from '@/components/ui';
@@ -23,7 +24,17 @@ export function LivePage() {
     isLoadingOdds,
     isLoadingRankings,
     loadRankings,
-  } = useAppStore();
+  } = useAppStore(useShallow(s => ({
+      currentMatchday: s.currentMatchday,
+      currentSchedina: s.currentSchedina,
+      currentUser: s.currentUser,
+      rankings: s.rankings,
+      prizePool: s.prizePool,
+      liveScores: s.liveScores,
+      isLoadingOdds: s.isLoadingOdds,
+      isLoadingRankings: s.isLoadingRankings,
+      loadRankings: s.loadRankings,
+    })));
 
   useLiveMatchday();
 
