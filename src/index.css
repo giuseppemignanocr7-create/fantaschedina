@@ -4,13 +4,12 @@
 
 @layer base {
   * {
-    @apply border-white/5;
+    @apply border-slate-200;
   }
-  
+
   body {
-    @apply bg-background text-slate-100 antialiased selection:bg-primary-500/30;
+    @apply bg-background text-slate-700 antialiased selection:bg-primary-500/30;
     font-feature-settings: "rlig" 1, "calt" 1;
-    background-image: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(132,216,12,0.07) 0%, transparent 60%);
   }
 
   html {
@@ -28,15 +27,31 @@
 
 @layer components {
   .glass-card {
-    @apply bg-surface border border-white/5 rounded-2xl shadow-xl shadow-black/40;
+    @apply bg-surface border border-slate-200 rounded-2xl shadow-[0_2px_12px_rgba(15,23,42,0.07)];
   }
 
   .app-card {
-    @apply bg-surface border border-white/8 rounded-2xl;
+    @apply bg-surface border border-slate-200 rounded-2xl;
+  }
+
+  /* Superfici scure: arena dei rigori e schermata di accesso. */
+  .night-card {
+    @apply bg-night-surface border border-white/10 rounded-2xl shadow-xl shadow-black/40;
+  }
+
+  .night-input {
+    @apply w-full px-4 py-3 bg-night border border-white/10 rounded-xl text-white
+           placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50
+           focus:border-primary-500/50 transition-all duration-300;
+  }
+
+  .btn-secondary-night {
+    @apply px-6 py-3 bg-night-surface border border-white/10 rounded-xl font-bold text-slate-300 uppercase tracking-wider text-sm
+           hover:bg-white/5 hover:text-white hover:border-white/20 transition-all duration-200;
   }
 
   .gradient-text {
-    @apply bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent font-bold;
+    @apply bg-gradient-to-r from-primary-700 to-accent-600 bg-clip-text text-transparent font-bold;
   }
 
   .gradient-border {
@@ -53,55 +68,73 @@
   }
 
   .btn-primary {
-    @apply px-6 py-3 bg-primary-500 rounded-xl font-black text-background uppercase tracking-wider text-sm
+    @apply px-6 py-3 bg-primary-500 rounded-xl font-black text-night uppercase tracking-wider text-sm
            hover:bg-primary-400 active:bg-primary-600 transition-all duration-200 
            shadow-lg shadow-primary-500/25;
   }
 
   .btn-green {
-    @apply px-4 py-2.5 bg-primary-500 rounded-xl font-black text-background text-sm
+    @apply px-4 py-2.5 bg-primary-500 rounded-xl font-black text-night text-sm
            hover:bg-primary-400 active:bg-primary-600 transition-all duration-200;
   }
 
   .btn-secondary {
-    @apply px-6 py-3 bg-surface border border-white/10 rounded-xl font-bold text-slate-300 uppercase tracking-wider text-sm
-           hover:bg-white/5 hover:text-white hover:border-white/20 transition-all duration-200;
+    @apply px-6 py-3 bg-surface border border-slate-200 rounded-xl font-bold text-slate-600 uppercase tracking-wider text-sm
+           hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300 transition-all duration-200;
   }
 
   .btn-odds {
-    @apply flex flex-col items-center justify-center p-3 rounded-lg border border-white/5 bg-surface/50 transition-all duration-200
-           hover:bg-white/10 hover:border-primary-500/50 cursor-pointer select-none relative overflow-hidden;
+    @apply flex flex-col items-center justify-center p-3 rounded-lg border border-slate-200 bg-white transition-all duration-200
+           hover:bg-slate-50 hover:border-primary-500/60 cursor-pointer select-none relative overflow-hidden;
   }
 
   .btn-odds.selected {
-    @apply bg-primary-600/20 border-primary-500 text-primary-400 shadow-[0_0_15px_rgba(132,216,12,0.25)];
+    @apply bg-primary-500/15 border-primary-500 text-primary-700 shadow-[0_0_12px_rgba(132,216,12,0.35)];
   }
 
   .input-field {
-    @apply w-full px-4 py-3 bg-background border border-white/10 rounded-xl text-white 
-           placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/50 
+    @apply w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900
+           placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/50
            focus:border-primary-500/50 transition-all duration-300;
   }
 
   .card-hover {
-    @apply transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-black/40;
+    @apply transition-all duration-300 hover:scale-[1.01] hover:shadow-xl hover:shadow-slate-300/50;
   }
   
   .badge {
     @apply px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider;
   }
 
+  /* ── Tema chiaro della home ──────────────────────────────────
+     Il resto dell'app resta scuro: queste classi valgono solo dove
+     vengono usate esplicitamente (home), quindi non toccano le altre
+     pagine che continuano a usare .glass-card / .section-title. */
+  .paper-card {
+    @apply bg-paper-card rounded-2xl border border-paper-line shadow-[0_2px_12px_rgba(15,23,42,0.07)];
+  }
+
+  .section-title-ink {
+    @apply text-[10px] font-black text-paper-muted uppercase tracking-[0.18em];
+  }
+
   .feature-tile {
-    @apply flex flex-col items-center justify-center gap-2 rounded-2xl p-4 cursor-pointer
-           transition-all duration-200 hover:scale-[1.04] hover:brightness-110 active:scale-[0.96];
+    @apply relative flex flex-col items-center justify-center gap-1.5 rounded-2xl px-1.5 pt-2 pb-4 cursor-pointer overflow-hidden
+           shadow-[0_5px_16px_rgba(15,23,42,0.16)]
+           transition-transform duration-150 hover:scale-[1.04] active:scale-[0.96];
+  }
+
+  /* Freccetta in basso a destra su ogni tile colorata */
+  .tile-chevron {
+    @apply absolute bottom-1.5 right-2 opacity-70;
   }
 
   .section-title {
-    @apply text-[10px] font-bold text-white/40 uppercase tracking-[0.18em];
+    @apply text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em];
   }
 
   .page-title {
-    @apply text-xl font-display font-black uppercase tracking-wide text-white;
+    @apply text-xl font-display font-black uppercase tracking-wide text-slate-900;
   }
 }
 
@@ -139,11 +172,11 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-white/10 rounded-full;
+  @apply bg-slate-300 rounded-full;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-primary-500/40;
+  @apply bg-primary-500/60;
 }
 
 /* Penalty duel: scena pseudo-3D (portiere/pallone disegnati in CSS, non foto) */

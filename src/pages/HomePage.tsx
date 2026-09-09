@@ -62,18 +62,18 @@ export function HomePage() {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-4xl mx-auto">
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-500/20 border border-primary-500/30 text-primary-400 text-sm font-bold uppercase tracking-wider mb-8 animate-fade-in backdrop-blur-sm">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-500/20 border border-primary-500/30 text-primary-800 text-sm font-bold uppercase tracking-wider mb-8 animate-fade-in backdrop-blur-sm">
               <Star size={16} className="fill-current" />
               Stagione 2025-2026
             </div>
 
             {/* Main Title */}
             <h1 className="text-5xl sm:text-6xl lg:text-8xl font-display font-black mb-6 animate-slide-up tracking-tighter uppercase italic">
-              Fanta<span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-primary-600">Schedina</span>
+              Fanta<span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-primary-800">Schedina</span>
             </h1>
             
-            <p className="text-xl sm:text-2xl text-slate-300 font-medium mb-4 animate-slide-up max-w-2xl mx-auto text-balance">
-              Il primo gioco di scommesse collettivo dove <span className="text-primary-400 font-bold">si vince insieme</span>.
+            <p className="text-xl sm:text-2xl text-slate-600 font-medium mb-4 animate-slide-up max-w-2xl mx-auto text-balance">
+              Il primo gioco di scommesse collettivo dove <span className="text-primary-700 font-bold">si vince insieme</span>.
             </p>
             
             {/* CTA Buttons */}
@@ -90,20 +90,20 @@ export function HomePage() {
             {/* Stats */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4 mt-16 animate-fade-in">
               <div className="glass-card p-4 text-center border-t-4 border-t-accent-500">
-                <p className="text-2xl sm:text-4xl font-mono font-bold text-accent-400">{formatCurrency(prizePool.totalPool)}</p>
-                <p className="text-xs sm:text-sm text-slate-400 uppercase tracking-wide font-bold mt-1">Montepremi</p>
+                <p className="text-2xl sm:text-4xl font-mono font-bold text-accent-700">{formatCurrency(prizePool.totalPool)}</p>
+                <p className="text-xs sm:text-sm text-slate-600 uppercase tracking-wide font-bold mt-1">Montepremi</p>
               </div>
               <div className="glass-card p-4 text-center border-t-4 border-t-primary-500">
-                <p className="text-2xl sm:text-4xl font-mono font-bold text-white">{rankings.length}</p>
-                <p className="text-xs sm:text-sm text-slate-400 uppercase tracking-wide font-bold mt-1">Tipsters</p>
+                <p className="text-2xl sm:text-4xl font-mono font-bold text-slate-900">{rankings.length}</p>
+                <p className="text-xs sm:text-sm text-slate-600 uppercase tracking-wide font-bold mt-1">Tipsters</p>
               </div>
               <div className="glass-card p-4 text-center border-t-4 border-t-slate-500">
-                <p className="text-2xl sm:text-4xl font-mono font-bold text-white">G{currentMatchday?.number || 18}</p>
-                <p className="text-xs sm:text-sm text-slate-400 uppercase tracking-wide font-bold mt-1">Giornata</p>
+                <p className="text-2xl sm:text-4xl font-mono font-bold text-slate-900">G{currentMatchday?.number || 18}</p>
+                <p className="text-xs sm:text-sm text-slate-600 uppercase tracking-wide font-bold mt-1">Giornata</p>
               </div>
               <div className="glass-card p-4 text-center border-t-4 border-t-green-500">
-                <p className="text-2xl sm:text-4xl font-mono font-bold text-green-400">{formatCurrency(500)}</p>
-                <p className="text-xs sm:text-sm text-slate-400 uppercase tracking-wide font-bold mt-1">Garantito</p>
+                <p className="text-2xl sm:text-4xl font-mono font-bold text-green-600">{formatCurrency(500)}</p>
+                <p className="text-xs sm:text-sm text-slate-600 uppercase tracking-wide font-bold mt-1">Garantito</p>
               </div>
             </div>
           </div>
@@ -111,17 +111,17 @@ export function HomePage() {
       </section>
 
       {/* Current Matchday Banner */}
-      <section className="py-10 bg-surface border-y border-white/5 relative overflow-hidden">
+      <section className="py-10 bg-surface border-y border-slate-200 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-primary-900/20 to-transparent" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-6">
               <div className="w-16 h-16 rounded-2xl bg-primary-600 flex items-center justify-center animate-pulse-glow shadow-lg shadow-primary-500/20 transform rotate-3">
-                <Clock size={32} className="text-white" />
+                <Clock size={32} className="text-slate-900" />
               </div>
               <div>
                 <h3 className="font-display font-bold text-2xl uppercase italic tracking-wide">Giornata {currentMatchday?.number || 18} Live</h3>
-                <p className="text-primary-400 font-medium">Le quote stanno cambiando! Inserisci la tua giocata.</p>
+                <p className="text-primary-700 font-medium">Le quote stanno cambiando! Inserisci la tua giocata.</p>
               </div>
             </div>
             <Link to="/schedina" className="btn-primary flex items-center gap-2 w-full md:w-auto justify-center">
@@ -139,7 +139,7 @@ export function HomePage() {
             <h2 className="text-3xl sm:text-4xl font-display font-bold mb-4">
               Come Funziona
             </h2>
-            <p className="text-white/60 max-w-2xl mx-auto">
+            <p className="text-slate-500 max-w-2xl mx-auto">
               Un sistema semplice e trasparente per divertirsi tra amici con le partite di Serie A
             </p>
           </div>
@@ -153,10 +153,10 @@ export function HomePage() {
                   className="glass-card p-6 card-hover group"
                 >
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-accent-500/20 flex items-center justify-center mb-4 group-hover:from-primary-500/30 group-hover:to-accent-500/30 transition-colors">
-                    <Icon size={24} className="text-primary-400" />
+                    <Icon size={24} className="text-primary-700" />
                   </div>
                   <h3 className="font-semibold text-lg mb-2">{feature.title}</h3>
-                  <p className="text-white/60 text-sm leading-relaxed">{feature.description}</p>
+                  <p className="text-slate-500 text-sm leading-relaxed">{feature.description}</p>
                 </div>
               );
             })}
@@ -173,7 +173,7 @@ export function HomePage() {
               <h2 className="text-3xl sm:text-4xl font-display font-bold mb-4">
                 Classifica Generale
               </h2>
-              <p className="text-white/60 mb-8">
+              <p className="text-slate-500 mb-8">
                 I migliori giocatori del campionato 2025-2026. 
                 300€ al primo classificato, 200€ al primo del girone di andata.
               </p>
@@ -181,17 +181,17 @@ export function HomePage() {
               {/* Prize Pool Card */}
               <div className="glass-card p-6 mb-6">
                 <h4 className="font-semibold mb-4 flex items-center gap-2">
-                  <Gift className="text-primary-400" size={20} />
+                  <Gift className="text-primary-700" size={20} />
                   Montepremi Attuale
                 </h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-2xl font-bold gradient-text">{formatCurrency(prizePool.finalPool)}</p>
-                    <p className="text-xs text-white/50">Premio Finale</p>
+                    <p className="text-xs text-slate-500">Premio Finale</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-white">{formatCurrency(prizePool.weeklyPool)}</p>
-                    <p className="text-xs text-white/50">Vincita Settimanale</p>
+                    <p className="text-2xl font-bold text-slate-900">{formatCurrency(prizePool.weeklyPool)}</p>
+                    <p className="text-xs text-slate-500">Vincita Settimanale</p>
                   </div>
                 </div>
               </div>
@@ -205,29 +205,29 @@ export function HomePage() {
             {/* Right: Top 3 */}
             <div className="flex-1 w-full">
               <div className="glass-card overflow-hidden">
-                <div className="bg-gradient-to-r from-primary-500/20 to-accent-500/20 px-6 py-4 border-b border-white/10">
+                <div className="bg-gradient-to-r from-primary-500/20 to-accent-500/20 px-6 py-4 border-b border-slate-200">
                   <h3 className="font-semibold flex items-center gap-2">
-                    <Trophy className="text-yellow-400" size={20} />
+                    <Trophy className="text-yellow-700" size={20} />
                     Top 3 Classifica
                   </h3>
                 </div>
-                <div className="divide-y divide-white/5">
+                <div className="divide-y divide-slate-200">
                   {topThree.map((player, index) => (
                     <div key={player.participantId} className="px-6 py-4 flex items-center gap-4">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${
-                        index === 0 ? 'bg-yellow-500/20 text-yellow-400' :
+                        index === 0 ? 'bg-yellow-500/20 text-yellow-700' :
                         index === 1 ? 'bg-gray-400/20 text-gray-300' :
-                        'bg-orange-500/20 text-orange-400'
+                        'bg-orange-500/20 text-orange-600'
                       }`}>
                         {index + 1}
                       </div>
                       <div className="flex-1">
                         <p className="font-medium">{player.username}</p>
-                        <p className="text-xs text-white/50">{player.matchdaysPlayed} giornate • {player.weeklyWins} vittorie</p>
+                        <p className="text-xs text-slate-500">{player.matchdaysPlayed} giornate • {player.weeklyWins} vittorie</p>
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-lg gradient-text">{player.totalPoints}</p>
-                        <p className="text-xs text-white/50">punti</p>
+                        <p className="text-xs text-slate-500">punti</p>
                       </div>
                     </div>
                   ))}
@@ -245,7 +245,7 @@ export function HomePage() {
             <h2 className="text-3xl sm:text-4xl font-display font-bold mb-4">
               Pronto a Giocare?
             </h2>
-            <p className="text-white/60 mb-8 max-w-xl mx-auto">
+            <p className="text-slate-500 mb-8 max-w-xl mx-auto">
               Iscrizioni aperte fino alla 10ª giornata. 
               Quota di partecipazione: 20€ + 5€ per ogni giornata già passata.
             </p>
@@ -255,7 +255,7 @@ export function HomePage() {
                 <ArrowRight size={20} />
               </Link>
             </div>
-            <p className="text-xs text-white/40 mt-6 flex items-center justify-center gap-1">
+            <p className="text-xs text-slate-500 mt-6 flex items-center justify-center gap-1">
               <Shield size={12} />
               Solo maggiori di 18 anni
             </p>

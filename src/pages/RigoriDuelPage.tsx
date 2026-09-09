@@ -203,10 +203,10 @@ export function RigoriDuelPage() {
 
   if (phase === 'create') {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+      <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden bg-night">
         <div className="absolute inset-0 bg-gradient-to-b from-primary-900/25 via-transparent to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/90 to-background" />
-        <div className="glass-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in relative z-10">
+        <div className="absolute inset-0 bg-gradient-to-b from-night/80 via-night/90 to-night" />
+        <div className="night-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in relative z-10">
           <div className="text-6xl animate-bounce">⚽</div>
           <h1 className="font-display font-black text-2xl text-white uppercase">Sala d'attesa</h1>
           <p className="text-white/50 text-sm">Condividi il codice con un amico per iniziare il duello</p>
@@ -239,10 +239,10 @@ export function RigoriDuelPage() {
     // e mostrarla come tale sarebbe una bugia verso chi era rimasto a giocare.
     const isAbandoned = duel.abandoned === true;
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+      <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden bg-night">
         <div className="absolute inset-0 bg-gradient-to-b from-primary-900/25 via-transparent to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/90 to-background" />
-        <div className="glass-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in relative z-10">
+        <div className="absolute inset-0 bg-gradient-to-b from-night/80 via-night/90 to-night" />
+        <div className="night-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in relative z-10">
           <div className="text-7xl animate-heartbeat">
             {isAbandoned ? '🕒' : iWon ? '🏆' : isDraw ? '🤝' : '😢'}
           </div>
@@ -288,7 +288,7 @@ export function RigoriDuelPage() {
             >
               🔄 Gioca ancora
             </button>
-            <Link to="/minigiochi" className="flex items-center justify-center flex-1 btn-secondary text-sm">← Minigiochi</Link>
+            <Link to="/minigiochi" className="flex items-center justify-center flex-1 btn-secondary-night text-sm">← Minigiochi</Link>
           </div>
         </div>
       </div>
@@ -304,9 +304,9 @@ export function RigoriDuelPage() {
     const showResult = shotAnim !== null;
 
     return (
-      <div className={cn('min-h-screen relative overflow-hidden', shake && 'animate-shake')}>
+      <div className={cn('min-h-screen relative overflow-hidden bg-night', shake && 'animate-shake')}>
         <div className="absolute inset-0 bg-gradient-to-b from-primary-900/20 via-transparent to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-night via-night/70 to-transparent" />
 
         <div className="relative z-10 min-h-screen flex flex-col px-4 py-6">
           <div className="max-w-md mx-auto w-full flex-1 flex flex-col">
@@ -322,7 +322,7 @@ export function RigoriDuelPage() {
             </header>
 
             {/* Scoreboard */}
-            <div className="glass-card p-3 flex items-center justify-between mb-4 shadow-2xl">
+            <div className="night-card p-3 flex items-center justify-between mb-4 shadow-2xl">
               <div className="text-center flex-1">
                 <p className="text-[10px] font-black text-primary-400 truncate max-w-[80px] mx-auto">{myName}</p>
                 <p className="font-black text-4xl text-primary-400 drop-shadow-[0_0_12px_rgba(132,216,12,0.5)]">{myScore}</p>
@@ -411,10 +411,10 @@ export function RigoriDuelPage() {
 
   // Menu
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden bg-night">
       <div className="absolute inset-0 bg-gradient-to-b from-primary-900/25 via-transparent to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/95 to-background" />
-      <div className="glass-card p-8 max-w-sm w-full space-y-5 animate-pop-in relative z-10">
+      <div className="absolute inset-0 bg-gradient-to-b from-night/80 via-night/95 to-night" />
+      <div className="night-card p-8 max-w-sm w-full space-y-5 animate-pop-in relative z-10">
         <div className="text-center space-y-2">
           <div className="text-6xl animate-bounce">⚽</div>
           <h1 className="font-display font-black text-3xl text-white uppercase">Rigori Duello</h1>
@@ -430,9 +430,9 @@ export function RigoriDuelPage() {
           <div className="h-px bg-white/10" />
           <p className="text-[10px] text-white/40 uppercase tracking-widest text-center font-bold">Gioca contro il Bot</p>
           <div className="grid grid-cols-3 gap-2">
-            <button onClick={() => handleBot('botAttacker')} className="btn-secondary text-xs font-black py-3">⚽ Attaccante</button>
-            <button onClick={() => handleBot('botKeeper')} className="btn-secondary text-xs font-black py-3">🧤 Portiere</button>
-            <button onClick={() => handleBot('botAlternate')} className="btn-secondary text-xs font-black py-3">🔄 Alterna</button>
+            <button onClick={() => handleBot('botAttacker')} className="btn-secondary-night text-xs font-black py-3">⚽ Attaccante</button>
+            <button onClick={() => handleBot('botKeeper')} className="btn-secondary-night text-xs font-black py-3">🧤 Portiere</button>
+            <button onClick={() => handleBot('botAlternate')} className="btn-secondary-night text-xs font-black py-3">🔄 Alterna</button>
           </div>
         </div>
         <Link to="/minigiochi" className="block text-xs text-white/30 hover:text-white/60 text-center">← Torna ai minigiochi</Link>

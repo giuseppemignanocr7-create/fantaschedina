@@ -35,7 +35,7 @@ const RankingRow = memo(function RankingRow({
     <div
       className={cn(
         'transition-all duration-200 animate-slide-up',
-        isCurrentUser ? 'bg-primary-900/20' : 'hover:bg-white/5'
+        isCurrentUser ? 'bg-primary-500/15' : 'hover:bg-slate-100'
       )}
       style={{ animationDelay: `${Math.min(pi * 40, 400)}ms`, animationFillMode: 'backwards' }}
       role="row"
@@ -53,7 +53,7 @@ const RankingRow = memo(function RankingRow({
         <div className="col-span-1 flex justify-center">
           <div className={cn(
             'w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm font-mono',
-            player.rank <= 3 ? 'bg-white/5 border border-white/10' : 'text-slate-500'
+            player.rank <= 3 ? 'bg-slate-100 border border-slate-200' : 'text-slate-500'
           )}>
             {player.rank <= 3 ? ['🥇', '🥈', '🥉'][player.rank - 1] : player.rank}
           </div>
@@ -61,7 +61,7 @@ const RankingRow = memo(function RankingRow({
         <div className="col-span-5 sm:col-span-4 flex items-center gap-3">
           <div className={cn(
             "w-8 h-8 rounded-full flex items-center justify-center border",
-            isCurrentUser ? "bg-primary-600 border-primary-400 text-white" : "bg-surface border-white/10 text-slate-400"
+            isCurrentUser ? "bg-primary-600 border-primary-400 text-night" : "bg-surface border-slate-200 text-slate-600"
           )}>
             <User size={14} />
           </div>
@@ -71,7 +71,7 @@ const RankingRow = memo(function RankingRow({
               onClick={e => e.stopPropagation()}
               className={cn(
                 'font-bold text-sm block truncate hover:underline',
-                isCurrentUser ? 'text-primary-400' : 'text-white'
+                isCurrentUser ? 'text-primary-700' : 'text-slate-900'
               )}
             >
               {player.username}
@@ -82,19 +82,19 @@ const RankingRow = memo(function RankingRow({
           </div>
         </div>
         <div className="col-span-2 text-center hidden sm:block">
-          <span className="bg-white/5 px-2 py-1 rounded text-xs font-mono text-slate-300">
+          <span className="bg-slate-100 px-2 py-1 rounded text-xs font-mono text-slate-600">
             {player.matchdaysPlayed}
           </span>
         </div>
         <div className="col-span-2 text-center hidden sm:block">
-          <span className="text-xs font-mono text-slate-300">
+          <span className="text-xs font-mono text-slate-600">
             {player.correctPredictions}
           </span>
         </div>
         <div className="col-span-6 sm:col-span-3 flex items-center justify-end gap-3">
           <span className={cn(
             "text-lg font-mono font-bold",
-            isCurrentUser ? "text-primary-400" : "text-white"
+            isCurrentUser ? "text-primary-700" : "text-slate-900"
           )}>
             {player.totalPoints.toFixed(1)}
           </span>
@@ -102,7 +102,7 @@ const RankingRow = memo(function RankingRow({
             size={16}
             className={cn(
               'text-slate-500 transition-transform duration-300',
-              isExpanded && 'rotate-180 text-primary-400'
+              isExpanded && 'rotate-180 text-primary-700'
             )}
           />
         </div>
@@ -111,27 +111,27 @@ const RankingRow = memo(function RankingRow({
         'overflow-hidden transition-all duration-300 bg-black/20',
         isExpanded ? 'max-h-72' : 'max-h-0'
       )}>
-        <div className="px-4 pb-4 pt-2 border-t border-white/5">
+        <div className="px-4 pb-4 pt-2 border-t border-slate-200">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-            <div className="p-3 rounded-lg bg-surface border border-white/5">
+            <div className="p-3 rounded-lg bg-surface border border-slate-200">
               <p className="text-slate-500 text-[10px] uppercase font-bold mb-1">Media Punti</p>
-              <p className="font-mono font-bold text-white">{player.averagePointsPerMatchday.toFixed(2)}</p>
+              <p className="font-mono font-bold text-slate-900">{player.averagePointsPerMatchday.toFixed(2)}</p>
             </div>
-            <div className="p-3 rounded-lg bg-surface border border-white/5">
+            <div className="p-3 rounded-lg bg-surface border border-slate-200">
               <p className="text-slate-500 text-[10px] uppercase font-bold mb-1">Miglior Punteggio</p>
-              <p className="font-mono font-bold text-primary-400">{player.bestMatchdayPoints.toFixed(2)}</p>
+              <p className="font-mono font-bold text-primary-700">{player.bestMatchdayPoints.toFixed(2)}</p>
             </div>
-            <div className="p-3 rounded-lg bg-surface border border-white/5">
+            <div className="p-3 rounded-lg bg-surface border border-slate-200">
               <p className="text-slate-500 text-[10px] uppercase font-bold mb-1">Vittorie</p>
-              <div className="flex items-center gap-1 font-bold text-yellow-400">
+              <div className="flex items-center gap-1 font-bold text-yellow-700">
                 <Trophy size={14} className="fill-yellow-400" />
                 {player.weeklyWins}
               </div>
             </div>
-            <div className="p-3 rounded-lg bg-surface border border-white/5">
+            <div className="p-3 rounded-lg bg-surface border border-slate-200">
               <p className="text-slate-500 text-[10px] uppercase font-bold mb-1">Rendimento</p>
               <div className="flex items-center gap-2 font-mono text-xs">
-                <span className="text-green-400">+{player.bonusPointsTotal}</span>
+                <span className="text-green-600">+{player.bonusPointsTotal}</span>
                 <span className="text-slate-600">|</span>
                 <span className="text-live">{player.penaltyPointsTotal}</span>
               </div>
@@ -139,7 +139,7 @@ const RankingRow = memo(function RankingRow({
           </div>
           <Link
             to={`/giocatore/${player.participantId}`}
-            className="mt-3 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs font-bold hover:bg-primary-500/20 transition-colors"
+            className="mt-3 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary-500/10 border border-primary-500/20 text-primary-800 text-xs font-bold hover:bg-primary-500/20 transition-colors"
           >
             Vedi le sue fantaschedine
           </Link>
@@ -189,17 +189,17 @@ export function ClassificaPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <div className="flex items-center gap-2 text-primary-400 text-sm font-bold uppercase tracking-wider mb-1">
+              <div className="flex items-center gap-2 text-primary-700 text-sm font-bold uppercase tracking-wider mb-1">
                 <TrendingUp size={16} />
                 Ranking Ufficiale
               </div>
-              <h1 className="text-3xl sm:text-5xl font-display font-black uppercase italic tracking-tight text-white">
-                Classifica <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-primary-600">{currentMatchday?.season ?? cfg.season}</span>
+              <h1 className="text-3xl sm:text-5xl font-display font-black uppercase italic tracking-tight text-slate-900">
+                Classifica <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-primary-800">{currentMatchday?.season ?? cfg.season}</span>
               </h1>
             </div>
             <div className="hidden sm:block">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-yellow-500/20 to-orange-500/20 flex items-center justify-center border border-yellow-500/30 shadow-[0_0_30px_rgba(234,179,8,0.2)]">
-                <Trophy size={32} className="text-yellow-400" />
+                <Trophy size={32} className="text-yellow-700" />
               </div>
             </div>
           </div>
@@ -207,16 +207,16 @@ export function ClassificaPage() {
           {/* Prize Pool Summary */}
           <div className="grid grid-cols-3 gap-3">
             <div className="glass-card p-4 text-center border-t-2 border-accent-500 bg-surface/80">
-              <p className="text-xl sm:text-2xl font-mono font-bold text-accent-400">{formatCurrency(prizePool.finalPool)}</p>
-              <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Montepremi Finale</p>
+              <p className="text-xl sm:text-2xl font-mono font-bold text-accent-700">{formatCurrency(prizePool.finalPool)}</p>
+              <p className="text-[10px] sm:text-xs text-slate-600 font-bold uppercase tracking-wider mt-1">Montepremi Finale</p>
             </div>
             <div className="glass-card p-4 text-center border-t-2 border-primary-500 bg-surface/80">
-              <p className="text-xl sm:text-2xl font-mono font-bold text-white">{formatCurrency(prizePool.weeklyPool)}</p>
-              <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Vincita Settimanale</p>
+              <p className="text-xl sm:text-2xl font-mono font-bold text-slate-900">{formatCurrency(prizePool.weeklyPool)}</p>
+              <p className="text-[10px] sm:text-xs text-slate-600 font-bold uppercase tracking-wider mt-1">Vincita Settimanale</p>
             </div>
             <div className="glass-card p-4 text-center border-t-2 border-slate-500 bg-surface/80">
-              <p className="text-xl sm:text-2xl font-mono font-bold text-white">{rankings.length}</p>
-              <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-wider mt-1">Tipsters</p>
+              <p className="text-xl sm:text-2xl font-mono font-bold text-slate-900">{rankings.length}</p>
+              <p className="text-[10px] sm:text-xs text-slate-600 font-bold uppercase tracking-wider mt-1">Tipsters</p>
             </div>
           </div>
         </div>
@@ -227,35 +227,35 @@ export function ClassificaPage() {
             <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-primary-600/20 border border-primary-500/30 flex flex-col items-center justify-center">
               {mioPosto ? (
                 <>
-                  <span className="text-xl font-black text-primary-300 leading-none">
+                  <span className="text-xl font-black text-primary-700 leading-none">
                     {mioPosto.rank}
                   </span>
-                  <span className="text-[9px] text-primary-400/70 font-bold uppercase">posto</span>
+                  <span className="text-[9px] text-primary-700/80 font-bold uppercase">posto</span>
                 </>
               ) : (
-                <User size={22} className="text-primary-400/60" />
+                <User size={22} className="text-primary-700/70" />
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
                 La tua posizione
               </p>
               {mioPosto ? (
-                <p className="text-sm text-white">
+                <p className="text-sm text-slate-900">
                   <span className="font-black">{mioPosto.totalPoints.toFixed(1)} punti</span>
-                  <span className="text-white/40">
+                  <span className="text-slate-500">
                     {' '}su {displayed.length}{' '}
                     {displayed.length === 1 ? 'giocatore' : 'giocatori'}
                   </span>
                 </p>
               ) : (
-                <p className="text-sm text-white/60">
+                <p className="text-sm text-slate-500">
                   Non sei ancora in classifica: gioca una schedina e comparirai
                   qui dalla prossima giornata valutata.
                 </p>
               )}
               {mioPosto && mioPosto.matchdaysPlayed > 0 && (
-                <p className="text-[11px] text-white/40 mt-0.5">
+                <p className="text-[11px] text-slate-500 mt-0.5">
                   {mioPosto.matchdaysPlayed}{' '}
                   {mioPosto.matchdaysPlayed === 1 ? 'giornata giocata' : 'giornate giocate'} ·{' '}
                   {mioPosto.correctPredictions} pronostici esatti
@@ -266,7 +266,7 @@ export function ClassificaPage() {
         )}
 
         {/* Tabs */}
-        <div className="flex p-1 bg-surface/50 rounded-xl mb-8 mt-6 border border-white/5 backdrop-blur-sm" role="tablist" aria-label="Tipo classifica">
+        <div className="flex p-1 bg-surface/50 rounded-xl mb-8 mt-6 border border-slate-200 backdrop-blur-sm" role="tablist" aria-label="Tipo classifica">
           <button
             onClick={() => setActiveTab('generale')}
             role="tab"
@@ -274,8 +274,8 @@ export function ClassificaPage() {
             className={cn(
               'flex-1 py-3 px-4 rounded-lg font-bold text-sm uppercase tracking-wide transition-all flex items-center justify-center gap-2',
               activeTab === 'generale'
-                ? 'bg-primary-600 text-white shadow-lg shadow-primary-900/50'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
+                ? 'bg-primary-600 text-night shadow-lg shadow-primary-900/50'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             )}
           >
             <Trophy size={16} />
@@ -288,8 +288,8 @@ export function ClassificaPage() {
             className={cn(
               'flex-1 py-3 px-4 rounded-lg font-bold text-sm uppercase tracking-wide transition-all flex items-center justify-center gap-2',
               activeTab === 'settimanale'
-                ? 'bg-primary-600 text-white shadow-lg shadow-primary-900/50'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
+                ? 'bg-primary-600 text-night shadow-lg shadow-primary-900/50'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             )}
           >
             <Calendar size={16} />
@@ -306,10 +306,10 @@ export function ClassificaPage() {
               <div className="flex-1 max-w-[140px] transform hover:-translate-y-1 transition-transform duration-300 animate-slide-up" style={{ animationDelay: '150ms', animationFillMode: 'backwards' }}>
                 <div className="glass-card p-4 text-center border-t-4 border-t-slate-300 bg-surface/90 shadow-xl">
                   <div className="w-12 h-12 rounded-full bg-slate-300/10 flex items-center justify-center mx-auto mb-3 border border-slate-300/20">
-                    <span className="text-2xl font-bold text-slate-300">2</span>
+                    <span className="text-2xl font-bold text-slate-600">2</span>
                   </div>
-                  <p className="font-bold truncate text-white mb-1">{rankings[1].username}</p>
-                  <p className="text-xl font-mono font-bold text-slate-300">{rankings[1].totalPoints}</p>
+                  <p className="font-bold truncate text-slate-900 mb-1">{rankings[1].username}</p>
+                  <p className="text-xl font-mono font-bold text-slate-600">{rankings[1].totalPoints}</p>
                   <p className="text-[10px] text-slate-500 uppercase font-bold">PT</p>
                 </div>
                 <div className="h-12 bg-gradient-to-t from-slate-300/10 to-transparent rounded-b-xl mx-2" />
@@ -320,11 +320,11 @@ export function ClassificaPage() {
                 <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-3xl animate-float z-10">👑</div>
                 <div className="glass-card p-5 text-center border-t-4 border-t-yellow-400 bg-surface/90 shadow-[0_0_40px_rgba(250,204,21,0.15)] ring-1 ring-yellow-400/20">
                   <div className="w-16 h-16 rounded-full bg-yellow-400/10 flex items-center justify-center mx-auto mb-3 border border-yellow-400/30 shadow-[0_0_20px_rgba(250,204,21,0.2)]">
-                    <span className="text-3xl font-bold text-yellow-400">1</span>
+                    <span className="text-3xl font-bold text-yellow-700">1</span>
                   </div>
-                  <p className="font-bold truncate text-white text-lg mb-1">{rankings[0].username}</p>
-                  <p className="text-3xl font-mono font-bold text-yellow-400">{rankings[0].totalPoints}</p>
-                  <p className="text-[10px] text-yellow-500/60 uppercase font-bold">PUNTI TOTALI</p>
+                  <p className="font-bold truncate text-slate-900 text-lg mb-1">{rankings[0].username}</p>
+                  <p className="text-3xl font-mono font-bold text-yellow-700">{rankings[0].totalPoints}</p>
+                  <p className="text-[10px] text-yellow-700/80 uppercase font-bold">PUNTI TOTALI</p>
                 </div>
                 <div className="h-20 bg-gradient-to-t from-yellow-400/10 to-transparent rounded-b-xl mx-2" />
               </div>
@@ -333,10 +333,10 @@ export function ClassificaPage() {
               <div className="flex-1 max-w-[140px] transform hover:-translate-y-1 transition-transform duration-300 animate-slide-up" style={{ animationDelay: '280ms', animationFillMode: 'backwards' }}>
                 <div className="glass-card p-4 text-center border-t-4 border-t-orange-400 bg-surface/90 shadow-xl">
                   <div className="w-12 h-12 rounded-full bg-orange-400/10 flex items-center justify-center mx-auto mb-3 border border-orange-400/20">
-                    <span className="text-2xl font-bold text-orange-400">3</span>
+                    <span className="text-2xl font-bold text-orange-600">3</span>
                   </div>
-                  <p className="font-bold truncate text-white mb-1">{rankings[2].username}</p>
-                  <p className="text-xl font-mono font-bold text-orange-400">{rankings[2].totalPoints}</p>
+                  <p className="font-bold truncate text-slate-900 mb-1">{rankings[2].username}</p>
+                  <p className="text-xl font-mono font-bold text-orange-600">{rankings[2].totalPoints}</p>
                   <p className="text-[10px] text-slate-500 uppercase font-bold">PT</p>
                 </div>
                 <div className="h-8 bg-gradient-to-t from-orange-400/10 to-transparent rounded-b-xl mx-2" />
@@ -346,9 +346,9 @@ export function ClassificaPage() {
         )}
 
         {/* Rankings List */}
-        <div className="glass-card overflow-hidden border border-white/5 shadow-2xl" role="table" aria-label="Classifica">
+        <div className="glass-card overflow-hidden border border-slate-200 shadow-2xl" role="table" aria-label="Classifica">
           {/* Header */}
-          <div className="grid grid-cols-12 gap-2 px-4 py-4 bg-surface border-b border-white/10 text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider" role="row">
+          <div className="grid grid-cols-12 gap-2 px-4 py-4 bg-surface border-b border-slate-200 text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-wider" role="row">
             <div className="col-span-1 text-center">Rank</div>
             <div className="col-span-5 sm:col-span-4">Tipster</div>
             <div className="col-span-2 text-center hidden sm:block">Giornate</div>
@@ -357,7 +357,7 @@ export function ClassificaPage() {
           </div>
 
           {/* Rows */}
-          <div className="divide-y divide-white/5">
+          <div className="divide-y divide-slate-200">
             {error && !isLoadingRankings && displayed.length === 0 && (
               <ErrorState
                 message={error}
@@ -395,38 +395,38 @@ export function ClassificaPage() {
 
         {/* Legend */}
         <div className="mt-8 glass-card p-6 border-t-4 border-t-accent-500">
-          <h4 className="font-bold text-lg mb-4 flex items-center gap-2 text-white">
-            <Zap size={20} className="text-accent-400" />
+          <h4 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-900">
+            <Zap size={20} className="text-accent-700" />
             Struttura Premi
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <div className="flex items-start gap-4 p-3 rounded-xl bg-surface/50 border border-white/5">
+            <div className="flex items-start gap-4 p-3 rounded-xl bg-surface/50 border border-slate-200">
               <div className="w-10 h-10 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center shrink-0">
-                <Trophy size={20} className="text-yellow-400" />
+                <Trophy size={20} className="text-yellow-700" />
               </div>
               <div>
-                <p className="font-bold text-white">1° Classificato</p>
-                <p className="text-sm text-slate-400 mt-1">{formatCurrency(cfg.firstPlacePrize)}</p>
+                <p className="font-bold text-slate-900">1° Classificato</p>
+                <p className="text-sm text-slate-600 mt-1">{formatCurrency(cfg.firstPlacePrize)}</p>
                 <p className="text-[10px] text-slate-500 uppercase mt-1">Montepremi Finale</p>
               </div>
             </div>
-            <div className="flex items-start gap-4 p-3 rounded-xl bg-surface/50 border border-white/5">
+            <div className="flex items-start gap-4 p-3 rounded-xl bg-surface/50 border border-slate-200">
               <div className="w-10 h-10 rounded-lg bg-slate-300/10 border border-slate-300/20 flex items-center justify-center shrink-0">
-                <Medal size={20} className="text-slate-300" />
+                <Medal size={20} className="text-slate-600" />
               </div>
               <div>
-                <p className="font-bold text-white">Campione Inverno</p>
-                <p className="text-sm text-slate-400 mt-1">{formatCurrency(cfg.firstHalfPrize)}</p>
+                <p className="font-bold text-slate-900">Campione Inverno</p>
+                <p className="text-sm text-slate-600 mt-1">{formatCurrency(cfg.firstHalfPrize)}</p>
                 <p className="text-[10px] text-slate-500 uppercase mt-1">Girone Andata</p>
               </div>
             </div>
-            <div className="flex items-start gap-4 p-3 rounded-xl bg-surface/50 border border-white/5">
+            <div className="flex items-start gap-4 p-3 rounded-xl bg-surface/50 border border-slate-200">
               <div className="w-10 h-10 rounded-lg bg-primary-500/10 border border-primary-500/20 flex items-center justify-center shrink-0">
-                <Target size={20} className="text-primary-400" />
+                <Target size={20} className="text-primary-700" />
               </div>
               <div>
-                <p className="font-bold text-white">Vincitore Settimanale</p>
-                <p className="text-sm text-slate-400 mt-1">{cfg.weeklyWinnerShare * 100}% Pool</p>
+                <p className="font-bold text-slate-900">Vincitore Settimanale</p>
+                <p className="text-sm text-slate-600 mt-1">{cfg.weeklyWinnerShare * 100}% Pool</p>
                 <p className="text-[10px] text-slate-500 uppercase mt-1">Ogni Giornata</p>
               </div>
             </div>

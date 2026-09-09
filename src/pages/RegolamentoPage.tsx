@@ -202,14 +202,14 @@ export function RegolamentoPage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-400 text-sm font-bold uppercase tracking-wider mb-4">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-800 text-sm font-bold uppercase tracking-wider mb-4">
             <FileText size={16} />
             DOSSIER UFFICIALE
           </div>
-          <h1 className="text-3xl sm:text-5xl font-display font-black uppercase italic tracking-tight text-white mb-4">
-            Regolamento <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-primary-600">Fantaschedina</span>
+          <h1 className="text-3xl sm:text-5xl font-display font-black uppercase italic tracking-tight text-slate-900 mb-4">
+            Regolamento <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-primary-800">Fantaschedina</span>
           </h1>
-          <p className="text-slate-400 max-w-2xl mx-auto font-medium">
+          <p className="text-slate-600 max-w-2xl mx-auto font-medium">
             Piattaforma digitale di intrattenimento sportivo, competizione social e prediction game skill-based. 
             Gioco fantasy gratuito senza finalità di scommessa.
           </p>
@@ -218,19 +218,19 @@ export function RegolamentoPage() {
         {/* Quick Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-12">
           <div className="glass-card p-4 text-center border-t-2 border-green-500 bg-surface/50">
-            <p className="text-3xl font-mono font-bold text-green-400">100%</p>
+            <p className="text-3xl font-mono font-bold text-green-600">100%</p>
             <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Gratuito</p>
           </div>
           <div className="glass-card p-4 text-center border-t-2 border-red-500 bg-surface/50">
-            <p className="text-3xl font-mono font-bold text-red-400"><XCircle size={28} className="inline" /></p>
+            <p className="text-3xl font-mono font-bold text-red-600"><XCircle size={28} className="inline" /></p>
             <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">No Scommesse</p>
           </div>
           <div className="glass-card p-4 text-center border-t-2 border-accent-500 bg-surface/50">
-            <p className="text-3xl font-mono font-bold text-accent-400">Combo</p>
+            <p className="text-3xl font-mono font-bold text-accent-700">Combo</p>
             <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Formula Punti</p>
           </div>
           <div className="glass-card p-4 text-center border-t-2 border-primary-500 bg-surface/50">
-            <p className="text-3xl font-mono font-bold text-primary-400">Skill</p>
+            <p className="text-3xl font-mono font-bold text-primary-700">Skill</p>
             <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Based Game</p>
           </div>
         </div>
@@ -240,15 +240,15 @@ export function RegolamentoPage() {
           <div className="p-6 bg-red-500/5">
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center shrink-0">
-                <Scale size={24} className="text-red-400" />
+                <Scale size={24} className="text-red-600" />
               </div>
               <div>
-                <h2 className="font-display font-bold text-lg uppercase italic tracking-wide text-white mb-2">
+                <h2 className="font-display font-bold text-lg uppercase italic tracking-wide text-slate-900 mb-2">
                   Dichiarazione di Non-Scommessa
                 </h2>
-                <p className="text-slate-300 leading-relaxed">
-                  Fantaschedina <strong className="text-white">NON è un bookmaker</strong>, <strong className="text-white">NON raccoglie scommesse</strong>, 
-                  <strong className="text-white">NON accetta denaro</strong> per effettuare pronostici e <strong className="text-white">NON gestisce gioco d'azzardo</strong>.
+                <p className="text-slate-600 leading-relaxed">
+                  Fantaschedina <strong className="text-slate-900">NON è un bookmaker</strong>, <strong className="text-slate-900">NON raccoglie scommesse</strong>, 
+                  <strong className="text-slate-900">NON accetta denaro</strong> per effettuare pronostici e <strong className="text-slate-900">NON gestisce gioco d'azzardo</strong>.
                   La piattaforma è progettata esclusivamente come gioco competitivo skill-based e social fantasy sport.
                 </p>
               </div>
@@ -261,13 +261,13 @@ export function RegolamentoPage() {
           {sections.map((section) => {
             const Icon = section.icon;
             return (
-              <div key={section.id} className="glass-card overflow-hidden border border-white/5">
+              <div key={section.id} className="glass-card overflow-hidden border border-slate-200">
                 {/* Section Header */}
-                <div className="px-6 py-4 bg-surface border-b border-white/5 flex items-center gap-4">
+                <div className="px-6 py-4 bg-surface border-b border-slate-200 flex items-center gap-4">
                   <div className="w-12 h-12 rounded-xl bg-primary-500/10 border border-primary-500/20 flex items-center justify-center shrink-0">
-                    <Icon size={24} className="text-primary-400" />
+                    <Icon size={24} className="text-primary-700" />
                   </div>
-                  <h2 className="font-display font-bold text-xl uppercase italic tracking-wide text-white">
+                  <h2 className="font-display font-bold text-xl uppercase italic tracking-wide text-slate-900">
                     {section.title}
                   </h2>
                 </div>
@@ -277,23 +277,23 @@ export function RegolamentoPage() {
                   {/* Warning */}
                   {section.warning && (
                     <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 shadow-lg shadow-red-500/5">
-                      <AlertTriangle className="text-red-400 shrink-0 mt-0.5" size={20} />
-                      <p className="text-red-400 font-bold text-sm uppercase tracking-wide">{section.warning}</p>
+                      <AlertTriangle className="text-red-600 shrink-0 mt-0.5" size={20} />
+                      <p className="text-red-600 font-bold text-sm uppercase tracking-wide">{section.warning}</p>
                     </div>
                   )}
 
                   {/* Intro */}
                   {section.intro && (
-                    <p className="text-slate-300 leading-relaxed font-medium">{section.intro}</p>
+                    <p className="text-slate-600 leading-relaxed font-medium">{section.intro}</p>
                   )}
 
                   {/* Highlight Grid */}
                   {section.highlight && (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {section.highlight.map((h, idx) => (
-                        <div key={idx} className="p-4 rounded-xl bg-surface border border-white/10 text-center">
-                          <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">{h.label}</p>
-                          <p className="text-sm font-black text-primary-400">{h.value}</p>
+                        <div key={idx} className="p-4 rounded-xl bg-surface border border-slate-200 text-center">
+                          <p className="text-[10px] text-slate-600 uppercase font-bold tracking-wider mb-1">{h.label}</p>
+                          <p className="text-sm font-black text-primary-700">{h.value}</p>
                         </div>
                       ))}
                     </div>
@@ -303,11 +303,11 @@ export function RegolamentoPage() {
                   {section.items && (
                     <div className="grid sm:grid-cols-2 gap-3">
                       {section.items.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-3 p-4 rounded-xl bg-surface border border-white/5">
-                          <CheckCircle2 size={18} className="text-primary-400 shrink-0" />
+                        <div key={idx} className="flex items-center gap-3 p-4 rounded-xl bg-surface border border-slate-200">
+                          <CheckCircle2 size={18} className="text-primary-700 shrink-0" />
                           <div>
-                            <p className="font-bold text-white text-sm">{item.label}</p>
-                            <p className="text-xs text-slate-400">{item.desc}</p>
+                            <p className="font-bold text-slate-900 text-sm">{item.label}</p>
+                            <p className="text-xs text-slate-600">{item.desc}</p>
                           </div>
                         </div>
                       ))}
@@ -318,7 +318,7 @@ export function RegolamentoPage() {
                   {section.content && section.content.length > 0 && (
                     <ul className="space-y-3">
                       {section.content.map((item, idx) => (
-                        <li key={idx} className="flex items-start gap-3 text-slate-300">
+                        <li key={idx} className="flex items-start gap-3 text-slate-600">
                           <div className="w-1.5 h-1.5 rounded-full bg-primary-500 mt-2 shrink-0 shadow-[0_0_8px_rgba(132,216,12,0.55)]" />
                           <span className="leading-relaxed">{item}</span>
                         </li>
@@ -334,18 +334,18 @@ export function RegolamentoPage() {
         {/* Final Note */}
         <div className="mt-12 glass-card p-8 text-center border-t-4 border-t-primary-500 bg-surface/50">
           <div className="w-16 h-16 rounded-2xl bg-primary-500/20 flex items-center justify-center mx-auto mb-4">
-            <Sparkles size={32} className="text-primary-400" />
+            <Sparkles size={32} className="text-primary-700" />
           </div>
-          <h3 className="font-display font-bold text-2xl text-white mb-4 uppercase italic tracking-wide">
+          <h3 className="font-display font-bold text-2xl text-slate-900 mb-4 uppercase italic tracking-wide">
             Accettazione del Regolamento
           </h3>
-          <p className="text-slate-400 max-w-2xl mx-auto mb-6">
+          <p className="text-slate-600 max-w-2xl mx-auto mb-6">
             L'utilizzo della piattaforma comporta lettura, comprensione e accettazione integrale 
             del presente regolamento ufficiale.
           </p>
           <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-green-500/10 border border-green-500/20">
-            <CheckCircle2 size={18} className="text-green-400" />
-            <span className="text-green-400 font-bold text-sm uppercase tracking-wide">
+            <CheckCircle2 size={18} className="text-green-600" />
+            <span className="text-green-700 font-bold text-sm uppercase tracking-wide">
               Regolamento Ufficiale Fantaschedina
             </span>
           </div>

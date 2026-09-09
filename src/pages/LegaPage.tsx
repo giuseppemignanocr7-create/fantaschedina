@@ -121,7 +121,7 @@ export function LegaPage() {
   if (caricamento) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 size={24} className="text-primary-400 animate-spin" />
+        <Loader2 size={24} className="text-primary-700 animate-spin" />
       </div>
     );
   }
@@ -132,7 +132,7 @@ export function LegaPage() {
         <ErrorState message={errore ?? 'Lega non disponibile'} onRetry={() => void carica()} />
         <button
           onClick={() => navigate('/leghe')}
-          className="mt-4 mx-auto flex items-center gap-2 text-sm text-white/60 hover:text-white"
+          className="mt-4 mx-auto flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900"
         >
           <ArrowLeft size={14} /> Torna alle leghe
         </button>
@@ -147,19 +147,19 @@ export function LegaPage() {
         <div className="flex items-center gap-2">
           <Link
             to="/leghe"
-            className="p-2 rounded-lg hover:bg-white/5 transition-colors"
+            className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
             aria-label="Torna alle leghe"
           >
-            <ArrowLeft size={18} className="text-white/60" />
+            <ArrowLeft size={18} className="text-slate-500" />
           </Link>
           <div className="min-w-0 flex-1">
             <h1 className="page-title truncate">{lega.name}</h1>
-            <p className="text-[11px] text-white/40 flex items-center gap-1.5">
+            <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
               <Users size={11} />
               {lega.memberCount} {lega.memberCount === 1 ? 'membro' : 'membri'}
               {mioPosto && (
                 <>
-                  <span className="text-white/20">·</span>
+                  <span className="text-slate-600">·</span>
                   sei {mioPosto.rank}º con {mioPosto.totalPoints} punti
                 </>
               )}
@@ -168,7 +168,7 @@ export function LegaPage() {
         </div>
 
         {/* Sottomenu della lega */}
-        <div className="flex gap-1 p-1 rounded-xl bg-white/5 border border-white/5">
+        <div className="flex gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
           {SEZIONI.map(s => (
             <button
               key={s}
@@ -176,8 +176,8 @@ export function LegaPage() {
               className={cn(
                 'flex-1 py-2 rounded-lg text-[11px] font-bold transition-colors',
                 sezione === s
-                  ? 'bg-primary-500/25 text-primary-200 border border-primary-500/30'
-                  : 'text-white/50 hover:text-white/80'
+                  ? 'bg-primary-500/25 text-primary-800 border border-primary-500/30'
+                  : 'text-slate-500 hover:text-slate-600'
               )}
             >
               {s}
@@ -254,12 +254,12 @@ function SezioneSchedina({
       <div className="space-y-3">
         <div className="glass-card p-4 text-center">
           <p className="text-4xl mb-2">🎯</p>
-          <p className="font-bold text-white">Schedina della giornata {giornata}</p>
-          <p className="text-sm text-white/50 mt-1">
+          <p className="font-bold text-slate-900">Schedina della giornata {giornata}</p>
+          <p className="text-sm text-slate-500 mt-1">
             Non l&apos;hai ancora compilata per questa lega.
           </p>
           {deadline && (
-            <div className="text-[11px] text-white/40 mt-2 flex items-center justify-center gap-1.5">
+            <div className="text-[11px] text-slate-500 mt-2 flex items-center justify-center gap-1.5">
               Chiude tra <CountdownTimer deadline={deadline} />
             </div>
           )}
@@ -271,7 +271,7 @@ function SezioneSchedina({
             Compila la schedina
           </Link>
         </div>
-        <p className="text-[11px] text-white/40 text-center px-4">
+        <p className="text-[11px] text-slate-500 text-center px-4">
           Stesse partite e stesse quote della generale. I punti che fai qui contano solo per la
           classifica di questa lega.
         </p>
@@ -285,8 +285,8 @@ function SezioneSchedina({
     <div className="space-y-3">
       <div className="glass-card p-3 flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs text-white/50">Giornata {schedina.matchdayNumber}</p>
-          <p className="font-bold text-white text-sm">
+          <p className="text-xs text-slate-500">Giornata {schedina.matchdayNumber}</p>
+          <p className="font-bold text-slate-900 text-sm">
             {schedina.settled
               ? `${schedina.correctPredictions}/10 · ${schedina.finalPoints} punti`
               : 'Schedina inviata'}
@@ -295,7 +295,7 @@ function SezioneSchedina({
         {!schedina.isLocked && (
           <Link
             to={`/pronostici?lega=${leagueId}`}
-            className="px-3 py-1.5 rounded-lg bg-white/10 text-white text-xs font-bold hover:bg-white/15 transition-colors"
+            className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-900 text-xs font-bold hover:bg-slate-200 transition-colors"
           >
             Modifica
           </Link>
@@ -314,7 +314,7 @@ function SezioneSchedina({
         </div>
       )}
 
-      <div className="glass-card overflow-hidden divide-y divide-white/5">
+      <div className="glass-card overflow-hidden divide-y divide-slate-200">
         {schedina.predictions.map((p, i) => {
           const esito = esiti?.[i];
           return (
@@ -322,25 +322,25 @@ function SezioneSchedina({
               <div className="w-5 flex-shrink-0">
                 {esito ? (
                   esito.isCorrect ? (
-                    <Check size={14} className="text-green-400" />
+                    <Check size={14} className="text-green-600" />
                   ) : (
-                    <X size={14} className="text-red-400" />
+                    <X size={14} className="text-red-600" />
                   )
                 ) : (
-                  <span className="text-white/20 text-xs">{i + 1}</span>
+                  <span className="text-slate-600 text-xs">{i + 1}</span>
                 )}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm truncate">{nomePartita(p.matchId)}</p>
-                <p className="text-[11px] text-white/40">{betLabel(p.betType, p.outcome)}</p>
+                <p className="text-[11px] text-slate-500">{betLabel(p.betType, p.outcome)}</p>
               </div>
               <div className="flex-shrink-0 text-right">
-                <p className="text-xs font-mono text-white/60">{p.odds.toFixed(2)}</p>
+                <p className="text-xs font-mono text-slate-500">{p.odds.toFixed(2)}</p>
                 {esito && (
                   <p
                     className={cn(
                       'text-[11px] font-bold',
-                      esito.pointsEarned > 0 ? 'text-green-400' : 'text-white/30'
+                      esito.pointsEarned > 0 ? 'text-green-600' : 'text-slate-600'
                     )}
                   >
                     {esito.pointsEarned > 0 ? `+${esito.pointsEarned}` : '0'}
@@ -368,11 +368,11 @@ function Riquadro({
 }) {
   return (
     <div className="glass-card p-2.5 text-center">
-      <p className="text-[10px] text-white/40">{etichetta}</p>
+      <p className="text-[10px] text-slate-500">{etichetta}</p>
       <p
         className={cn(
           'font-black text-sm',
-          evidenzia ? 'text-green-400' : negativo && valore < 0 ? 'text-red-400' : 'text-white'
+          evidenzia ? 'text-green-600' : negativo && valore < 0 ? 'text-red-600' : 'text-slate-900'
         )}
       >
         {valore > 0 && evidenzia ? '+' : ''}
@@ -397,7 +397,7 @@ function SezioneClassifica({ righe, uid }: { righe: RankingRow[]; uid: string })
 
   return (
     <div className="space-y-2">
-      <div className="glass-card overflow-hidden divide-y divide-white/5">
+      <div className="glass-card overflow-hidden divide-y divide-slate-200">
         {righe.map(r => {
           const sonoIo = r.participantId === uid;
           return (
@@ -406,33 +406,33 @@ function SezioneClassifica({ righe, uid }: { righe: RankingRow[]; uid: string })
               className={cn('flex items-center gap-3 px-3 py-2.5', sonoIo && 'bg-primary-500/10')}
             >
               <div className="w-7 text-center flex-shrink-0">
-                {medaglia(r.rank) ?? <span className="text-xs font-bold text-white/40">{r.rank}</span>}
+                {medaglia(r.rank) ?? <span className="text-xs font-bold text-slate-500">{r.rank}</span>}
               </div>
               <div className="min-w-0 flex-1">
                 <p
                   className={cn(
                     'text-sm truncate',
-                    sonoIo ? 'font-bold text-primary-200' : 'text-white'
+                    sonoIo ? 'font-bold text-primary-700' : 'text-slate-900'
                   )}
                 >
                   {r.username}
-                  {sonoIo && <span className="text-[10px] text-primary-400 ml-1.5">tu</span>}
+                  {sonoIo && <span className="text-[10px] text-primary-700 ml-1.5">tu</span>}
                 </p>
-                <p className="text-[10px] text-white/40">
+                <p className="text-[10px] text-slate-500">
                   {r.matchdaysPlayed} {r.matchdaysPlayed === 1 ? 'giornata' : 'giornate'} ·{' '}
                   {r.correctPredictions} esatti
-                  {r.weeklyWins > 0 && <span className="text-amber-400"> · {r.weeklyWins} 🏅</span>}
+                  {r.weeklyWins > 0 && <span className="text-amber-600"> · {r.weeklyWins} 🏅</span>}
                 </p>
               </div>
-              <p className="font-black text-primary-300 flex-shrink-0">{r.totalPoints}</p>
+              <p className="font-black text-primary-700 flex-shrink-0">{r.totalPoints}</p>
             </div>
           );
         })}
       </div>
-      <p className="text-[11px] text-white/40 text-center px-4">
+      <p className="text-[11px] text-slate-500 text-center px-4">
         Punti fatti con le schedine di questa lega. La classifica generale dell&apos;app è
         un&apos;altra cosa e si vede in{' '}
-        <Link to="/classifica" className="text-primary-400 hover:underline">
+        <Link to="/classifica" className="text-primary-700 hover:underline">
           CLASSIFICA
         </Link>
         .
@@ -465,10 +465,10 @@ function SezionePartite({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1.5 px-1">
-        <Calendar size={12} className="text-primary-400" />
-        <p className="text-xs font-bold text-white/60">Giornata {giornata}</p>
+        <Calendar size={12} className="text-primary-700" />
+        <p className="text-xs font-bold text-slate-500">Giornata {giornata}</p>
       </div>
-      <div className="glass-card overflow-hidden divide-y divide-white/5">
+      <div className="glass-card overflow-hidden divide-y divide-slate-200">
         {partite.map(m => {
           const live = liveScores[m.id];
           const risultato = live ?? m.result;
@@ -478,25 +478,25 @@ function SezionePartite({
             <div key={m.id} className="flex items-center gap-2 px-3 py-2.5">
               <div className="w-12 flex-shrink-0 text-center">
                 {inCorso ? (
-                  <span className="text-[10px] font-black text-red-400 animate-pulse">LIVE</span>
+                  <span className="text-[10px] font-black text-red-600 animate-pulse">LIVE</span>
                 ) : (
-                  <span className="text-[11px] font-mono text-white/40">{orario(m.scheduledAt)}</span>
+                  <span className="text-[11px] font-mono text-slate-500">{orario(m.scheduledAt)}</span>
                 )}
               </div>
               <div className="flex-1 min-w-0 flex items-center gap-1.5">
                 <TeamLogo src={m.homeTeam.logo} name={m.homeTeam.name} size={16} />
                 <span className="text-sm truncate">{m.homeTeam.shortName || m.homeTeam.name}</span>
-                <span className="text-white/30 text-xs px-1">-</span>
+                <span className="text-slate-600 text-xs px-1">-</span>
                 <TeamLogo src={m.awayTeam.logo} name={m.awayTeam.name} size={16} />
                 <span className="text-sm truncate">{m.awayTeam.shortName || m.awayTeam.name}</span>
               </div>
               <div className="flex-shrink-0 text-right">
                 {risultato ? (
-                  <span className={cn('font-black text-sm', finita ? 'text-white' : 'text-red-400')}>
+                  <span className={cn('font-black text-sm', finita ? 'text-slate-900' : 'text-red-600')}>
                     {risultato.homeGoals}-{risultato.awayGoals}
                   </span>
                 ) : (
-                  <span className="text-[10px] text-white/30">{competitionName(m.competition)}</span>
+                  <span className="text-[10px] text-slate-600">{competitionName(m.competition)}</span>
                 )}
               </div>
             </div>
@@ -523,25 +523,25 @@ function SezioneMembri({
   return (
     <div className="space-y-3">
       <div className="glass-card p-3">
-        <p className="text-[10px] text-white/40 mb-1">Codice invito</p>
+        <p className="text-[10px] text-slate-500 mb-1">Codice invito</p>
         <div className="flex items-center gap-2">
-          <code className="flex-1 font-mono font-black text-lg text-primary-300 tracking-widest">
+          <code className="flex-1 font-mono font-black text-lg text-primary-700 tracking-widest">
             {lega.inviteCode}
           </code>
           <button
             onClick={onCopia}
-            className="p-2 rounded-lg bg-white/10 hover:bg-white/15 transition-colors"
+            className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors"
             aria-label="Copia il codice invito"
           >
             {codiceCopiato ? (
-              <Check size={14} className="text-green-400" />
+              <Check size={14} className="text-green-600" />
             ) : (
-              <Copy size={14} className="text-white/60" />
+              <Copy size={14} className="text-slate-500" />
             )}
           </button>
         </div>
         {lega.description && (
-          <p className="text-xs text-white/50 mt-2 pt-2 border-t border-white/5">
+          <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-200">
             {lega.description}
           </p>
         )}
@@ -549,20 +549,20 @@ function SezioneMembri({
 
       {/* La classifica elenca tutti i membri, anche chi non ha ancora giocato:
           è la sola fonte che porta anche i nomi. */}
-      <div className="glass-card overflow-hidden divide-y divide-white/5">
+      <div className="glass-card overflow-hidden divide-y divide-slate-200">
         {righe.map(m => (
           <div key={m.participantId} className="flex items-center gap-2 px-3 py-2.5">
             <div className="w-6 flex-shrink-0 text-center">
               {m.participantId === lega.ownerId ? (
-                <Crown size={13} className="text-amber-400 mx-auto" />
+                <Crown size={13} className="text-amber-600 mx-auto" />
               ) : (
-                <Users size={13} className="text-white/25 mx-auto" />
+                <Users size={13} className="text-slate-600 mx-auto" />
               )}
             </div>
             <p className="flex-1 min-w-0 text-sm truncate">{m.username}</p>
-            {m.perfectSchedine > 0 && <Award size={13} className="text-primary-400 flex-shrink-0" />}
+            {m.perfectSchedine > 0 && <Award size={13} className="text-primary-700 flex-shrink-0" />}
             {m.weeklyWins > 0 && (
-              <span className="text-[10px] text-amber-400 flex-shrink-0 flex items-center gap-0.5">
+              <span className="text-[10px] text-amber-600 flex-shrink-0 flex items-center gap-0.5">
                 <Medal size={11} />
                 {m.weeklyWins}
               </span>
@@ -570,7 +570,7 @@ function SezioneMembri({
           </div>
         ))}
         {righe.length === 0 && (
-          <p className="px-3 py-4 text-sm text-white/40 text-center">
+          <p className="px-3 py-4 text-sm text-slate-500 text-center">
             {lega.memberCount} {lega.memberCount === 1 ? 'membro' : 'membri'}
           </p>
         )}
@@ -578,7 +578,7 @@ function SezioneMembri({
 
       <Link
         to="/leghe"
-        className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white/60 hover:bg-white/10 transition-colors"
+        className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-sm text-slate-500 hover:bg-slate-100 transition-colors"
       >
         <Trophy size={14} />
         Gestisci le mie leghe

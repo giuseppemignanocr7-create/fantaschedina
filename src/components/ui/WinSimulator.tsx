@@ -33,9 +33,9 @@ export function WinSimulator({
 
   return (
     <div className={cn('glass-card overflow-hidden border-t-4 border-t-yellow-500', className)}>
-      <div className="bg-surface px-4 py-3 border-b border-white/5">
-        <h3 className="font-bold flex items-center gap-2 text-white uppercase tracking-wide text-sm">
-          <Trophy size={16} className="text-yellow-400" />
+      <div className="bg-surface px-4 py-3 border-b border-slate-200">
+        <h3 className="font-bold flex items-center gap-2 text-slate-900 uppercase tracking-wide text-sm">
+          <Trophy size={16} className="text-yellow-700" />
           Simulatore Vincite
         </h3>
       </div>
@@ -43,27 +43,27 @@ export function WinSimulator({
       <div className="p-4 space-y-4 bg-surface/50">
         {/* Vincita Settimanale */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-wider">
             <Zap size={12} />
             Potenziale Settimanale
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-center">
-              <p className="text-[10px] text-yellow-500 font-bold uppercase">1° Posto</p>
-              <p className="text-lg font-mono font-bold text-white">{formatCurrency(weeklyWinnerPrize)}</p>
+              <p className="text-[10px] text-yellow-700 font-bold uppercase">1° Posto</p>
+              <p className="text-lg font-mono font-bold text-slate-900">{formatCurrency(weeklyWinnerPrize)}</p>
             </div>
-            <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-              <p className="text-[10px] text-slate-400 font-bold uppercase">Quota</p>
-              <p className="text-lg font-mono font-bold text-white">{formatCurrency(weeklySharePrize)}</p>
+            <div className="p-3 rounded-lg bg-slate-100 border border-slate-200 text-center">
+              <p className="text-[10px] text-slate-600 font-bold uppercase">Quota</p>
+              <p className="text-lg font-mono font-bold text-slate-900">{formatCurrency(weeklySharePrize)}</p>
             </div>
           </div>
           {couldWinWeekly && (
             <div className="flex items-center justify-between bg-green-500/10 px-3 py-2 rounded-lg border border-green-500/20">
-              <span className="text-xs text-green-400 font-medium flex items-center gap-1">
+              <span className="text-xs text-green-600 font-medium flex items-center gap-1">
                 <TrendingUp size={12} />
                 Totale Stimato
               </span>
-              <span className="font-mono font-bold text-green-400">
+              <span className="font-mono font-bold text-green-600">
                 {formatCurrency(weeklyWinnerPrize + weeklySharePrize)}
               </span>
             </div>
@@ -71,8 +71,8 @@ export function WinSimulator({
         </div>
 
         {/* Vincita Finale */}
-        <div className="pt-3 border-t border-white/5 space-y-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
+        <div className="pt-3 border-t border-slate-200 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-wider">
             <Gift size={12} />
             Premi Stagionali
           </div>
@@ -81,13 +81,13 @@ export function WinSimulator({
               'flex items-center justify-between p-2 rounded-lg border transition-colors',
               estimatedFinalRank === 1 
                 ? 'bg-yellow-500/10 border-yellow-500/20' 
-                : 'bg-white/5 border-transparent'
+                : 'bg-slate-100 border-transparent'
             )}>
               <div className="flex items-center gap-2">
                 <span className="text-base">🥇</span>
-                <span className="text-xs font-medium text-slate-300">1° Classificato</span>
+                <span className="text-xs font-medium text-slate-600">1° Classificato</span>
               </div>
-              <span className={cn('font-mono font-bold text-sm', estimatedFinalRank === 1 ? 'text-yellow-400' : 'text-slate-400')}>
+              <span className={cn('font-mono font-bold text-sm', estimatedFinalRank === 1 ? 'text-yellow-700' : 'text-slate-600')}>
                 {formatCurrency(finalFirst)}
               </span>
             </div>
@@ -95,13 +95,13 @@ export function WinSimulator({
               'flex items-center justify-between p-2 rounded-lg border transition-colors',
               estimatedFinalRank === 2 
                 ? 'bg-slate-400/10 border-slate-400/20' 
-                : 'bg-white/5 border-transparent'
+                : 'bg-slate-100 border-transparent'
             )}>
               <div className="flex items-center gap-2">
                 <span className="text-base">🥈</span>
-                <span className="text-xs font-medium text-slate-300">2° Classificato</span>
+                <span className="text-xs font-medium text-slate-600">2° Classificato</span>
               </div>
-              <span className={cn('font-mono font-bold text-sm', estimatedFinalRank === 2 ? 'text-slate-300' : 'text-slate-400')}>
+              <span className={cn('font-mono font-bold text-sm', estimatedFinalRank === 2 ? 'text-slate-600' : 'text-slate-600')}>
                 {formatCurrency(finalSecond)}
               </span>
             </div>
@@ -109,13 +109,13 @@ export function WinSimulator({
               'flex items-center justify-between p-2 rounded-lg border transition-colors',
               estimatedFinalRank === 3 
                 ? 'bg-orange-500/10 border-orange-500/20' 
-                : 'bg-white/5 border-transparent'
+                : 'bg-slate-100 border-transparent'
             )}>
               <div className="flex items-center gap-2">
                 <span className="text-base">🥉</span>
-                <span className="text-xs font-medium text-slate-300">3° Classificato</span>
+                <span className="text-xs font-medium text-slate-600">3° Classificato</span>
               </div>
-              <span className={cn('font-mono font-bold text-sm', estimatedFinalRank === 3 ? 'text-orange-400' : 'text-slate-400')}>
+              <span className={cn('font-mono font-bold text-sm', estimatedFinalRank === 3 ? 'text-orange-600' : 'text-slate-600')}>
                 {formatCurrency(finalThird)}
               </span>
             </div>
@@ -123,18 +123,18 @@ export function WinSimulator({
         </div>
 
         {/* Posizione attuale */}
-        <div className="pt-3 border-t border-white/5">
+        <div className="pt-3 border-t border-slate-200">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-500 font-medium uppercase tracking-wider">Classifica Attuale</span>
             <span className={cn(
               'font-mono font-bold px-2 py-0.5 rounded text-sm',
-              currentRank <= 3 ? 'bg-primary-500/20 text-primary-400' : 'bg-white/10 text-slate-300'
+              currentRank <= 3 ? 'bg-primary-500/20 text-primary-800' : 'bg-slate-100 text-slate-600'
             )}>
               #{currentRank} <span className="text-[10px] text-slate-500 font-sans font-normal ml-1">/ {participantCount}</span>
             </span>
           </div>
           {currentRank <= 3 && (
-            <p className="text-[10px] text-green-400 mt-2 flex items-center gap-1 font-medium bg-green-500/5 p-1.5 rounded border border-green-500/10">
+            <p className="text-[10px] text-green-600 mt-2 flex items-center gap-1 font-medium bg-green-500/5 p-1.5 rounded border border-green-500/10">
               <TrendingUp size={10} />
               Sei in zona premio! Mantieni la posizione! 🔥
             </p>

@@ -40,7 +40,7 @@ export function StatistichePage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 size={32} className="text-primary-400 animate-spin" />
+        <Loader2 size={32} className="text-primary-700 animate-spin" />
       </div>
     );
   }
@@ -50,15 +50,15 @@ export function StatistichePage() {
       <div className="max-w-2xl mx-auto px-3 py-3 space-y-3">
 
         <div className="flex items-center gap-2 mb-1">
-          <BarChart3 size={20} className="text-emerald-400" />
+          <BarChart3 size={20} className="text-emerald-600" />
           <h1 className="page-title">STATISTICHE</h1>
         </div>
 
         {results.length === 0 ? (
           <div className="glass-card p-8 text-center animate-pop-in">
             <p className="text-5xl mb-3 animate-float inline-block">📊</p>
-            <p className="font-bold text-white mb-1">Nessun dato ancora</p>
-            <p className="text-xs text-white/40">
+            <p className="font-bold text-slate-900 mb-1">Nessun dato ancora</p>
+            <p className="text-xs text-slate-500">
               Le statistiche compaiono dopo la prima giornata valutata: gioca la schedina e torna qui!
             </p>
           </div>
@@ -73,8 +73,8 @@ export function StatistichePage() {
                 { label: 'Posizione', value: myRank ? `#${myRank.rank}` : '—' },
               ].map(k => (
                 <div key={k.label} className="glass-card p-3 text-center">
-                  <p className="text-lg font-black text-primary-400">{k.value}</p>
-                  <p className="text-[9px] text-white/40 uppercase tracking-wide">{k.label}</p>
+                  <p className="text-lg font-black text-primary-700">{k.value}</p>
+                  <p className="text-[9px] text-slate-500 uppercase tracking-wide">{k.label}</p>
                 </div>
               ))}
             </div>
@@ -82,19 +82,19 @@ export function StatistichePage() {
             {/* Trend */}
             <div className="glass-card p-4">
               <p className="section-title mb-3 flex items-center gap-1.5">
-                <TrendingUp size={14} className="text-primary-400" /> Andamento punti
+                <TrendingUp size={14} className="text-primary-700" /> Andamento punti
               </p>
               <div className="flex items-end gap-1.5 h-28">
                 {trend.map((r, i) => (
                   <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-[9px] font-bold text-white/60">
+                    <span className="text-[9px] font-bold text-slate-500">
                       {r.finalPoints.toFixed(0)}
                     </span>
                     <div
                       className="w-full rounded-t bg-gradient-to-t from-primary-600 to-primary-400 min-h-[4px]"
                       style={{ height: `${(r.finalPoints / trendMax) * 100}%` }}
                     />
-                    <span className="text-[8px] text-white/30">G{r.matchday}</span>
+                    <span className="text-[8px] text-slate-600">G{r.matchday}</span>
                   </div>
                 ))}
               </div>
@@ -106,10 +106,10 @@ export function StatistichePage() {
               <div className="space-y-2">
                 <div>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-white/60">La tua media/giornata</span>
-                    <span className="font-bold text-primary-400">{myAvg.toFixed(1)} pt</span>
+                    <span className="text-slate-500">La tua media/giornata</span>
+                    <span className="font-bold text-primary-700">{myAvg.toFixed(1)} pt</span>
                   </div>
-                  <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-primary-500"
                       style={{ width: `${Math.min(100, (myAvg / Math.max(avgAll * 2, 1)) * 100)}%` }}
@@ -118,11 +118,11 @@ export function StatistichePage() {
                 </div>
                 <div>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-white/60">Media della lega</span>
-                    <span className="font-bold text-white/70">{avgAll.toFixed(1)} pt</span>
+                    <span className="text-slate-500">Media della lega</span>
+                    <span className="font-bold text-slate-500">{avgAll.toFixed(1)} pt</span>
                   </div>
-                  <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full bg-white/30" style={{ width: '50%' }} />
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-slate-300" style={{ width: '50%' }} />
                   </div>
                 </div>
               </div>
@@ -131,12 +131,12 @@ export function StatistichePage() {
             {/* Bonus/Penalità */}
             <div className="grid grid-cols-2 gap-2">
               <div className="glass-card p-3 text-center">
-                <p className="text-lg font-black text-green-400">+{totalBonus}</p>
-                <p className="text-[9px] text-white/40 uppercase tracking-wide">Bonus totali</p>
+                <p className="text-lg font-black text-green-600">+{totalBonus}</p>
+                <p className="text-[9px] text-slate-500 uppercase tracking-wide">Bonus totali</p>
               </div>
               <div className="glass-card p-3 text-center">
-                <p className="text-lg font-black text-red-400">{totalPenalty}</p>
-                <p className="text-[9px] text-white/40 uppercase tracking-wide">Penalità totali</p>
+                <p className="text-lg font-black text-red-600">{totalPenalty}</p>
+                <p className="text-[9px] text-slate-500 uppercase tracking-wide">Penalità totali</p>
               </div>
             </div>
           </>

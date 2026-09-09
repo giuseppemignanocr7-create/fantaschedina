@@ -19,7 +19,7 @@ export const TeamLogo = memo(function TeamLogo({
   if (!src || errored) {
     return (
       <span
-        className={cn('inline-flex items-center justify-center font-bold text-white/50', className)}
+        className={cn('inline-flex items-center justify-center font-bold text-slate-500', className)}
         style={{ width: size, height: size, fontSize: size * 0.4 }}
         aria-hidden
       >

@@ -58,7 +58,7 @@ function NavLink({ to, label, icon: Icon, badge, onClick }: { to: string; label:
       />
       {label}
       {badge && (
-        <span className="ml-auto rounded border border-white/10 bg-white/8 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-white/45">
+        <span className="ml-auto rounded border border-white/10 bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-white/45">
           {badge}
         </span>
       )}
@@ -94,7 +94,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       {/* Sidebar panel - always fixed, desktop always visible below header */}
       <aside
         className={cn(
-          'fixed top-0 left-0 z-50 h-full w-64 bg-background border-r border-white/8 flex flex-col transition-transform duration-300',
+          'fixed top-0 left-0 z-50 h-full w-64 bg-night border-r border-white/10 flex flex-col transition-transform duration-300',
           'md:top-14 md:h-[calc(100%-3.5rem)] md:z-30 md:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         )}
@@ -102,7 +102,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         {/* Mobile close button */}
         <div className="md:hidden flex items-center justify-between px-4 py-3.5 border-b border-white/5">
           <Logo badge tagline size="sm" />
-          <button onClick={onClose} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/8 transition-colors" aria-label="Chiudi menu">
+          <button onClick={onClose} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors" aria-label="Chiudi menu">
             <X size={18} />
           </button>
         </div>
@@ -133,11 +133,11 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
           {/* Stats */}
           <div className="grid grid-cols-2 gap-2">
-            <div className="bg-white/5 border border-white/8 rounded-xl p-2.5 text-center">
+            <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 text-center">
               <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest mb-1">PUNTI TOTALI</p>
               <p className="font-black text-primary-400 text-[20px] leading-none">{userPoints.toFixed(1)}</p>
             </div>
-            <div className="bg-white/5 border border-white/8 rounded-xl p-2.5 text-center">
+            <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 text-center">
               <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest mb-1">POSIZIONE</p>
               <p className="font-black text-white text-[22px] leading-none">#{userRank}</p>
             </div>

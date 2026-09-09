@@ -14,8 +14,8 @@ export function EmptyState({ icon = '📭', title, message, ctaLabel, ctaTo, onC
   return (
     <div className="text-center py-16 px-4 animate-pop-in" role="status">
       <p className="text-5xl mb-4 animate-float inline-block">{icon}</p>
-      <h3 className="font-bold text-white text-lg mb-2">{title}</h3>
-      <p className="text-sm text-white/40 mb-6 max-w-sm mx-auto">{message}</p>
+      <h3 className="font-bold text-slate-900 text-lg mb-2">{title}</h3>
+      <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">{message}</p>
       {ctaLabel && ctaTo && (
         <Link
           to={ctaTo}
@@ -43,8 +43,8 @@ export function ErrorState({ title = 'Qualcosa è andato storto', message, onRet
   return (
     <div className="text-center py-16 px-4" role="alert">
       <p className="text-5xl mb-4">⚠️</p>
-      <h3 className="font-bold text-white text-lg mb-2">{title}</h3>
-      <p className="text-sm text-white/40 mb-6 max-w-sm mx-auto">{message}</p>
+      <h3 className="font-bold text-slate-900 text-lg mb-2">{title}</h3>
+      <p className="text-sm text-slate-500 mb-6 max-w-sm mx-auto">{message}</p>
       {onRetry && (
         <button
           onClick={onRetry}

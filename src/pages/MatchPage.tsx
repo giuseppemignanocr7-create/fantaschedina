@@ -57,12 +57,12 @@ export function MatchPage() {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         {isLoadingOdds ? (
-          <Loader2 size={24} className="text-primary-400 animate-spin" />
+          <Loader2 size={24} className="text-primary-700 animate-spin" />
         ) : (
           <div className="glass-card p-8 text-center max-w-sm">
             <p className="text-5xl mb-3">📅</p>
-            <p className="font-bold text-white">Nessuna giornata attiva</p>
-            <p className="text-sm text-white/40 mt-1">
+            <p className="font-bold text-slate-900">Nessuna giornata attiva</p>
+            <p className="text-sm text-slate-500 mt-1">
               Le partite compaiono qui appena la prossima giornata è pronta.
             </p>
           </div>
@@ -76,22 +76,22 @@ export function MatchPage() {
       <div className="max-w-2xl mx-auto px-3 py-3 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <Calendar size={20} className="text-primary-400" />
+            <Calendar size={20} className="text-primary-700" />
             <h1 className="page-title">MATCH</h1>
           </div>
-          <div className="flex items-center gap-1.5 text-xs font-bold text-primary-400 bg-primary-500/10 border border-primary-500/20 px-2 py-1 rounded-full">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-primary-800 bg-primary-500/10 border border-primary-500/20 px-2 py-1 rounded-full">
             Giornata {currentMatchday.number}
           </div>
         </div>
 
         <div className="glass-card p-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 text-xs text-white/50">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
             <Clock size={12} />
             <CountdownTimer deadline={currentMatchday.deadline} />
           </div>
           <Link
             to="/pronostici"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-300 text-xs font-bold hover:bg-primary-500/30 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-800 text-xs font-bold hover:bg-primary-500/30 transition-colors"
           >
             <Target size={12} />
             Compila la schedina
@@ -100,10 +100,10 @@ export function MatchPage() {
 
         {giornate.map(({ giorno, partite }) => (
           <div key={giorno} className="glass-card overflow-hidden">
-            <div className="px-3 py-2 bg-white/5 border-b border-white/5">
-              <p className="text-xs font-bold text-white/70 capitalize">{giorno}</p>
+            <div className="px-3 py-2 bg-slate-100 border-b border-slate-200">
+              <p className="text-xs font-bold text-slate-500 capitalize">{giorno}</p>
             </div>
-            <div className="divide-y divide-white/5">
+            <div className="divide-y divide-slate-200">
               {partite.map(m => {
                 const live = liveScores[m.id];
                 const risultato = live ?? m.result;
@@ -113,11 +113,11 @@ export function MatchPage() {
                   <div key={m.id} className="flex items-center gap-2 px-3 py-2.5">
                     <div className="w-12 flex-shrink-0 text-center">
                       {inCorso ? (
-                        <span className="text-[10px] font-black text-red-400 animate-pulse">
+                        <span className="text-[10px] font-black text-red-600 animate-pulse">
                           LIVE
                         </span>
                       ) : (
-                        <span className="text-[11px] font-mono text-white/40">
+                        <span className="text-[11px] font-mono text-slate-500">
                           {orario(m.scheduledAt)}
                         </span>
                       )}
@@ -127,7 +127,7 @@ export function MatchPage() {
                       <span className="text-sm truncate">
                         {m.homeTeam.shortName || m.homeTeam.name}
                       </span>
-                      <span className="text-white/30 text-xs px-1">-</span>
+                      <span className="text-slate-600 text-xs px-1">-</span>
                       <TeamLogo src={m.awayTeam.logo} name={m.awayTeam.name} size={16} />
                       <span className="text-sm truncate">
                         {m.awayTeam.shortName || m.awayTeam.name}
@@ -138,13 +138,13 @@ export function MatchPage() {
                         <span
                           className={cn(
                             'font-black text-sm',
-                            finita ? 'text-white' : 'text-red-400'
+                            finita ? 'text-slate-900' : 'text-red-600'
                           )}
                         >
                           {risultato.homeGoals}-{risultato.awayGoals}
                         </span>
                       ) : (
-                        <span className="text-[10px] text-white/30">
+                        <span className="text-[10px] text-slate-600">
                           {competitionName(m.competition)}
                         </span>
                       )}

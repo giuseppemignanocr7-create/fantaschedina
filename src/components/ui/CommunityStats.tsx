@@ -32,7 +32,7 @@ export function CommunityStats({ matchId, isDeadlinePassed, className }: Communi
 
   if (!isDeadlinePassed) {
     return (
-      <div className={cn('flex items-center gap-2 text-xs text-white/40', className)}>
+      <div className={cn('flex items-center gap-2 text-xs text-slate-500', className)}>
         <Lock size={12} />
         <span>Statistiche visibili dopo la deadline</span>
       </div>
@@ -41,54 +41,54 @@ export function CommunityStats({ matchId, isDeadlinePassed, className }: Communi
 
   return (
     <div className={cn('space-y-3', className)}>
-      <div className="flex items-center justify-between text-xs text-slate-400 font-medium uppercase tracking-wider">
+      <div className="flex items-center justify-between text-xs text-slate-600 font-medium uppercase tracking-wider">
         <div className="flex items-center gap-2">
-          <Users size={14} className="text-primary-400" />
+          <Users size={14} className="text-primary-700" />
           <span>Scelte Community</span>
         </div>
         <span>{totalVotes} Voti</span>
       </div>
       
-      <div className="flex gap-1 h-3 rounded-full overflow-hidden bg-surface border border-white/5">
+      <div className="flex gap-1 h-3 rounded-full overflow-hidden bg-surface border border-slate-200">
         <div 
           className="bg-green-500 transition-all relative group"
           style={{ width: `${votes['1']}%` }}
         >
-          <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="absolute inset-0 bg-slate-100 opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
         <div 
           className="bg-yellow-500 transition-all relative group"
           style={{ width: `${votes['X']}%` }}
         >
-          <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="absolute inset-0 bg-slate-100 opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
         <div 
           className="bg-red-500 transition-all relative group"
           style={{ width: `${votes['2']}%` }}
         >
-          <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="absolute inset-0 bg-slate-100 opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
       </div>
 
       <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider">
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
-          <span className="text-slate-300">1: <span className="text-white">{votes['1']}%</span></span>
+          <span className="text-slate-600">1: <span className="text-slate-900">{votes['1']}%</span></span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.5)]" />
-          <span className="text-slate-300">X: <span className="text-white">{votes['X']}%</span></span>
+          <span className="text-slate-600">X: <span className="text-slate-900">{votes['X']}%</span></span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
-          <span className="text-slate-300">2: <span className="text-white">{votes['2']}%</span></span>
+          <span className="text-slate-600">2: <span className="text-slate-900">{votes['2']}%</span></span>
         </div>
       </div>
 
       {/* Trend indicator */}
-      <div className="flex items-center gap-2 text-xs bg-white/5 p-2 rounded-lg border border-white/5">
-        <TrendingUp size={14} className="text-primary-400" />
-        <span className="text-slate-400">Tendenza: <span className="text-white font-bold">Esito {getMostChosen(votes)}</span> dominante</span>
+      <div className="flex items-center gap-2 text-xs bg-slate-100 p-2 rounded-lg border border-slate-200">
+        <TrendingUp size={14} className="text-primary-700" />
+        <span className="text-slate-600">Tendenza: <span className="text-slate-900 font-bold">Esito {getMostChosen(votes)}</span> dominante</span>
       </div>
     </div>
   );

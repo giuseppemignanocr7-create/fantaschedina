@@ -36,7 +36,7 @@ export function Logo({ badge = true, tagline = false, size = 'sm', className }: 
       {badge && (
         <div
           className={cn(
-            'flex items-center justify-center flex-shrink-0 bg-background font-display font-black italic tracking-tighter shadow-lg shadow-primary-500/20',
+            'flex items-center justify-center flex-shrink-0 bg-night font-display font-black italic tracking-tighter shadow-lg shadow-primary-500/20',
             BADGE_SIZE[size]
           )}
           style={{ clipPath: BADGE_CLIP }}

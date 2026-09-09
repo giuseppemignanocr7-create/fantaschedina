@@ -11,7 +11,7 @@ function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: bool
       aria-label={label}
       className={cn(
         'w-11 h-6 rounded-full transition-colors relative flex-shrink-0',
-        value ? 'bg-primary-500' : 'bg-white/20'
+        value ? 'bg-primary-500' : 'bg-slate-200'
       )}
     >
       <span
@@ -53,24 +53,24 @@ export function ImpostazioniPage() {
       <div className="max-w-2xl mx-auto px-3 py-3 space-y-3">
 
         <div className="flex items-center gap-2 mb-1">
-          <Settings size={20} className="text-primary-400" />
+          <Settings size={20} className="text-primary-700" />
           <h1 className="page-title">IMPOSTAZIONI</h1>
         </div>
 
         {sections.map((section) => (
           <div key={section.title}>
             <p className="section-title mb-2">{section.title}</p>
-            <div className="glass-card overflow-hidden divide-y divide-white/5">
+            <div className="glass-card overflow-hidden divide-y divide-slate-200">
               {section.items.map((item) => {
                 const Icon = item.icon;
                 return (
                   <div key={item.label} className="flex items-center gap-3 px-4 py-3.5">
-                    <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
-                      <Icon size={17} className="text-primary-400" strokeWidth={1.8} />
+                    <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+                      <Icon size={17} className="text-primary-700" strokeWidth={1.8} />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-bold text-white">{item.label}</p>
-                      <p className="text-[10px] text-white/40">{item.desc}</p>
+                      <p className="text-sm font-bold text-slate-900">{item.label}</p>
+                      <p className="text-[10px] text-slate-500">{item.desc}</p>
                     </div>
                     <Toggle value={item.value} onChange={item.onChange} label={item.label} />
                   </div>
@@ -84,18 +84,18 @@ export function ImpostazioniPage() {
         <div>
           <p className="section-title mb-2">Lingua</p>
           <div className="glass-card p-4 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
-              <Globe size={17} className="text-primary-400" strokeWidth={1.8} />
+            <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+              <Globe size={17} className="text-primary-700" strokeWidth={1.8} />
             </div>
             <div className="flex-1">
-              <label htmlFor="appLanguage" className="text-sm font-bold text-white block">Lingua App</label>
-              <p className="text-[10px] text-white/40">Seleziona la tua lingua</p>
+              <label htmlFor="appLanguage" className="text-sm font-bold text-slate-900 block">Lingua App</label>
+              <p className="text-[10px] text-slate-500">Seleziona la tua lingua</p>
             </div>
             <select
               id="appLanguage"
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
-              className="bg-transparent text-sm text-white/60 focus:outline-none cursor-pointer"
+              className="bg-transparent text-sm text-slate-500 focus:outline-none cursor-pointer"
             >
               <option>Italiano</option>
               <option>English</option>
@@ -104,7 +104,7 @@ export function ImpostazioniPage() {
           </div>
         </div>
 
-        <p className="text-center text-[10px] text-white/20 pb-2">
+        <p className="text-center text-[10px] text-slate-600 pb-2">
           FantaSchedina v1.0.0
         </p>
 

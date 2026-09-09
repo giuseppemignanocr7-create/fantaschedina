@@ -112,7 +112,7 @@ export function QuizCalcioPage() {
   if (phase === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 size={40} className="text-primary-400 animate-spin" />
+        <Loader2 size={40} className="text-primary-700 animate-spin" />
       </div>
     );
   }
@@ -124,42 +124,42 @@ export function QuizCalcioPage() {
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="glass-card p-8 max-w-md w-full text-center space-y-5 animate-pop-in">
           <div className="text-7xl animate-heartbeat">{correct >= 9 ? '👑' : correct >= 7 ? '🏆' : correct >= 5 ? '⭐' : '😅'}</div>
-          <h2 className="font-display font-black text-3xl text-white uppercase">{grade}</h2>
+          <h2 className="font-display font-black text-3xl text-slate-900 uppercase">{grade}</h2>
 
           {/* Barra risposte */}
           <div className="flex gap-1.5 justify-center">
             {Array.from({ length: total }).map((_, i) => (
               <div
                 key={i}
-                className={cn('w-4 h-4 rounded-full animate-pop-in', i < correct ? 'bg-primary-400' : 'bg-white/10')}
+                className={cn('w-4 h-4 rounded-full animate-pop-in', i < correct ? 'bg-primary-400' : 'bg-slate-100')}
                 style={{ animationDelay: `${i * 70}ms` }}
               />
             ))}
           </div>
-          <p className="text-white/60 font-bold">{correct}/{total} risposte corrette</p>
+          <p className="text-slate-500 font-bold">{correct}/{total} risposte corrette</p>
 
           <div className="bg-gradient-to-r from-yellow-500/15 via-yellow-500/25 to-yellow-500/15 border border-yellow-500/30 rounded-2xl p-5">
-            <p className="text-yellow-200/60 text-xs uppercase tracking-widest mb-1">Bottino</p>
-            <p className="font-black text-5xl text-yellow-400 animate-coin-pop">
+            <p className="text-yellow-800/80 text-xs uppercase tracking-widest mb-1">Bottino</p>
+            <p className="font-black text-5xl text-yellow-700 animate-coin-pop">
               +<CountUp to={reward} durationMs={1400} /> 🪙
             </p>
           </div>
 
           {/* Revisione risposte */}
           <div className="text-left space-y-2 max-h-56 overflow-y-auto pr-1">
-            <p className="text-xs font-black text-white/80 uppercase tracking-widest mb-1">📋 Revisione risposte</p>
+            <p className="text-xs font-black text-slate-600 uppercase tracking-widest mb-1">📋 Revisione risposte</p>
             {questions.map((rq, i) => {
               const userAnswer = answers[rq.id];
               const correctAnswer = result.corrections[rq.id];
               const wasCorrect = userAnswer === correctAnswer;
               return (
-                <div key={rq.id} className="bg-white/5 rounded-lg p-2.5 text-xs">
-                  <p className="text-white/70 font-medium mb-1">{i + 1}. {rq.question}</p>
-                  <p className={wasCorrect ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
+                <div key={rq.id} className="bg-slate-100 rounded-lg p-2.5 text-xs">
+                  <p className="text-slate-500 font-medium mb-1">{i + 1}. {rq.question}</p>
+                  <p className={wasCorrect ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
                     {wasCorrect ? '✓' : '✗'} {rq.options[userAnswer] ?? 'Nessuna risposta'}
                   </p>
                   {!wasCorrect && (
-                    <p className="text-green-400/80 mt-0.5">Corretta: {rq.options[correctAnswer]}</p>
+                    <p className="text-green-700/90 mt-0.5">Corretta: {rq.options[correctAnswer]}</p>
                   )}
                 </div>
               );
@@ -167,17 +167,17 @@ export function QuizCalcioPage() {
           </div>
 
           {/* Come usare i gettoni */}
-          <div className="bg-white/5 rounded-xl p-4 text-left space-y-2">
-            <p className="text-xs font-black text-white/80 uppercase tracking-widest mb-1">💡 Come usare i gettoni</p>
-            <Link to="/schedina" className="flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors">
-              <span className="text-primary-400">▸</span> Vai alla schedina e compra power-up
+          <div className="bg-slate-100 rounded-xl p-4 text-left space-y-2">
+            <p className="text-xs font-black text-slate-600 uppercase tracking-widest mb-1">💡 Come usare i gettoni</p>
+            <Link to="/schedina" className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900 transition-colors">
+              <span className="text-primary-700">▸</span> Vai alla schedina e compra power-up
             </Link>
-            <div className="flex items-center gap-2 text-sm text-white/60">
-              <span className="text-primary-400">▸</span> 🃏 Jolly (200🪙) · 🛡️ Scudo (150🪙) · ⭐ Assicurazione (120🪙)
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <span className="text-primary-700">▸</span> 🃏 Jolly (200🪙) · 🛡️ Scudo (150🪙) · ⭐ Assicurazione (120🪙)
             </div>
           </div>
 
-          <p className="text-xs text-white/40">Puoi giocare una volta al giorno. Torna domani!</p>
+          <p className="text-xs text-slate-500">Puoi giocare una volta al giorno. Torna domani!</p>
           <div className="flex gap-2">
             <Link to="/schedina" className="flex-1 btn-green text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
               🎫 USA I GETTONI
@@ -196,32 +196,32 @@ export function QuizCalcioPage() {
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="glass-card p-8 max-w-md w-full text-center space-y-5 animate-pop-in">
           <div className="text-7xl animate-float">🧠</div>
-          <h1 className="font-display font-black text-3xl text-white uppercase">Quiz Calcio</h1>
-          <p className="text-white/50 text-sm">
+          <h1 className="font-display font-black text-3xl text-slate-900 uppercase">Quiz Calcio</h1>
+          <p className="text-slate-500 text-sm">
             {COINS.quizMaxQuestions} domande · {TIMER} secondi ciascuna
             <br />
             Guadagna fino a{' '}
-            <span className="text-yellow-400 font-bold">
+            <span className="text-yellow-700 font-bold">
               {COINS.quizMaxQuestions * COINS.quizPerCorrect} gettoni 🪙
             </span>
           </p>
-          <div className="bg-white/5 rounded-xl p-4 text-left space-y-2">
+          <div className="bg-slate-100 rounded-xl p-4 text-left space-y-2">
             {[
               `${COINS.quizMaxQuestions} domande sul calcio`,
               `${TIMER} secondi per rispondere`,
               `+${COINS.quizPerCorrect} gettoni per risposta corretta`,
               '1 partita al giorno',
             ].map(r => (
-              <div key={r} className="flex items-center gap-2 text-sm text-white/70">
-                <CheckCircle2 size={14} className="text-primary-400 flex-shrink-0" /> {r}
+              <div key={r} className="flex items-center gap-2 text-sm text-slate-500">
+                <CheckCircle2 size={14} className="text-primary-700 flex-shrink-0" /> {r}
               </div>
             ))}
           </div>
-          {error && <p className="text-sm text-red-400 animate-shake">{error}</p>}
+          {error && <p className="text-sm text-red-600 animate-shake">{error}</p>}
           <button onClick={begin} className="btn-green w-full text-sm font-black animate-pulse-glow active:scale-95 transition-transform">
             ⚡ INIZIA IL QUIZ
           </button>
-          <Link to="/minigiochi" className="block text-xs text-white/30 hover:text-white/60 transition-colors">← Torna ai minigiochi</Link>
+          <Link to="/minigiochi" className="block text-xs text-slate-600 hover:text-slate-500 transition-colors">← Torna ai minigiochi</Link>
         </div>
       </div>
     );
@@ -234,23 +234,23 @@ export function QuizCalcioPage() {
       <div className="max-w-lg mx-auto space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <Link to="/minigiochi" className="p-2 text-white/40 hover:text-white transition-colors">
+          <Link to="/minigiochi" className="p-2 text-slate-500 hover:text-slate-900 transition-colors">
             <ArrowLeft size={20} />
           </Link>
           <div className="flex gap-1">
             {questions.map((_, i) => (
               <div key={i} className={cn('w-2 h-2 rounded-full transition-all',
-                i < idx ? 'bg-primary-500' : i === idx ? 'bg-white' : 'bg-white/15')} />
+                i < idx ? 'bg-primary-500' : i === idx ? 'bg-white' : 'bg-slate-200')} />
             ))}
           </div>
           <div className={cn('flex items-center gap-1.5 text-sm font-bold px-2.5 py-1 rounded-lg transition-colors', timer <= 5 && 'bg-red-500/20 animate-heartbeat')}>
-            <Clock size={14} className={timer <= 5 ? 'text-red-400' : 'text-white/40'} />
-            <span className={timer <= 5 ? 'text-red-400 font-black' : 'text-white/60'}>{timer}s</span>
+            <Clock size={14} className={timer <= 5 ? 'text-red-600' : 'text-slate-500'} />
+            <span className={timer <= 5 ? 'text-red-600 font-black' : 'text-slate-500'}>{timer}s</span>
           </div>
         </div>
 
         {/* Timer bar */}
-        <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+        <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
           <div
             className={cn('h-full rounded-full transition-all duration-1000', timer > 5 ? 'bg-primary-500' : 'bg-red-500')}
             style={{ width: `${100 - pct}%` }}
@@ -260,11 +260,11 @@ export function QuizCalcioPage() {
         {/* Question */}
         <div key={q.id} className="glass-card p-5 animate-slide-up">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] text-primary-400 uppercase tracking-widest font-bold">
+            <p className="text-[10px] text-primary-700 uppercase tracking-widest font-bold">
               Domanda {idx + 1} / {questions.length}
             </p>
           </div>
-          <p className="font-bold text-lg text-white leading-snug">{q.question}</p>
+          <p className="font-bold text-lg text-slate-900 leading-snug">{q.question}</p>
         </div>
 
         {/* Options: la scelta si blocca subito, il verdetto arriva solo a fine quiz */}
@@ -279,22 +279,22 @@ export function QuizCalcioPage() {
                 disabled={locked}
                 className={cn(
                   'w-full flex items-center gap-3 p-4 rounded-xl border text-left font-medium text-sm transition-all animate-slide-up',
-                  !showFeedback && !locked && 'bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/25 hover:scale-[1.01] active:scale-[0.98]',
-                  !showFeedback && locked && 'bg-white/5 border-white/10 text-white/80',
-                  showFeedback && isPicked && 'bg-white/15 border-white/40 text-white scale-[1.01]',
-                  showFeedback && !isPicked && 'bg-white/5 border-white/10 text-white/30'
+                  !showFeedback && !locked && 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300 hover:scale-[1.01] active:scale-[0.98]',
+                  !showFeedback && locked && 'bg-slate-100 border-slate-200 text-slate-600',
+                  showFeedback && isPicked && 'bg-slate-200 border-slate-200 text-slate-900 scale-[1.01]',
+                  showFeedback && !isPicked && 'bg-slate-100 border-slate-200 text-slate-600'
                 )}
                 style={{ animationDelay: `${i * 60}ms` }}
               >
                 <span className={cn(
                   'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black flex-shrink-0',
-                  showFeedback && isPicked && 'bg-white/30 text-white',
-                  !showFeedback && 'bg-white/10'
+                  showFeedback && isPicked && 'bg-slate-300 text-slate-900',
+                  !showFeedback && 'bg-slate-100'
                 )}>
                   {String.fromCharCode(65 + i)}
                 </span>
                 <span className="flex-1">{opt}</span>
-                {showFeedback && isPicked && <Lock size={16} className="text-white/50 flex-shrink-0" />}
+                {showFeedback && isPicked && <Lock size={16} className="text-slate-500 flex-shrink-0" />}
               </button>
             );
           })}
@@ -302,11 +302,11 @@ export function QuizCalcioPage() {
 
         {/* Feedback banner: conferma solo che la risposta è stata registrata */}
         {locked && picked !== null && (
-          <div className="glass-card p-3 text-center animate-pop-in bg-white/5 border-white/15">
-            <p className="font-black text-sm uppercase text-white/60">
+          <div className="glass-card p-3 text-center animate-pop-in bg-slate-100 border-slate-300">
+            <p className="font-black text-sm uppercase text-slate-500">
               {picked === -1 ? '⏱ Tempo scaduto' : '🔒 Risposta bloccata'}
             </p>
-            <p className="text-[10px] text-white/35 mt-0.5">
+            <p className="text-[10px] text-slate-600 mt-0.5">
               Scoprirai le risposte corrette alla fine del quiz
             </p>
           </div>
