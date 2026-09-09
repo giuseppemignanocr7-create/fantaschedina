@@ -197,45 +197,45 @@ export function MemoriaCalcioPage() {
         <div className="glass-card p-8 max-w-md w-full text-center space-y-5 animate-pop-in">
           {phase === 'submitting' ? (
             <>
-              <Loader2 size={48} className="mx-auto animate-spin text-primary-400" />
-              <h2 className="font-display font-black text-2xl text-white uppercase">Calcolo premi...</h2>
+              <Loader2 size={48} className="mx-auto animate-spin text-primary-700" />
+              <h2 className="font-display font-black text-2xl text-slate-900 uppercase">Calcolo premi...</h2>
             </>
           ) : (
             <>
               <div className="text-7xl animate-float">🧠</div>
-              <h1 className="font-display font-black text-3xl text-white uppercase">Memoria Calcio</h1>
-              <p className="text-white/50 text-sm">
+              <h1 className="font-display font-black text-3xl text-slate-900 uppercase">Memoria Calcio</h1>
+              <p className="text-slate-500 text-sm">
                 Trova le coppie di emoji calcistiche prima dello scadere del tempo!
               </p>
-              <div className="bg-white/5 rounded-xl p-4 text-left space-y-2">
-                <p className="text-xs font-black text-white/80 uppercase tracking-widest mb-2">3 Livelli</p>
+              <div className="bg-slate-100 rounded-xl p-4 text-left space-y-2">
+                <p className="text-xs font-black text-slate-600 uppercase tracking-widest mb-2">3 Livelli</p>
                 {LEVELS.map((lv, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm text-white/70">
-                    <span className="text-primary-400 text-xs">▸</span>
+                  <div key={i} className="flex items-center gap-2 text-sm text-slate-500">
+                    <span className="text-primary-700 text-xs">▸</span>
                     <span className="font-bold">{lv.name}</span>
-                    <span className="text-white/40">· {lv.pairs} coppie · {lv.time}s</span>
+                    <span className="text-slate-500">· {lv.pairs} coppie · {lv.time}s</span>
                   </div>
                 ))}
               </div>
-              <div className="bg-white/5 rounded-xl p-3 text-left space-y-1">
-                <div className="flex items-center gap-2 text-sm text-white/70">
-                  <span className="text-yellow-400">🪙</span>
+              <div className="bg-slate-100 rounded-xl p-3 text-left space-y-1">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <span className="text-yellow-700">🪙</span>
                   +{COINS.memoriaPerLevel} per livello completato
                 </div>
-                <div className="flex items-center gap-2 text-sm text-white/70">
-                  <span className="text-yellow-400">⏱️</span>
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <span className="text-yellow-700">⏱️</span>
                   +{COINS.memoriaTimeBonus} per 5 secondi rimanenti
                 </div>
-                <div className="flex items-center gap-2 text-sm text-white/70">
-                  <span className="text-yellow-400">📊</span>
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <span className="text-yellow-700">📊</span>
                   Max {COINS.memoriaDailyCap} gettoni al giorno · gioca quanto vuoi!
                 </div>
               </div>
-              {error && <p className="text-sm text-red-400 animate-shake">{error}</p>}
+              {error && <p className="text-sm text-red-600 animate-shake">{error}</p>}
               <button onClick={begin} className="btn-green w-full text-sm font-black animate-pulse-glow active:scale-95 transition-transform">
                 ⚡ INIZIA A GIOCARE
               </button>
-              <Link to="/minigiochi" className="block text-xs text-white/30 hover:text-white/60 transition-colors">
+              <Link to="/minigiochi" className="block text-xs text-slate-600 hover:text-slate-500 transition-colors">
                 ← Torna ai minigiochi
               </Link>
             </>
@@ -254,10 +254,10 @@ export function MemoriaCalcioPage() {
           <div className="text-7xl animate-heartbeat">
             {allDone ? '🏆' : result.levelsCompleted >= 2 ? '⭐' : '🎮'}
           </div>
-          <h2 className="font-display font-black text-3xl text-white uppercase">
+          <h2 className="font-display font-black text-3xl text-slate-900 uppercase">
             {allDone ? 'PERFETTO!' : result.levelsCompleted >= 2 ? 'BRAVO!' : 'HAI GIOCATO!'}
           </h2>
-          <p className="text-white/60 font-bold">
+          <p className="text-slate-500 font-bold">
             {result.levelsCompleted}/{LEVELS.length} livelli completati
           </p>
 
@@ -267,8 +267,8 @@ export function MemoriaCalcioPage() {
               <div key={i} className={cn(
                 'px-3 py-1.5 rounded-xl text-xs font-black animate-pop-in',
                 i < result.levelsCompleted
-                  ? 'bg-primary-500/20 text-primary-300 border border-primary-500/40'
-                  : 'bg-white/5 text-white/20 border border-white/10'
+                  ? 'bg-primary-500/20 text-primary-800 border border-primary-500/40'
+                  : 'bg-slate-100 text-slate-600 border border-slate-200'
               )} style={{ animationDelay: `${i * 100}ms` }}>
                 {i < result.levelsCompleted ? '✓ ' : ''}{lv.name}
               </div>
@@ -276,19 +276,19 @@ export function MemoriaCalcioPage() {
           </div>
 
           {/* Breakdown */}
-          <div className="bg-white/5 rounded-xl p-4 space-y-2 text-left">
+          <div className="bg-slate-100 rounded-xl p-4 space-y-2 text-left">
             <div className="flex justify-between text-sm">
-              <span className="text-white/60">Livelli ({result.levelsCompleted} × {COINS.memoriaPerLevel}🪙)</span>
-              <span className="text-yellow-400 font-bold">+{result.levelReward}</span>
+              <span className="text-slate-500">Livelli ({result.levelsCompleted} × {COINS.memoriaPerLevel}🪙)</span>
+              <span className="text-yellow-700 font-bold">+{result.levelReward}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/60">Bonus tempo ({result.timeRemaining}s)</span>
-              <span className="text-yellow-400 font-bold">+{result.timeBonus}</span>
+              <span className="text-slate-500">Bonus tempo ({result.timeRemaining}s)</span>
+              <span className="text-yellow-700 font-bold">+{result.timeBonus}</span>
             </div>
-            <div className="h-px bg-white/10" />
+            <div className="h-px bg-slate-100" />
             <div className="flex justify-between text-sm font-black">
-              <span className="text-white">Totale</span>
-              <span className="text-yellow-400">+{result.reward} 🪙</span>
+              <span className="text-slate-900">Totale</span>
+              <span className="text-yellow-700">+{result.reward} 🪙</span>
             </div>
           </div>
 
@@ -314,26 +314,26 @@ export function MemoriaCalcioPage() {
       <div className="max-w-md mx-auto space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <Link to="/minigiochi" className="p-2 text-white/40 hover:text-white transition-colors">
+          <Link to="/minigiochi" className="p-2 text-slate-500 hover:text-slate-900 transition-colors">
             <ArrowLeft size={20} />
           </Link>
           <div className="text-center">
-            <p className="font-black text-sm text-white">
+            <p className="font-black text-sm text-slate-900">
               Livello {levelIdx + 1} / {LEVELS.length}
             </p>
-            <p className="text-[10px] text-primary-400 uppercase tracking-widest">{level.name}</p>
+            <p className="text-[10px] text-primary-700 uppercase tracking-widest">{level.name}</p>
           </div>
           <div className={cn(
             'flex items-center gap-1.5 text-sm font-bold px-2.5 py-1 rounded-lg transition-colors',
             timer <= 10 && 'bg-red-500/20 animate-heartbeat'
           )}>
-            <Clock size={14} className={timer <= 10 ? 'text-red-400' : 'text-white/40'} />
-            <span className={timer <= 10 ? 'text-red-400 font-black' : 'text-white/60'}>{timer}s</span>
+            <Clock size={14} className={timer <= 10 ? 'text-red-600' : 'text-slate-500'} />
+            <span className={timer <= 10 ? 'text-red-600 font-black' : 'text-slate-500'}>{timer}s</span>
           </div>
         </div>
 
         {/* Timer bar */}
-        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
           <div
             className={cn('h-full rounded-full transition-all duration-1000',
               timer > 10 ? 'bg-primary-500' : 'bg-red-500')}
@@ -346,15 +346,15 @@ export function MemoriaCalcioPage() {
           {LEVELS.map((_, i) => (
             <div key={i} className={cn(
               'w-8 h-1.5 rounded-full transition-all',
-              i < levelIdx ? 'bg-primary-500' : i === levelIdx ? 'bg-white' : 'bg-white/15'
+              i < levelIdx ? 'bg-primary-500' : i === levelIdx ? 'bg-white' : 'bg-slate-200'
             )} />
           ))}
         </div>
 
         {/* Stats */}
-        <div className="flex justify-center gap-4 text-xs text-white/40">
-          <span>Coppie: <span className="text-primary-400 font-bold">{matchedCount / 2}/{level.pairs}</span></span>
-          <span>Mosse: <span className="text-white/70 font-bold">{moves}</span></span>
+        <div className="flex justify-center gap-4 text-xs text-slate-500">
+          <span>Coppie: <span className="text-primary-700 font-bold">{matchedCount / 2}/{level.pairs}</span></span>
+          <span>Mosse: <span className="text-slate-500 font-bold">{moves}</span></span>
         </div>
 
         {/* Card grid 3D flip */}
@@ -390,7 +390,7 @@ export function MemoriaCalcioPage() {
                 <div
                   className={cn(
                     'absolute inset-0 rounded-2xl flex items-center justify-center text-4xl bg-gradient-to-br from-white/15 to-white/5 border shadow-lg [backface-visibility:hidden]',
-                    card.state === 'matched' ? 'border-green-500/40 shadow-green-500/15' : 'border-white/30'
+                    card.state === 'matched' ? 'border-green-500/40 shadow-green-500/15' : 'border-slate-300'
                   )}
                   style={{ transform: 'rotateY(180deg)' }}
                 >

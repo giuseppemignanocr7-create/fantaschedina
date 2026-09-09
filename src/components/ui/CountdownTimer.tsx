@@ -72,7 +72,7 @@ export function CountdownTimer({ deadline, onExpire, className }: CountdownTimer
   return (
     <div className={cn(
       'flex items-center gap-3',
-      isUrgent ? 'text-live animate-pulse' : isWarning ? 'text-accent-400' : 'text-white',
+      isUrgent ? 'text-live animate-pulse' : isWarning ? 'text-accent-700' : 'text-slate-900',
       className
     )}>
       <Clock size={18} />

@@ -61,33 +61,33 @@ export function MissioniPage() {
 
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
-            <Flag size={20} className="text-pink-400" />
+            <Flag size={20} className="text-pink-600" />
             <h1 className="page-title">MISSIONI</h1>
           </div>
           <div className="flex items-center gap-1.5 bg-yellow-500/10 border border-yellow-500/30 px-3 py-1.5 rounded-xl animate-pulse-glow">
-            <Coins size={14} className="text-yellow-400" />
-            <span className="font-black text-sm text-yellow-400">{profile?.coins ?? 0}</span>
+            <Coins size={14} className="text-yellow-700" />
+            <span className="font-black text-sm text-yellow-700">{profile?.coins ?? 0}</span>
           </div>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-2">
           <div className="glass-card p-3 text-center">
-            <p className="text-xl font-black text-primary-400">{completedCount}</p>
-            <p className="text-[9px] text-white/40 uppercase tracking-wide">Completate</p>
+            <p className="text-xl font-black text-primary-700">{completedCount}</p>
+            <p className="text-[9px] text-slate-500 uppercase tracking-wide">Completate</p>
           </div>
           <div className="glass-card p-3 text-center">
-            <p className="text-xl font-black text-white">{claimableCount}</p>
-            <p className="text-[9px] text-white/40 uppercase tracking-wide">Da riscuotere</p>
+            <p className="text-xl font-black text-slate-900">{claimableCount}</p>
+            <p className="text-[9px] text-slate-500 uppercase tracking-wide">Da riscuotere</p>
           </div>
           <div className="glass-card p-3 text-center">
-            <p className="text-xl font-black text-yellow-400">{earnedCoins}</p>
-            <p className="text-[9px] text-white/40 uppercase tracking-wide">🪙 Guadagnati</p>
+            <p className="text-xl font-black text-yellow-700">{earnedCoins}</p>
+            <p className="text-[9px] text-slate-500 uppercase tracking-wide">🪙 Guadagnati</p>
           </div>
         </div>
 
         {error && (
-          <div className="glass-card p-3 border-red-500/30 text-sm text-red-300">{error}</div>
+          <div className="glass-card p-3 border-red-500/30 text-sm text-red-600">{error}</div>
         )}
 
         {/* Mission list */}
@@ -105,34 +105,34 @@ export function MissioniPage() {
               <div className="flex items-start gap-3">
                 <div className={cn(
                   'w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0',
-                  m.isClaimed ? 'bg-primary-500/20 border border-primary-500/40' : 'bg-white/5',
+                  m.isClaimed ? 'bg-primary-500/20 border border-primary-500/40' : 'bg-slate-100',
                   m.completed && !m.isClaimed && 'animate-wiggle'
                 )}>
                   {m.isClaimed ? (
-                    <CheckCircle2 size={18} className="text-primary-400" />
+                    <CheckCircle2 size={18} className="text-primary-700" />
                   ) : m.completed ? (
                     <span className="text-lg">🎁</span>
                   ) : (
-                    <Flag size={16} className="text-pink-400" />
+                    <Flag size={16} className="text-pink-600" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <p className={cn('font-bold text-sm', m.isClaimed ? 'text-primary-400 line-through' : 'text-white')}>
+                    <p className={cn('font-bold text-sm', m.isClaimed ? 'text-primary-700 line-through' : 'text-slate-900')}>
                       {m.name}
                     </p>
-                    <span className="text-[10px] font-black text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded-full flex-shrink-0">
+                    <span className="text-[10px] font-black text-yellow-700 bg-yellow-500/10 px-2 py-0.5 rounded-full flex-shrink-0">
                       +{m.reward} 🪙
                     </span>
                   </div>
-                  <p className="text-xs text-white/40 mt-0.5">{m.description}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{m.description}</p>
                   {!m.isClaimed && (
                     <div className="mt-2">
                       <div className="flex justify-between text-[9px] mb-1">
-                        <span className="text-white/30">Progresso</span>
-                        <span className="text-white/60 font-bold">{m.progress}/{m.target}</span>
+                        <span className="text-slate-600">Progresso</span>
+                        <span className="text-slate-500 font-bold">{m.progress}/{m.target}</span>
                       </div>
-                      <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-primary-600 to-primary-400 transition-all duration-700"
                           style={{

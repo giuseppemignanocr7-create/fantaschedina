@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { sideCannons, vibrate } from '@/lib/juice';
 import type { BetType, BetOutcome, Prediction, Match } from '@/types';
 import type { MatchOdds } from '@/data/mockData';
@@ -106,22 +107,22 @@ const SlipPanel = memo(function SlipPanel({
     predictions.find(p => p.matchId === matchId);
 
   return (
-    <div className={cn('glass-card overflow-hidden border border-white/8', compact && 'border-accent-500/20')}>
+    <div className={cn('glass-card overflow-hidden border border-slate-200', compact && 'border-accent-500/20')}>
       {/* Slip header */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-white/8 bg-white/3">
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200 bg-slate-50">
         <div className="flex items-center gap-2">
-          <ListChecks size={14} className="text-accent-400" />
-          <span className="font-black text-xs text-white uppercase tracking-wide">La tua Schedina</span>
+          <ListChecks size={14} className="text-accent-700" />
+          <span className="font-black text-xs text-slate-900 uppercase tracking-wide">La tua Schedina</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className={cn(
             'text-[10px] font-black px-2 py-0.5 rounded-full',
-            isComplete ? 'bg-green-500/20 text-green-400' : 'bg-white/8 text-white/40'
+            isComplete ? 'bg-green-500/20 text-green-600' : 'bg-slate-100 text-slate-500'
           )}>
             {completedCount}/{total}
           </span>
           {completedCount > 0 && !isLocked && (
-            <button onClick={onReset} title="Azzera" aria-label="Azzera pronostico" className="text-white/25 hover:text-red-400 transition-colors p-0.5">
+            <button onClick={onReset} title="Azzera" aria-label="Azzera pronostico" className="text-slate-600 hover:text-red-600 transition-colors p-0.5">
               <RotateCcw size={11} />
             </button>
           )}
@@ -129,7 +130,7 @@ const SlipPanel = memo(function SlipPanel({
       </div>
 
       {/* Rows */}
-      <div className="divide-y divide-white/5">
+      <div className="divide-y divide-slate-200">
         {matches.map((match, idx) => {
           const pred = getPrediction(match.id);
           return (
@@ -139,20 +140,20 @@ const SlipPanel = memo(function SlipPanel({
             )}>
               <span className={cn(
                 'w-4 h-4 rounded text-[8px] font-black flex items-center justify-center flex-shrink-0',
-                pred ? 'bg-primary-500 text-white' : 'bg-white/10 text-white/30'
+                pred ? 'bg-primary-500 text-night' : 'bg-slate-100 text-slate-600'
               )}>{idx + 1}</span>
-              <span className="text-[10px] text-white/60 flex-1 truncate leading-none">
+              <span className="text-[10px] text-slate-500 flex-1 truncate leading-none">
                 {match.homeTeam.shortName}–{match.awayTeam.shortName}
               </span>
               {pred ? (
                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <span className="w-6 h-6 rounded font-black text-[11px] flex items-center justify-center bg-primary-500/25 text-primary-300">{pred.outcome}</span>
+                  <span className="w-6 h-6 rounded font-black text-[11px] flex items-center justify-center bg-primary-500/25 text-primary-800">{pred.outcome}</span>
                   <div className="text-right">
-                    <div className="text-[10px] font-mono text-accent-400 font-bold leading-none">{pred.odds.toFixed(2)}</div>
+                    <div className="text-[10px] font-mono text-accent-700 font-bold leading-none">{pred.odds.toFixed(2)}</div>
                   </div>
                 </div>
               ) : (
-                <span className="text-white/20 text-xs flex-shrink-0">—</span>
+                <span className="text-slate-600 text-xs flex-shrink-0">—</span>
               )}
             </div>
           );
@@ -160,18 +161,18 @@ const SlipPanel = memo(function SlipPanel({
       </div>
 
       {/* Totals */}
-      <div className="px-3 py-2.5 border-t border-white/8 bg-white/3 space-y-1.5">
+      <div className="px-3 py-2.5 border-t border-slate-200 bg-slate-50 space-y-1.5">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-white/40 flex items-center gap-1"><TrendingUp size={11} /> Punti potenziali</span>
-          <span className="font-black text-primary-400 text-base">{Math.round(totalPotential)} pt</span>
+          <span className="text-slate-500 flex items-center gap-1"><TrendingUp size={11} /> Punti potenziali</span>
+          <span className="font-black text-primary-700 text-base">{Math.round(totalPotential)} pt</span>
         </div>
         {isComplete && (
-          <div className="text-[9px] text-white/30 text-center">
-            Bonus 10/10: <span className="text-green-400 font-bold">+50pt</span> · 9/10: <span className="text-yellow-400 font-bold">+20pt</span>
+          <div className="text-[9px] text-slate-600 text-center">
+            Bonus 10/10: <span className="text-green-600 font-bold">+50pt</span> · 9/10: <span className="text-yellow-700 font-bold">+20pt</span>
           </div>
         )}
         {completedCount < total && completedCount > 0 && (
-          <div className="text-[9px] text-yellow-400/70 text-center font-bold">
+          <div className="text-[9px] text-yellow-700/90 text-center font-bold">
             Mancano {total - completedCount} pronostic{total - completedCount === 1 ? 'o' : 'i'}
           </div>
         )}
@@ -187,25 +188,25 @@ const SlipPanel = memo(function SlipPanel({
               'w-full py-3 rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all',
               isComplete
                 ? 'bg-gradient-to-r from-primary-500 to-primary-400 text-white shadow-lg shadow-primary-500/30 hover:from-primary-400 hover:to-primary-300'
-                : 'bg-white/8 text-white/25 cursor-not-allowed'
+                : 'bg-slate-100 text-slate-600 cursor-not-allowed'
             )}
           >
             {isSubmitting
-              ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Invio...</>
+              ? <><div className="w-3 h-3 border-2 border-slate-300 border-t-white rounded-full animate-spin" /> Invio...</>
               : <><Send size={13} /> {isComplete ? 'INVIA SCHEDINA' : `${completedCount}/${total} COMPLETATE`}</>
             }
           </button>
         </div>
       ) : (
         <div className="p-3 text-center space-y-2">
-          <CheckCircle2 size={24} className="text-green-400 mx-auto mb-1.5" />
-          <p className="font-bold text-green-400 text-sm">Inviata!</p>
+          <CheckCircle2 size={24} className="text-green-600 mx-auto mb-1.5" />
+          <p className="font-bold text-green-600 text-sm">Inviata!</p>
           {canEdit ? (
             <>
               <div className="flex flex-wrap gap-1.5 justify-center pt-1">
                 <button
                   onClick={onEdit}
-                  className="flex items-center justify-center gap-1 py-1.5 px-3 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-300 text-[10px] font-bold hover:bg-primary-500/30 transition-all"
+                  className="flex items-center justify-center gap-1 py-1.5 px-3 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-800 text-[10px] font-bold hover:bg-primary-500/30 transition-all"
                 >
                   <Pencil size={11} />
                   Modifica
@@ -213,7 +214,7 @@ const SlipPanel = memo(function SlipPanel({
                 <button
                   onClick={onCancel}
                   disabled={isCancelling}
-                  className="flex items-center justify-center gap-1 py-1.5 px-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-300 text-[10px] font-bold hover:bg-red-500/30 transition-all disabled:opacity-50"
+                  className="flex items-center justify-center gap-1 py-1.5 px-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-600 text-[10px] font-bold hover:bg-red-500/30 transition-all disabled:opacity-50"
                 >
                   {isCancelling ? (
                     <div className="w-2.5 h-2.5 border-2 border-red-300/30 border-t-red-300 rounded-full animate-spin" />
@@ -223,10 +224,10 @@ const SlipPanel = memo(function SlipPanel({
                   Annulla
                 </button>
               </div>
-              <p className="text-[9px] text-white/30">Disponibile fino a 2 ore dall'inizio della prima partita</p>
+              <p className="text-[9px] text-slate-600">Disponibile fino a 2 ore dall'inizio della prima partita</p>
             </>
           ) : (
-            <Link to="/classifica" className="text-[10px] text-primary-400 font-bold hover:text-primary-300 flex items-center gap-0.5 justify-center mt-1">
+            <Link to="/classifica" className="text-[10px] text-primary-700 font-bold hover:text-primary-700 flex items-center gap-0.5 justify-center mt-1">
               Classifica <ChevronRight size={10} />
             </Link>
           )}
@@ -266,29 +267,29 @@ const MatchCard = memo(function MatchCard({
         <div className="flex items-center gap-1.5">
           <span className={cn(
             'w-5 h-5 rounded text-[9px] font-black flex items-center justify-center',
-            pred ? 'bg-primary-500 text-white' : 'bg-white/10 text-white/40'
+            pred ? 'bg-primary-500 text-night' : 'bg-slate-100 text-slate-500'
           )}>{idx + 1}</span>
           <div>
-            <div className="flex items-center gap-1 text-sm font-bold text-white leading-tight">
+            <div className="flex items-center gap-1 text-sm font-bold text-slate-900 leading-tight">
               <TeamLogo src={match.homeTeam.logo} name={match.homeTeam.name} size={16} />
               <span>{match.homeTeam.shortName}</span>
-              <span className="text-white/30 text-[10px] font-normal">vs</span>
+              <span className="text-slate-600 text-[10px] font-normal">vs</span>
               <TeamLogo src={match.awayTeam.logo} name={match.awayTeam.name} size={16} />
               <span>{match.awayTeam.shortName}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-[8px] font-bold text-accent-400/70 uppercase tracking-wide">
+              <span className="text-[8px] font-bold text-accent-700/90 uppercase tracking-wide">
                 {competitionName(match.competition)}
               </span>
-              <p className="text-[9px] text-white/35">{formatDate(match.scheduledAt)}</p>
+              <p className="text-[9px] text-slate-600">{formatDate(match.scheduledAt)}</p>
             </div>
           </div>
         </div>
         {pred && (
           <div className="flex items-center gap-1 text-[10px]">
-            <CheckCircle2 size={11} className="text-green-400" />
-            <span className="font-black px-1.5 py-0.5 rounded text-[11px] bg-primary-500/20 text-primary-300">{pred.outcome}</span>
-            <span className="text-accent-400 font-mono font-bold">@{pred.odds.toFixed(2)}</span>
+            <CheckCircle2 size={11} className="text-green-600" />
+            <span className="font-black px-1.5 py-0.5 rounded text-[11px] bg-primary-500/20 text-primary-800">{pred.outcome}</span>
+            <span className="text-accent-700 font-mono font-bold">@{pred.odds.toFixed(2)}</span>
           </div>
         )}
       </div>
@@ -313,23 +314,23 @@ const MatchCard = memo(function MatchCard({
                 'flex flex-col items-center justify-center py-2.5 rounded-xl border-2 transition-all duration-200 relative',
                 isSelected
                   ? 'bg-primary-500/30 border-primary-400 shadow-lg shadow-primary-500/20'
-                  : 'bg-white/5 border-white/10 hover:border-primary-500/50 hover:bg-white/10',
+                  : 'bg-slate-100 border-slate-200 hover:border-primary-500/50 hover:bg-slate-100',
                 isLocked && 'opacity-50 cursor-not-allowed'
               )}
             >
               <span className={cn('text-[9px] font-bold uppercase mb-0.5',
-                isSelected ? 'text-white/80' : 'text-white/40')}>{opt.label}</span>
+                isSelected ? 'text-slate-600' : 'text-slate-500')}>{opt.label}</span>
               <span className={cn('text-base font-mono font-black',
-                isSelected ? 'text-white' : 'text-accent-400')}>
+                isSelected ? 'text-slate-900' : 'text-accent-700')}>
                 {odd.toFixed(2)}
               </span>
               <span className={cn('text-[8px] font-bold mt-0.5',
-                isSelected ? 'text-white/60' : 'text-white/25')}>
+                isSelected ? 'text-slate-500' : 'text-slate-600')}>
                 {Math.round(odd * 10)}pt
               </span>
               {isSelected && (
                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                  <CheckCircle2 size={9} className="text-white" />
+                  <CheckCircle2 size={9} className="text-slate-900" />
                 </div>
               )}
             </button>
@@ -355,7 +356,21 @@ export function PronosticiPage() {
     setCircuito,
     copiaDaGenerale,
     applyLastMinuteChange,
-  } = useAppStore();
+  } = useAppStore(useShallow(s => ({
+      currentMatchday: s.currentMatchday,
+      matchOdds: s.matchOdds,
+      currentSchedina: s.currentSchedina,
+      updatePrediction: s.updatePrediction,
+      resetSchedina: s.resetSchedina,
+      submitSchedina: s.submitSchedina,
+      isLoadingOdds: s.isLoadingOdds,
+      lastOddsUpdate: s.lastOddsUpdate,
+      refreshOdds: s.refreshOdds,
+      currentLeagueId: s.currentLeagueId,
+      setCircuito: s.setCircuito,
+      copiaDaGenerale: s.copiaDaGenerale,
+      applyLastMinuteChange: s.applyLastMinuteChange,
+    })));
 
   const toast = useToast();
   const { user } = useAuthContext();
@@ -546,13 +561,13 @@ export function PronosticiPage() {
     if (isLoadingOdds) {
       return (
         <div className="min-h-screen flex items-center justify-center" role="status" aria-label="Caricamento giornata in corso">
-          <div className="w-8 h-8 border-2 border-white/20 border-t-primary-500 rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-slate-300 border-t-primary-500 rounded-full animate-spin" />
         </div>
       );
     }
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-white/40">Nessuna giornata disponibile</p>
+        <p className="text-slate-500">Nessuna giornata disponibile</p>
       </div>
     );
   }
@@ -585,11 +600,11 @@ export function PronosticiPage() {
             {/* Header */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
-                <Target size={20} className="text-primary-400" />
+                <Target size={20} className="text-primary-700" />
                 <h1 className="page-title">PRONOSTICI</h1>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <div className="flex items-center gap-1.5 text-xs text-primary-400 bg-primary-500/10 border border-primary-500/20 px-2 py-1 rounded-full font-bold">
+                <div className="flex items-center gap-1.5 text-xs text-primary-800 bg-primary-500/10 border border-primary-500/20 px-2 py-1 rounded-full font-bold">
                   <Trophy size={11} />
                   G.{currentMatchday.number}
                 </div>
@@ -600,8 +615,8 @@ export function PronosticiPage() {
                   className={cn(
                     'flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold border transition-all',
                     isLoadingOdds
-                      ? 'bg-accent-500/10 border-accent-500/20 text-accent-400 cursor-not-allowed'
-                      : 'bg-accent-500/10 border-accent-500/20 text-accent-400 hover:bg-accent-500/20'
+                      ? 'bg-accent-500/10 border-accent-500/20 text-accent-700 cursor-not-allowed'
+                      : 'bg-accent-500/10 border-accent-500/20 text-accent-700 hover:bg-accent-500/20'
                   )}
                 >
                   <RefreshCw size={11} className={cn(isLoadingOdds && 'animate-spin')} />
@@ -614,7 +629,7 @@ export function PronosticiPage() {
             {/* Circuito: una schedina per la generale, una per ogni lega */}
             {mieLeghe.length > 0 && (
               <div className="glass-card p-3">
-                <p className="text-white/40 text-[10px] uppercase tracking-wide mb-2">
+                <p className="text-slate-500 text-[10px] uppercase tracking-wide mb-2">
                   Per quale classifica stai giocando
                 </p>
                 <div className="flex flex-wrap gap-1.5">
@@ -626,8 +641,8 @@ export function PronosticiPage() {
                       className={cn(
                         'px-3 py-1.5 rounded-lg text-xs font-bold border transition-all',
                         currentLeagueId === circuito.id
-                          ? 'bg-primary-500 border-primary-400 text-white'
-                          : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'
+                          ? 'bg-primary-500 border-primary-400 text-night'
+                          : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-100'
                       )}
                     >
                       {circuito.nome}
@@ -639,12 +654,12 @@ export function PronosticiPage() {
                     <button
                       onClick={handleCopiaDaGenerale}
                       disabled={!!currentSchedina?.isLocked}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/70 text-xs font-bold hover:bg-white/10 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold hover:bg-slate-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Copy size={12} />
                       Copia dalla schedina generale
                     </button>
-                    <span className="text-[10px] text-white/40">
+                    <span className="text-[10px] text-slate-500">
                       Vale solo per la lega: niente gettoni dai pronostici.
                     </span>
                   </div>
@@ -656,28 +671,28 @@ export function PronosticiPage() {
             {isSubmitted && isDeadlinePassed && (
               <div className="glass-card p-3 border-accent-500/30 bg-accent-500/5">
                 {lastMinuteUsed ? (
-                  <p className="text-white/50 text-xs">
+                  <p className="text-slate-500 text-xs">
                     Cambio Last-Minute già usato per questa giornata.
                   </p>
                 ) : pendingChange ? (
                   <>
-                    <p className="text-accent-300 font-bold text-sm mb-1">Confermi il cambio?</p>
-                    <p className="text-white/60 text-xs mb-2">
+                    <p className="text-accent-700 font-bold text-sm mb-1">Confermi il cambio?</p>
+                    <p className="text-slate-500 text-xs mb-2">
                       Nuovo pronostico {pendingChange.outcome} @{pendingChange.odds.toFixed(2)} ·{' '}
-                      <span className="text-accent-400 font-bold">
+                      <span className="text-accent-700 font-bold">
                         −{POWERUPS.lastminute.cost} gettoni
                       </span>
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={confermaLastMinute}
-                        className="px-3 py-1.5 rounded-lg bg-accent-500/20 border border-accent-500/30 text-accent-300 text-xs font-bold hover:bg-accent-500/30"
+                        className="px-3 py-1.5 rounded-lg bg-accent-500/20 border border-accent-500/30 text-accent-700 text-xs font-bold hover:bg-accent-500/30"
                       >
                         Conferma (−{POWERUPS.lastminute.cost} 🪙)
                       </button>
                       <button
                         onClick={() => setPendingChange(null)}
-                        className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 text-xs font-bold hover:bg-white/10"
+                        className="px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold hover:bg-slate-100"
                       >
                         Scegli un'altra quota
                       </button>
@@ -685,23 +700,23 @@ export function PronosticiPage() {
                   </>
                 ) : lastMinuteMode ? (
                   <>
-                    <p className="text-accent-300 font-bold text-sm mb-1">Scegli la nuova quota</p>
-                    <p className="text-white/60 text-xs mb-2">
+                    <p className="text-accent-700 font-bold text-sm mb-1">Scegli la nuova quota</p>
+                    <p className="text-slate-500 text-xs mb-2">
                       Tocca una quota su una partita che hai giocato e non è ancora iniziata.
                     </p>
                     <button
                       onClick={() => setLastMinuteMode(false)}
-                      className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/60 text-xs font-bold hover:bg-white/10"
+                      className="px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold hover:bg-slate-100"
                     >
                       Annulla
                     </button>
                   </>
                 ) : (
                   <>
-                    <p className="text-accent-300 font-bold text-sm mb-1">
+                    <p className="text-accent-700 font-bold text-sm mb-1">
                       Cambio Last-Minute disponibile
                     </p>
-                    <p className="text-white/60 text-xs mb-2">
+                    <p className="text-slate-500 text-xs mb-2">
                       La deadline è passata: con {POWERUPS.lastminute.cost} gettoni cambi{' '}
                       <span className="font-bold">un solo</span> pronostico, su una partita non
                       ancora iniziata.
@@ -709,7 +724,7 @@ export function PronosticiPage() {
                     <button
                       onClick={() => setLastMinuteMode(true)}
                       disabled={!canUseLastMinute}
-                      className="px-3 py-1.5 rounded-lg bg-accent-500/20 border border-accent-500/30 text-accent-300 text-xs font-bold hover:bg-accent-500/30 disabled:opacity-40"
+                      className="px-3 py-1.5 rounded-lg bg-accent-500/20 border border-accent-500/30 text-accent-700 text-xs font-bold hover:bg-accent-500/30 disabled:opacity-40"
                     >
                       Usa Cambio Last-Minute ({POWERUPS.lastminute.cost} 🪙)
                     </button>
@@ -721,12 +736,12 @@ export function PronosticiPage() {
             {/* Progress + Countdown */}
             <div className="glass-card p-3 space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-white/50">Partite scelte (a piacere, da tutti i campionati attivi)</span>
-                <span className={cn('font-bold', isComplete ? 'text-green-400' : 'text-primary-400')}>
+                <span className="text-slate-500">Partite scelte (a piacere, da tutti i campionati attivi)</span>
+                <span className={cn('font-bold', isComplete ? 'text-green-600' : 'text-primary-700')}>
                   {completedCount} / {total}
                 </span>
               </div>
-              <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
+              <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
                 <div
                   className={cn('h-full rounded-full transition-all duration-500',
                     isComplete ? 'bg-green-500' : 'bg-gradient-to-r from-primary-600 to-primary-400')}
@@ -734,12 +749,12 @@ export function PronosticiPage() {
                 />
               </div>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1 text-[10px] text-white/40">
+                <div className="flex items-center gap-1 text-[10px] text-slate-500">
                   <Clock size={10} />
                   <CountdownTimer deadline={currentMatchday.deadline} />
                 </div>
                 {completedCount > 0 && (
-                  <span className="text-[10px] text-accent-400 font-bold flex items-center gap-1">
+                  <span className="text-[10px] text-accent-700 font-bold flex items-center gap-1">
                     <TrendingUp size={11} />
                     {Math.round(totalPotential)} pt potenziali
                   </span>
@@ -755,8 +770,8 @@ export function PronosticiPage() {
                   className={cn(
                     'px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap',
                     selectedCompetition === 'all'
-                      ? 'bg-accent-500 text-white'
-                      : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                      ? 'bg-accent-500 text-night'
+                      : 'bg-slate-100 text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                   )}
                 >
                   Tutti i campionati
@@ -766,8 +781,8 @@ export function PronosticiPage() {
                   className={cn(
                     'px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap',
                     selectedCompetition === 'mine'
-                      ? 'bg-accent-500 text-white'
-                      : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                      ? 'bg-accent-500 text-night'
+                      : 'bg-slate-100 text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                   )}
                 >
                   Le mie ({completedCount})
@@ -779,8 +794,8 @@ export function PronosticiPage() {
                     className={cn(
                       'px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap',
                       selectedCompetition === code
-                        ? 'bg-accent-500 text-white'
-                        : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                        ? 'bg-accent-500 text-night'
+                        : 'bg-slate-100 text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                     )}
                   >
                     {competitionName(code)}
@@ -799,14 +814,14 @@ export function PronosticiPage() {
                     className={cn(
                       'flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap',
                       selectedBetType === bt.key
-                        ? 'bg-primary-500 text-white'
-                        : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white'
+                        ? 'bg-primary-500 text-night'
+                        : 'bg-slate-100 text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                     )}
                   >
                     <span className="font-black text-[11px]">{bt.shortLabel}</span>
                     <span className={cn(
                       'text-[8px] font-normal hidden sm:block',
-                      selectedBetType === bt.key ? 'text-white/70' : 'text-white/25'
+                      selectedBetType === bt.key ? 'text-slate-500' : 'text-slate-600'
                     )}>{bt.label}</span>
                   </button>
                 ))}
@@ -816,7 +831,7 @@ export function PronosticiPage() {
             {/* Matches */}
             <div className="space-y-2">
               {visibleMatches.length === 0 && (
-                <div className="glass-card p-6 text-center text-white/40 text-sm">
+                <div className="glass-card p-6 text-center text-slate-500 text-sm">
                   Nessuna partita in questo campionato al momento.
                 </div>
               )}

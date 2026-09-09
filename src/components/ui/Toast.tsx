@@ -23,10 +23,10 @@ const icons = {
 };
 
 const styles = {
-  success: 'bg-green-500/10 border-green-500/30 text-green-400',
-  error: 'bg-red-500/10 border-red-500/30 text-red-400',
-  warning: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
-  info: 'bg-primary-500/10 border-primary-500/30 text-primary-400',
+  success: 'bg-green-500/10 border-green-500/30 text-green-600',
+  error: 'bg-red-500/10 border-red-500/30 text-red-600',
+  warning: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-700',
+  info: 'bg-primary-500/10 border-primary-500/30 text-primary-800',
 };
 
 export function Toast({ id, type, message, duration = 4000, onClose }: ToastProps) {
@@ -67,7 +67,7 @@ export function Toast({ id, type, message, duration = 4000, onClose }: ToastProp
           setTimeout(() => onClose(id), 300);
         }}
         aria-label="Chiudi notifica"
-        className="shrink-0 p-1 rounded-lg hover:bg-white/10 transition-colors"
+        className="shrink-0 p-1 rounded-lg hover:bg-slate-100 transition-colors"
       >
         <X size={16} />
       </button>

@@ -1,4 +1,5 @@
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { useToast } from '@/contexts/ToastContext';
 import { vibrate } from '@/lib/juice';
 
@@ -9,7 +10,13 @@ import { vibrate } from '@/lib/juice';
  * logica con formule leggermente diverse per `canEdit`, rischiando di divergere.
  */
 export function useSchedinaEditWindow() {
-  const { currentMatchday, currentSchedina, unlockSchedina, cancelSchedina, isSubmitting } = useAppStore();
+  const { currentMatchday, currentSchedina, unlockSchedina, cancelSchedina, isSubmitting } = useAppStore(useShallow(s => ({
+      currentMatchday: s.currentMatchday,
+      currentSchedina: s.currentSchedina,
+      unlockSchedina: s.unlockSchedina,
+      cancelSchedina: s.cancelSchedina,
+      isSubmitting: s.isSubmitting,
+    })));
   const toast = useToast();
 
   const isDeadlinePassed = currentMatchday

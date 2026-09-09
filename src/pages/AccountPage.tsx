@@ -6,6 +6,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { exportMyDataFn, deleteAccountFn, callableErrorMessage } from '@/lib/gameApi';
 
 const menuItems = [
@@ -17,7 +18,7 @@ const menuItems = [
 
 export function AccountPage() {
   const { profile, user, signOut } = useAuthContext();
-  const { currentUser } = useAppStore();
+  const { currentUser } = useAppStore(useShallow(s => ({ currentUser: s.currentUser })));
   const navigate = useNavigate();
   const [busy, setBusy] = useState<'export' | 'delete' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +73,7 @@ export function AccountPage() {
       <div className="max-w-2xl mx-auto px-3 py-3 space-y-3">
 
         <div className="flex items-center gap-2 mb-1">
-          <User size={20} className="text-primary-400" />
+          <User size={20} className="text-primary-700" />
           <h1 className="page-title">ACCOUNT</h1>
         </div>
 
@@ -84,46 +85,46 @@ export function AccountPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 mb-1">
-            <h2 className="font-display font-black text-xl text-white">{username}</h2>
+            <h2 className="font-display font-black text-xl text-slate-900">{username}</h2>
           </div>
-          {user?.email && <p className="text-sm text-white/50">{user.email}</p>}
+          {user?.email && <p className="text-sm text-slate-500">{user.email}</p>}
           <div className="mt-3 flex gap-4 text-center">
             <div>
-              <p className="text-lg font-black text-primary-400">{points.toFixed(1)}</p>
-              <p className="text-[9px] text-white/40 uppercase">Punti</p>
+              <p className="text-lg font-black text-primary-700">{points.toFixed(1)}</p>
+              <p className="text-[9px] text-slate-500 uppercase">Punti</p>
             </div>
-            <div className="w-px bg-white/10" />
+            <div className="w-px bg-slate-100" />
             <div>
-              <p className="text-lg font-black text-white">#{rank}</p>
-              <p className="text-[9px] text-white/40 uppercase">Posizione</p>
+              <p className="text-lg font-black text-slate-900">#{rank}</p>
+              <p className="text-[9px] text-slate-500 uppercase">Posizione</p>
             </div>
-            <div className="w-px bg-white/10" />
+            <div className="w-px bg-slate-100" />
             <div>
-              <p className="text-lg font-black text-yellow-400 flex items-center gap-1 justify-center"><Coins size={14} />{coins}</p>
-              <p className="text-[9px] text-white/40 uppercase">Gettoni</p>
+              <p className="text-lg font-black text-yellow-700 flex items-center gap-1 justify-center"><Coins size={14} />{coins}</p>
+              <p className="text-[9px] text-slate-500 uppercase">Gettoni</p>
             </div>
           </div>
         </div>
 
         {/* Menu */}
-        <div className="glass-card overflow-hidden divide-y divide-white/5">
+        <div className="glass-card overflow-hidden divide-y divide-slate-200">
           {menuItems.map((item, mi) => {
             const Icon = item.icon;
             return (
               <Link
                 key={item.label}
                 to={item.to}
-                className="flex items-center gap-3 px-4 py-3.5 hover:bg-white/5 transition-colors animate-slide-up"
+                className="flex items-center gap-3 px-4 py-3.5 hover:bg-slate-100 transition-colors animate-slide-up"
                 style={{ animationDelay: `${mi * 50}ms`, animationFillMode: 'backwards' }}
               >
-                <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
-                  <Icon size={17} className="text-primary-400" strokeWidth={1.8} />
+                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+                  <Icon size={17} className="text-primary-700" strokeWidth={1.8} />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-white">{item.label}</p>
-                  <p className="text-[10px] text-white/40">{item.desc}</p>
+                  <p className="text-sm font-bold text-slate-900">{item.label}</p>
+                  <p className="text-[10px] text-slate-500">{item.desc}</p>
                 </div>
-                <ChevronRight size={16} className="text-white/20" />
+                <ChevronRight size={16} className="text-slate-600" />
               </Link>
             );
           })}
@@ -132,33 +133,33 @@ export function AccountPage() {
         {/* Privacy e dati personali */}
         <div className="glass-card p-4 space-y-3">
           <div className="flex items-center gap-2">
-            <Shield size={18} className="text-primary-400" />
-            <p className="font-black text-sm text-white">Privacy e dati</p>
+            <Shield size={18} className="text-primary-700" />
+            <p className="font-black text-sm text-slate-900">Privacy e dati</p>
           </div>
 
           <Link
             to="/privacy"
-            className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors active:scale-[0.98]"
+            className="flex items-center gap-3 p-3 rounded-xl bg-slate-100 hover:bg-slate-100 transition-colors active:scale-[0.98]"
           >
-            <HelpCircle size={17} className="text-white/50 flex-shrink-0" />
+            <HelpCircle size={17} className="text-slate-500 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-white">Informativa Privacy</p>
-              <p className="text-[10px] text-white/40">Quali dati trattiamo e perché</p>
+              <p className="text-sm font-bold text-slate-900">Informativa Privacy</p>
+              <p className="text-[10px] text-slate-500">Quali dati trattiamo e perché</p>
             </div>
-            <ChevronRight size={16} className="text-white/20" />
+            <ChevronRight size={16} className="text-slate-600" />
           </Link>
 
           <button
             onClick={handleExport}
             disabled={busy !== null}
-            className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors active:scale-[0.98] disabled:opacity-50"
+            className="w-full flex items-center gap-3 p-3 rounded-xl bg-slate-100 hover:bg-slate-100 transition-colors active:scale-[0.98] disabled:opacity-50"
           >
             {busy === 'export'
-              ? <Loader2 size={17} className="text-white/50 flex-shrink-0 animate-spin" />
-              : <Download size={17} className="text-white/50 flex-shrink-0" />}
+              ? <Loader2 size={17} className="text-slate-500 flex-shrink-0 animate-spin" />
+              : <Download size={17} className="text-slate-500 flex-shrink-0" />}
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-sm font-bold text-white">Scarica i miei dati</p>
-              <p className="text-[10px] text-white/40">Esporta tutto in formato JSON</p>
+              <p className="text-sm font-bold text-slate-900">Scarica i miei dati</p>
+              <p className="text-[10px] text-slate-500">Esporta tutto in formato JSON</p>
             </div>
           </button>
 
@@ -168,26 +169,26 @@ export function AccountPage() {
               disabled={busy !== null}
               className="w-full flex items-center gap-3 p-3 rounded-xl bg-red-500/5 hover:bg-red-500/10 transition-colors active:scale-[0.98] disabled:opacity-50"
             >
-              <Trash2 size={17} className="text-red-400 flex-shrink-0" />
+              <Trash2 size={17} className="text-red-600 flex-shrink-0" />
               <div className="flex-1 min-w-0 text-left">
-                <p className="text-sm font-bold text-red-400">Elimina account</p>
-                <p className="text-[10px] text-white/40">Cancellazione definitiva di tutti i dati</p>
+                <p className="text-sm font-bold text-red-600">Elimina account</p>
+                <p className="text-[10px] text-slate-500">Cancellazione definitiva di tutti i dati</p>
               </div>
             </button>
           ) : (
             <div className="rounded-xl bg-red-500/10 border border-red-500/30 p-4 space-y-3">
               <div className="flex items-start gap-2">
-                <AlertTriangle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+                <AlertTriangle size={16} className="text-red-600 flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="text-sm font-bold text-red-400">Operazione irreversibile</p>
-                  <p className="text-[11px] text-white/60 leading-relaxed">
+                  <p className="text-sm font-bold text-red-600">Operazione irreversibile</p>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
                     Verranno eliminati profilo, schedine, gettoni, cronologia e leghe di cui sei
                     proprietario. Non è possibile annullare.
                   </p>
                 </div>
               </div>
               <div>
-                <label htmlFor="confirmWord" className="text-[10px] text-white/40 uppercase tracking-widest font-bold">
+                <label htmlFor="confirmWord" className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
                   Scrivi ELIMINA per confermare
                 </label>
                 <input
@@ -196,14 +197,14 @@ export function AccountPage() {
                   onChange={e => setConfirmWord(e.target.value.toUpperCase())}
                   placeholder="ELIMINA"
                   autoComplete="off"
-                  className="mt-1 w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-center font-black text-white tracking-widest focus:outline-none focus:border-red-500"
+                  className="mt-1 w-full bg-black/30 border border-slate-200 rounded-lg px-3 py-2 text-center font-black text-slate-900 tracking-widest focus:outline-none focus:border-red-500"
                 />
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => { setConfirmDelete(false); setConfirmWord(''); }}
                   disabled={busy !== null}
-                  className="flex-1 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 font-bold text-xs uppercase transition-colors disabled:opacity-50"
+                  className="flex-1 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-100 text-slate-500 font-bold text-xs uppercase transition-colors disabled:opacity-50"
                 >
                   Annulla
                 </button>
@@ -219,19 +220,19 @@ export function AccountPage() {
             </div>
           )}
 
-          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+          {error && <p className="text-xs text-red-600 text-center">{error}</p>}
         </div>
 
         {/* Logout */}
         <button
           onClick={handleLogout}
-          className="w-full glass-card p-4 flex items-center justify-center gap-2 text-red-400 hover:bg-red-500/10 transition-colors rounded-2xl active:scale-[0.98]"
+          className="w-full glass-card p-4 flex items-center justify-center gap-2 text-red-600 hover:bg-red-500/10 transition-colors rounded-2xl active:scale-[0.98]"
         >
           <LogOut size={16} />
           <span className="font-bold text-sm uppercase tracking-wide">Esci dall&apos;account</span>
         </button>
 
-        <p className="text-center text-[10px] text-white/20 pb-2">
+        <p className="text-center text-[10px] text-slate-600 pb-2">
           FantaSchedina v1.0 — Solo maggiorenni
         </p>
 

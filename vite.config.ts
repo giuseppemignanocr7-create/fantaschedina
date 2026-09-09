@@ -8,13 +8,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'favicon.ico', 'pwa-64x64.png', 'pwa-192x192.png', 'pwa-512x512.png', 'maskable-icon-512x512.png', 'apple-touch-icon-180x180.png'],
+      includeAssets: ['favicon.ico', 'pwa-64x64.png', 'pwa-192x192.png', 'pwa-512x512.png', 'maskable-icon-512x512.png', 'apple-touch-icon-180x180.png'],
       manifest: {
         name: 'Fantaschedina',
         short_name: 'Fantaschedina',
         description: 'Il fantasy football italiano con schedine, minigiochi e classifiche.',
         theme_color: '#0a0a0a',
-        background_color: '#0a0a0a',
+        background_color: '#eef1f7',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
@@ -51,11 +51,16 @@ export default defineConfig({
         globPatterns: ['**/*.{svg,png,woff2,ico}'],
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.endsWith('.js') || url.pathname.endsWith('.css'),
-            handler: 'NetworkFirst',
+            // I file in /assets hanno l'hash del contenuto nel nome: un URL
+            // non cambia mai contenuto, quindi la cache non puo' essere stale.
+            // Il nuovo codice arriva con il nuovo index.html (NetworkFirst
+            // qui sotto), che punta a nomi nuovi. Le visite successive alla
+            // prima non scaricano piu' nulla del bundle.
+            urlPattern: ({ url }) => url.pathname.startsWith('/assets/'),
+            handler: 'CacheFirst',
             options: {
-              cacheName: 'app-bundles',
-              expiration: { maxAgeSeconds: 86400, maxEntries: 60 },
+              cacheName: 'app-assets',
+              expiration: { maxAgeSeconds: 30 * 86400, maxEntries: 120 },
             },
           },
           {
@@ -99,6 +104,9 @@ export default defineConfig({
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          // Le icone usate da piu' pagine finivano ognuna in un file da 300 B:
+          // 35 richieste in piu' navigando l'app. Qui stanno in un chunk solo.
+          'icons-vendor': ['lucide-react'],
           'firebase-app-vendor': ['firebase/app', 'firebase/app-check'],
           'firebase-auth-vendor': ['firebase/auth'],
           'firebase-firestore-vendor': ['firebase/firestore'],

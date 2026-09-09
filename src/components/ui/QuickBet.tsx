@@ -142,7 +142,7 @@ export function QuickBet({ matches, odds, onApply, disabled, className }: QuickB
           disabled && 'opacity-50 cursor-not-allowed grayscale'
         )}
       >
-        <Zap size={16} className="text-white fill-white" />
+        <Zap size={16} className="text-slate-900 fill-white" />
         Giocata Rapida
       </button>
 
@@ -153,9 +153,9 @@ export function QuickBet({ matches, odds, onApply, disabled, className }: QuickB
             onClick={() => setIsOpen(false)}
           />
           <div className="absolute top-full right-0 mt-2 w-72 glass-card p-2 z-50 shadow-2xl border-t-2 border-t-accent-500 animate-slide-up bg-surface">
-            <div className="px-3 py-2 bg-white/5 rounded-lg mb-2 flex items-center justify-between">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Compilazione Automatica</p>
-              <Zap size={12} className="text-accent-400" />
+            <div className="px-3 py-2 bg-slate-100 rounded-lg mb-2 flex items-center justify-between">
+              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Compilazione Automatica</p>
+              <Zap size={12} className="text-accent-700" />
             </div>
             <div className="space-y-1">
               {strategies.map((s) => {
@@ -164,13 +164,13 @@ export function QuickBet({ matches, odds, onApply, disabled, className }: QuickB
                   <button
                     key={s.key}
                     onClick={() => handleApply(s.key)}
-                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-white/5 transition-all group text-left border border-transparent hover:border-white/5"
+                    className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-slate-100 transition-all group text-left border border-transparent hover:border-slate-200"
                   >
                     <div className="w-10 h-10 rounded-lg bg-primary-500/10 border border-primary-500/20 flex items-center justify-center group-hover:bg-primary-500/20 group-hover:border-primary-500/30 transition-colors">
-                      <Icon size={18} className="text-primary-400 group-hover:text-primary-300" />
+                      <Icon size={18} className="text-primary-700 group-hover:text-primary-700" />
                     </div>
                     <div>
-                      <p className="font-bold text-sm text-white group-hover:text-primary-400 transition-colors">{s.label}</p>
+                      <p className="font-bold text-sm text-slate-900 group-hover:text-primary-700 transition-colors">{s.label}</p>
                       <p className="text-[10px] text-slate-500">{s.desc}</p>
                     </div>
                   </button>

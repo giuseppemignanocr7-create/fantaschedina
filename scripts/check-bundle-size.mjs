@@ -25,7 +25,11 @@ const ASSETS_DIR = 'dist/assets';
  * transazioni. È il pavimento della libreria, non uno spreco nostro.
  */
 const BUDGETS = {
-  'index-': 45,
+  // 09/09/2026: 'index-' da 45 a 38 dopo la rimozione di pagine morte
+  // (HomePage, Impostazioni, CommunityStats) e lo spostamento delle icone
+  // condivise nel chunk 'icons-vendor-' (35,9 KB misurati).
+  'index-': 38,
+  'icons-vendor-': 6,
   'react-vendor-': 62,
   'firebase-firestore-vendor-': 152,
   'firebase-auth-vendor-': 28,
@@ -37,8 +41,9 @@ const BUDGETS = {
 /**
  * Tetto complessivo su tutto il JS prodotto, in KB gzip.
  * Misurato: 386 KB con Sentry attivo, 357 KB senza.
+ * 09/09/2026: 363 KB senza Sentry dopo la pulizia; tetto da 405 a 385.
  */
-const TOTAL_JS_BUDGET = 405;
+const TOTAL_JS_BUDGET = 385;
 
 const KB = 1024;
 

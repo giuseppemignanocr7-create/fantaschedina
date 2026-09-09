@@ -1,97 +1,101 @@
 import { Link } from 'react-router-dom';
 import {
-  Target, Trophy, TrendingUp, Gift, Calendar, Gamepad2, Radio, ClipboardList,
   ChevronRight, Swords, CircleDot, HelpCircle, RefreshCw, ShoppingBag,
   UserPlus, Clock, Zap,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { cn } from '@/lib/utils';
+import { teamColor } from '@/lib/teamColors';
 
 // Le nove icone della home, nell'ordine chiesto dal regolamento di gioco
 // (Giovanni, 01/09/2026): GIOCA al posto di PRONOSTICI, poi leghe, live,
 // classifica, premi, minigiochi, l'archivio delle proprie fantaschedine,
 // calendario e negozio.
+//
+// Grafica: tile a tinta piena con sfumatura verticale (c1 -> c2), emoji come
+// icona e testo in `ink`, come da mockup del 09/09/2026.
 const featureTiles = [
   {
     to: '/pronostici',
     label: 'GIOCA',
     sub: 'Crea il tuo pronostico',
-    icon: Target,
-    bg: '#0d2515',
-    iconColor: '#22c55e',
-    border: '#1a4a2a',
+    emoji: '🎯',
+    c1: '#b9e08d',
+    c2: '#8cc85a',
+    ink: '#14532d',
   },
   {
     to: '/leghe',
     label: 'LEGHE',
     sub: 'Le tue leghe',
-    icon: Trophy,
-    bg: '#0d1a3a',
-    iconColor: '#fbbf24',
-    border: '#1a2e5a',
+    emoji: '🏆',
+    c1: '#2d74d6',
+    c2: '#164a9e',
+    ink: '#ffffff',
   },
   {
     to: '/live',
     label: 'LIVE',
     sub: 'Risultati in diretta',
-    icon: Radio,
-    bg: '#2a0a0a',
-    iconColor: '#f87171',
-    border: '#4a1a1a',
+    emoji: '📡',
+    c1: '#e04340',
+    c2: '#b01d1a',
+    ink: '#ffffff',
   },
   {
     to: '/classifica',
     label: 'CLASSIFICA',
     sub: 'Scopri i migliori',
-    icon: TrendingUp,
-    bg: '#1a0d3a',
-    iconColor: '#a78bfa',
-    border: '#2e1a5a',
+    emoji: '📈',
+    c1: '#8b5cb8',
+    c2: '#63398e',
+    ink: '#ffffff',
   },
   {
     to: '/premi',
     label: 'PREMI',
     sub: 'I premi in palio',
-    icon: Gift,
-    bg: '#001a1a',
-    iconColor: '#22d3ee',
-    border: '#003030',
+    emoji: '🎁',
+    c1: '#2f86e0',
+    c2: '#175fb4',
+    ink: '#ffffff',
   },
   {
     to: '/minigiochi',
     label: 'MINIGIOCHI',
     sub: 'Guadagna gettoni',
-    icon: Gamepad2,
-    bg: '#2a1400',
-    iconColor: '#fb923c',
-    border: '#4a2a00',
+    emoji: '🎮',
+    c1: '#f5ac36',
+    c2: '#df8a0d',
+    ink: '#ffffff',
   },
   {
     to: '/fantaschedine',
     label: 'LE MIE FANTASCHEDINE',
     sub: 'Le schedine giocate',
-    icon: ClipboardList,
-    bg: '#001028',
-    iconColor: '#60a5fa',
-    border: '#002048',
+    emoji: '📋',
+    c1: '#3f9de8',
+    c2: '#1c76c4',
+    ink: '#ffffff',
   },
   {
     to: '/calendario',
     label: 'CALENDARIO',
     sub: 'Tutti i match',
-    icon: Calendar,
-    bg: '#1a1500',
-    iconColor: '#facc15',
-    border: '#3a3000',
+    emoji: '📅',
+    c1: '#f6cb54',
+    c2: '#e2a92c',
+    ink: '#ffffff',
   },
   {
     to: '/negozio',
     label: 'NEGOZIO',
     sub: 'Spendi i tuoi gettoni',
-    icon: ShoppingBag,
-    bg: '#1a0028',
-    iconColor: '#f472b6',
-    border: '#350050',
+    emoji: '🛍️',
+    c1: '#ec4f9b',
+    c2: '#cf2077',
+    ink: '#ffffff',
   },
 ];
 
@@ -106,14 +110,24 @@ const quickActions = [
 
 // Carosello "guadagna gettoni" — tutte destinazioni reali
 const earnCards = [
-  { name: '🧠 QUIZ', tagline: 'FINO A 30 🪙 AL GIORNO', cta: 'GIOCA', bg: '#0a1a3a', accent: '#60a5fa', to: '/minigiochi/quiz' },
-  { name: '🎡 RUOTA', tagline: 'JACKPOT DA 100 🪙', cta: 'GIRA', bg: '#2a1a00', accent: '#fbbf24', to: '/minigiochi/ruota' },
-  { name: '⚽ RIGORI', tagline: 'FINO A 10 🪙 A PARTITA', cta: 'TIRA', bg: '#0a2a1a', accent: '#34d399', to: '/minigiochi/rigori' },
-  { name: '🎯 MISSIONI', tagline: 'FINO A 500 🪙 EXTRA', cta: 'SCOPRI', bg: '#2a0a1a', accent: '#f472b6', to: '/missioni' },
+  { name: '🧠 QUIZ', tagline: 'FINO A 30 🪙 AL GIORNO', cta: 'GIOCA', c1: '#3f9de8', c2: '#1c76c4', to: '/minigiochi/quiz' },
+  { name: '🎡 RUOTA', tagline: 'JACKPOT DA 100 🪙', cta: 'GIRA', c1: '#f5ac36', c2: '#df8a0d', to: '/minigiochi/ruota' },
+  { name: '⚽ RIGORI', tagline: 'FINO A 10 🪙 A PARTITA', cta: 'TIRA', c1: '#3fc37e', c2: '#159a55', to: '/minigiochi/rigori' },
+  { name: '🎯 MISSIONI', tagline: 'FINO A 500 🪙 EXTRA', cta: 'SCOPRI', c1: '#ec4f9b', c2: '#cf2077', to: '/missioni' },
 ];
 
+// Ombra morbida sotto le emoji delle tile: le stacca dal colore pieno
+const ICON_SHADOW = 'drop-shadow(0 2px 3px rgba(0,0,0,0.28))';
+
 export function DashboardPage() {
-  const { currentMatchday, currentUser, currentSchedina, matchOdds, isLoadingOdds, refreshOdds } = useAppStore();
+  const { currentMatchday, currentUser, currentSchedina, matchOdds, isLoadingOdds, refreshOdds } = useAppStore(useShallow(s => ({
+      currentMatchday: s.currentMatchday,
+      currentUser: s.currentUser,
+      currentSchedina: s.currentSchedina,
+      matchOdds: s.matchOdds,
+      isLoadingOdds: s.isLoadingOdds,
+      refreshOdds: s.refreshOdds,
+    })));
 
   // Prossima partita non ancora giocata
   const nextMatch = currentMatchday?.matches
@@ -141,169 +155,198 @@ export function DashboardPage() {
 
   return (
     <div>
-      <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+      {/* ══ Fascia scura in alto: profilo + prossimo match su card bianche ══ */}
+      <div className="relative bg-night rounded-b-[28px] shadow-lg shadow-black/25">
+        <div
+          className="absolute inset-0 rounded-b-[28px] pointer-events-none"
+          style={{ backgroundImage: 'radial-gradient(ellipse 70% 90% at 50% -30%, rgba(132,216,12,0.14) 0%, transparent 70%)' }}
+        />
+        <div className="relative max-w-2xl mx-auto px-4 pt-3 pb-5 space-y-3">
 
-        {/* ── Mobile profile summary ── */}
-        <div className="glass-card p-3 flex items-center gap-3 md:hidden">
-          <div className="relative flex-shrink-0">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 border-2 border-primary-500/40 flex items-center justify-center text-sm font-black text-white">
-              {userInitials}
+          {/* ── Riepilogo profilo (solo mobile) ── */}
+          <div className="paper-card p-3 flex items-center gap-3 md:hidden">
+            <div className="relative flex-shrink-0">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-300 to-primary-600 ring-2 ring-white shadow-md flex items-center justify-center text-sm font-black text-white">
+                {userInitials}
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="font-display font-black text-sm text-paper-ink truncate">{currentUser?.username ?? 'Ospite'}</span>
+                {currentUser && <span className="text-[8px] font-black bg-primary-500 text-night px-1.5 py-0.5 rounded uppercase flex-shrink-0">PRO</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-primary-700">{userPoints.toFixed(1)} pt</span>
+                {predCount > 0 && (
+                  <span className="text-[10px] text-paper-muted">
+                    · Schedina: {predCount}/{total}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <p className="text-base font-black text-paper-ink leading-none mb-1.5">#{userRank}</p>
+              <Link
+                to="/pronostici"
+                className="inline-flex items-center gap-0.5 border border-paper-line rounded-lg px-2 py-1 text-[9px] font-black text-paper-ink hover:bg-paper transition-colors"
+              >
+                Pronostici <ChevronRight size={10} />
+              </Link>
             </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="font-display font-black text-sm text-white">{currentUser?.username ?? 'Ospite'}</span>
-              {currentUser && <span className="text-[8px] font-black bg-primary-500/20 text-primary-400 px-1 py-0.5 rounded border border-primary-500/30 uppercase">PRO</span>}
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black text-primary-400">{userPoints.toFixed(1)} pt</span>
-              {predCount > 0 && (
-                <span className="text-[10px] text-white/40">
-                  · Schedina: {predCount}/{total}
-                </span>
+
+          {/* ── Prossimo Match / Schedina Status ── */}
+          <div className="paper-card overflow-hidden">
+            <div className="px-3 py-2.5">
+              {/* Header row */}
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[9px] font-black text-blue-700 uppercase tracking-[0.2em]">
+                  {currentMatchday ? `GIORNATA ${currentMatchday.number} · SERIE A` : 'PROSSIMO MATCH'}
+                </p>
+                <button
+                  onClick={refreshOdds}
+                  disabled={isLoadingOdds}
+                  className={cn(
+                    'flex items-center gap-1 text-[9px] font-bold transition-all',
+                    isLoadingOdds ? 'text-slate-600' : 'text-paper-muted hover:text-blue-700'
+                  )}
+                >
+                  <RefreshCw size={9} className={cn(isLoadingOdds && 'animate-spin')} />
+                  {isLoadingOdds ? 'Aggiorno...' : 'Aggiorna quote'}
+                </button>
+              </div>
+
+              {nextMatch ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-display font-black italic text-[15px] leading-tight whitespace-nowrap">
+                      <span style={{ color: teamColor(nextMatch.homeTeam.id) }}>{nextMatch.homeTeam.shortName}</span>
+                      <span className="text-slate-600 font-medium not-italic text-[11px]"> vs </span>
+                      <span style={{ color: teamColor(nextMatch.awayTeam.id) }}>{nextMatch.awayTeam.shortName}</span>
+                    </p>
+                    <div className="flex items-center gap-1 mt-0.5 text-[9px] text-paper-muted whitespace-nowrap">
+                      <Clock size={9} className="flex-shrink-0" />
+                      <span className="truncate">{formatMatchTime(nextMatch.scheduledAt)}</span>
+                    </div>
+                  </div>
+
+                  {nextOdds && (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {(['1','X','2'] as const).map(k => (
+                        <div key={k} className="flex flex-col items-center bg-white border border-paper-line rounded-lg px-1.5 py-1 min-w-[31px]">
+                          <span className="text-[7px] text-paper-muted font-bold leading-none">{k}</span>
+                          <span className="text-[11px] font-mono font-black text-blue-600 leading-tight">
+                            {nextOdds.esito[k].toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <Link
+                    to="/pronostici"
+                    className="flex-shrink-0 flex items-center justify-center gap-0.5 bg-primary-500 hover:bg-primary-400 active:bg-primary-600 text-night font-black text-[11px] uppercase tracking-wide px-2.5 py-2.5 rounded-xl transition-all shadow-md shadow-primary-500/40 text-center"
+                  >
+                    {predCount > 0 ? (
+                      <>
+                        <Zap size={12} />
+                        <span>{predCount}/{total}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>GIOCA</span>
+                        <ChevronRight size={12} />
+                      </>
+                    )}
+                  </Link>
+                </div>
+              ) : (
+                <p className="text-paper-muted text-sm">Nessuna partita disponibile</p>
               )}
             </div>
           </div>
-          <div className="text-right flex-shrink-0">
-            <p className="text-base font-black text-white">#{userRank}</p>
-            <Link to="/pronostici" className="text-[9px] font-black text-primary-400 hover:text-primary-300 flex items-center gap-0.5 justify-end mt-0.5">
-              Pronostici <ChevronRight size={9} />
-            </Link>
-          </div>
+
         </div>
+      </div>
 
-        {/* ── Prossimo Match / Schedina Status (compatto) ── */}
-        <div className="relative glass-card overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-primary-500 via-primary-400 to-transparent" />
-          <div className="px-3 py-2.5">
-            {/* Header row */}
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[8px] font-black text-primary-400 uppercase tracking-[0.25em]">
-                {currentMatchday ? `GIORNATA ${currentMatchday.number} · SERIE A` : 'PROSSIMO MATCH'}
-              </p>
-              <button
-                onClick={refreshOdds}
-                disabled={isLoadingOdds}
-                className={cn(
-                  'flex items-center gap-1 text-[8px] font-bold transition-all',
-                  isLoadingOdds ? 'text-white/20' : 'text-white/30 hover:text-accent-400'
-                )}
-              >
-                <RefreshCw size={8} className={cn(isLoadingOdds && 'animate-spin')} />
-                {isLoadingOdds ? 'Aggiorno...' : 'Aggiorna quote'}
-              </button>
-            </div>
+      {/* ══ Area chiara: tile colorate e sezioni gettoni ══ */}
+      <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
 
-            {nextMatch ? (
-              <div className="flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="font-display font-black text-base text-white leading-tight truncate">
-                    {nextMatch.homeTeam.shortName} <span className="text-white/40 font-medium">vs</span> {nextMatch.awayTeam.shortName}
-                  </p>
-                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-white/40">
-                    <Clock size={10} />
-                    <span>{formatMatchTime(nextMatch.scheduledAt)}</span>
-                  </div>
-                </div>
-
-                {nextOdds && (
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {(['1','X','2'] as const).map(k => (
-                      <div key={k} className="flex flex-col items-center bg-white/5 rounded-lg px-2 py-1 min-w-[34px]">
-                        <span className="text-[7px] text-white/30 font-bold">{k}</span>
-                        <span className="text-[11px] font-mono font-black text-accent-400">
-                          {nextOdds.esito[k].toFixed(2)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <Link
-                  to="/pronostici"
-                  className="flex-shrink-0 flex items-center justify-center gap-1 bg-primary-500 hover:bg-primary-400 active:bg-primary-600 text-background font-black text-[10px] uppercase tracking-wide px-3 py-2 rounded-xl transition-all shadow-lg shadow-primary-500/25 text-center"
-                >
-                  {predCount > 0 ? (
-                    <>
-                      <Zap size={12} />
-                      <span>{predCount}/{total}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>GIOCA</span>
-                      <ChevronRight size={12} />
-                    </>
-                  )}
-                </Link>
-              </div>
-            ) : (
-              <p className="text-white/40 text-sm">Nessuna partita disponibile</p>
-            )}
-          </div>
-        </div>
-
-        {/* ── Feature Tiles Grid ── */}
+        {/* ── Griglia delle nove icone ── */}
         <div className="grid grid-cols-4 gap-2.5">
           {featureTiles.map((tile, ti) => {
-            const Icon = tile.icon;
+            // La tile è larga ~78px su un telefono da 375px: il corpo del testo
+            // segue la parola più lunga, così nessuna etichetta va a capo a metà.
+            const longestWord = Math.max(...tile.label.split(' ').map(w => w.length));
+            const labelSize = longestWord > 10 ? 'text-[7.5px]' : longestWord > 7 ? 'text-[9px]' : 'text-[10px]';
             return (
               <Link
                 key={tile.to}
                 to={tile.to}
-                className="feature-tile aspect-square animate-pop-in hover:scale-[1.06] hover:-translate-y-0.5 active:scale-95 transition-transform duration-150"
+                className="feature-tile aspect-square animate-pop-in"
                 style={{
-                  backgroundColor: tile.bg,
-                  border: `1px solid ${tile.border}`,
-                  boxShadow: `0 4px 20px ${tile.iconColor}14`,
+                  backgroundImage: `linear-gradient(180deg, ${tile.c1} 0%, ${tile.c2} 100%)`,
                   animationDelay: `${ti * 50}ms`,
                   animationFillMode: 'backwards',
                 }}
               >
-                <Icon size={28} style={{ color: tile.iconColor }} strokeWidth={1.8} />
-                <div className="text-center">
-                  <p className="text-[10px] font-black text-white uppercase leading-tight tracking-wide">{tile.label}</p>
-                  <p className="text-[8px] leading-tight mt-0.5" style={{ color: `${tile.iconColor}80` }}>{tile.sub}</p>
+                <span className="text-[26px] leading-none" style={{ filter: ICON_SHADOW }} aria-hidden>
+                  {tile.emoji}
+                </span>
+                <div className="w-full text-center">
+                  <p className={cn('font-black uppercase leading-[1.1] tracking-tight', labelSize)} style={{ color: tile.ink }}>
+                    {tile.label}
+                  </p>
+                  <p className="text-[7.5px] leading-[1.15] mt-0.5" style={{ color: tile.ink, opacity: 0.82 }}>
+                    {tile.sub}
+                  </p>
                 </div>
+                <ChevronRight size={12} className="tile-chevron" style={{ color: tile.ink }} />
               </Link>
             );
           })}
+
+          {/* Barra "guadagna gettoni", accanto al NEGOZIO come da mockup */}
+          <Link
+            to="/minigiochi"
+            className="col-span-3 self-center paper-card px-3 py-2.5 flex items-center gap-2 hover:border-primary-500/50 transition-colors"
+          >
+            <span className="text-base leading-none flex-shrink-0">🪙</span>
+            <span className="section-title-ink flex-1 tracking-[0.08em] whitespace-nowrap">Guadagna Gettoni</span>
+            <span className="text-[10px] font-black text-primary-700 flex items-center gap-0.5 flex-shrink-0 whitespace-nowrap">
+              Sala giochi <ChevronRight size={11} />
+            </span>
+          </Link>
         </div>
 
-        {/* ── Guadagna Gettoni ── */}
-        <div>
-          <div className="flex items-center justify-between mb-2.5">
-            <p className="section-title">🪙 Guadagna Gettoni</p>
-            <Link to="/minigiochi" className="text-[10px] text-primary-400 hover:text-primary-300 flex items-center gap-0.5 transition-colors">
-              Sala giochi <ChevronRight size={11} />
+        {/* ── Carosello guadagna gettoni ── */}
+        <div className="flex gap-2.5 overflow-x-auto scrollbar-hide pb-1">
+          {earnCards.map((s, si) => (
+            <Link
+              key={s.name}
+              to={s.to}
+              className="relative flex-shrink-0 w-[148px] rounded-2xl p-3.5 flex flex-col overflow-hidden shadow-[0_5px_16px_rgba(15,23,42,0.16)] hover:scale-[1.03] active:scale-95 transition-transform animate-slide-up"
+              style={{
+                backgroundImage: `linear-gradient(180deg, ${s.c1} 0%, ${s.c2} 100%)`,
+                animationDelay: `${si * 70}ms`,
+                animationFillMode: 'backwards',
+              }}
+            >
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                <div className="absolute top-0 bottom-0 w-10 bg-white/10 animate-shine" style={{ animationDelay: `${si * 800}ms` }} />
+              </div>
+              <p className="font-black text-[15px] leading-none text-white" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.25)' }}>{s.name}</p>
+              <p className="text-[9px] text-white/85 mt-1 mb-2.5 leading-snug flex-1">{s.tagline}</p>
+              <span className="self-start text-[9px] font-black uppercase px-3 py-1.5 rounded-lg bg-white/90 text-slate-800">
+                {s.cta} →
+              </span>
             </Link>
-          </div>
-          <div className="flex gap-2.5 overflow-x-auto scrollbar-hide pb-1">
-            {earnCards.map((s, si) => (
-              <Link
-                key={s.name}
-                to={s.to}
-                className="relative flex-shrink-0 w-[148px] rounded-2xl p-3.5 border border-white/8 flex flex-col overflow-hidden hover:scale-[1.03] active:scale-95 transition-transform animate-slide-up"
-                style={{ backgroundColor: s.bg, animationDelay: `${si * 70}ms`, animationFillMode: 'backwards' }}
-              >
-                <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                  <div className="absolute top-0 bottom-0 w-10 bg-white/5 animate-shine" style={{ animationDelay: `${si * 800}ms` }} />
-                </div>
-                <p className="font-black text-[15px] leading-none" style={{ color: s.accent }}>{s.name}</p>
-                <p className="text-[9px] text-white/55 mt-1 mb-2.5 leading-snug flex-1">{s.tagline}</p>
-                <span
-                  className="self-start text-[9px] font-black uppercase px-3 py-1.5 rounded-lg border transition-all"
-                  style={{ borderColor: `${s.accent}50`, color: s.accent, backgroundColor: `${s.accent}12` }}
-                >
-                  {s.cta} →
-                </span>
-              </Link>
-            ))}
-          </div>
+          ))}
         </div>
 
         {/* ── Azioni Rapide ── */}
-        <div className="glass-card p-4">
-          <p className="section-title mb-3">Azioni Rapide</p>
+        <div className="paper-card p-4">
+          <p className="section-title-ink mb-3">Azioni Rapide</p>
           <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-0.5">
             {quickActions.map((action) => {
               const Icon = action.icon;
@@ -313,10 +356,10 @@ export function DashboardPage() {
                   to={action.to}
                   className="flex-shrink-0 flex flex-col items-center gap-2 group"
                 >
-                  <div className="w-11 h-11 rounded-full bg-primary-500/12 border border-primary-500/20 flex items-center justify-center group-hover:bg-primary-500/25 group-hover:border-primary-500/40 group-hover:shadow-lg group-hover:shadow-primary-500/15 transition-all duration-200">
-                    <Icon size={18} className="text-primary-400" strokeWidth={1.8} />
+                  <div className="w-11 h-11 rounded-full bg-primary-500/15 border border-primary-500/30 flex items-center justify-center group-hover:bg-primary-500/30 group-hover:border-primary-600 transition-all duration-200">
+                    <Icon size={18} className="text-primary-700" strokeWidth={1.9} />
                   </div>
-                  <span className="text-[9px] text-white/50 group-hover:text-white/80 text-center whitespace-nowrap transition-colors">{action.label}</span>
+                  <span className="text-[9px] text-paper-muted group-hover:text-paper-ink text-center whitespace-nowrap transition-colors">{action.label}</span>
                 </Link>
               );
             })}

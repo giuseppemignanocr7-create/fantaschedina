@@ -71,7 +71,7 @@ export function PenaltyPowerMeter({ zone, onConfirm, onCancel }: PenaltyPowerMet
   const risk = ZONE_RISK[zone];
 
   return (
-    <div className="glass-card p-3 space-y-2 animate-pop-in">
+    <div className="night-card p-3 space-y-2 animate-pop-in">
       <div className="flex items-center justify-between">
         <p className="text-[10px] text-white/50 font-bold uppercase tracking-wide">
           Ferma la barra nel verde per la massima precisione!

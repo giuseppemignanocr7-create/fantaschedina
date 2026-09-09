@@ -37,7 +37,7 @@ const AdminPage = lazy(() => import('@/pages/AdminPage').then(m => ({ default: m
 function Spinner() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-8 h-8 border-2 border-white/20 border-t-primary-500 rounded-full animate-spin" />
+      <div className="w-8 h-8 border-2 border-slate-300 border-t-primary-500 rounded-full animate-spin" />
     </div>
   );
 }

@@ -59,14 +59,14 @@ export function PowerUpSelector({
   };
 
   return (
-    <div className="border-t border-white/10 pt-3 mt-3">
+    <div className="border-t border-slate-200 pt-3 mt-3">
       <div className="flex items-center justify-between mb-2">
-        <p className="text-sm font-bold text-white">Power-up</p>
+        <p className="text-sm font-bold text-slate-900">Power-up</p>
         <div className="flex items-center gap-1 text-xs">
-          <Coins size={12} className="text-yellow-400" />
-          <span className="font-bold text-yellow-400">{coins - totalCost}</span>
+          <Coins size={12} className="text-yellow-700" />
+          <span className="font-bold text-yellow-700">{coins - totalCost}</span>
           {totalCost > 0 && (
-            <span className="text-white/40">(-{totalCost})</span>
+            <span className="text-slate-500">(-{totalCost})</span>
           )}
         </div>
       </div>
@@ -78,7 +78,7 @@ export function PowerUpSelector({
             'p-2 rounded-lg border transition-all',
             selection.jolly
               ? 'bg-primary-500/10 border-primary-500/40'
-              : 'bg-white/5 border-white/10',
+              : 'bg-slate-100 border-slate-200',
             !selection.jolly && !canAfford(POWERUPS.jolly.cost, false) && 'opacity-40'
           )}
         >
@@ -89,12 +89,12 @@ export function PowerUpSelector({
           >
             <span className="text-lg">{POWERUPS.jolly.emoji}</span>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-white">{POWERUPS.jolly.name}</p>
-              <p className="text-[10px] text-white/40 leading-tight">
+              <p className="text-xs font-bold text-slate-900">{POWERUPS.jolly.name}</p>
+              <p className="text-[10px] text-slate-500 leading-tight">
                 {POWERUPS.jolly.description}
               </p>
             </div>
-            <span className="text-[10px] font-black text-yellow-400 flex-shrink-0">
+            <span className="text-[10px] font-black text-yellow-700 flex-shrink-0">
               {POWERUPS.jolly.cost} 🪙
             </span>
           </button>
@@ -103,7 +103,7 @@ export function PowerUpSelector({
               value={selection.jolly}
               onChange={e => setJollyMatch(e.target.value)}
               disabled={disabled}
-              className="mt-2 w-full bg-surface border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white"
+              className="mt-2 w-full bg-surface border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-900"
             >
               {predictions.map(p => {
                 const m = matches.find(x => x.id === p.matchId);
@@ -130,16 +130,16 @@ export function PowerUpSelector({
                 'w-full p-2 rounded-lg border flex items-center gap-2 text-left transition-all',
                 active
                   ? 'bg-primary-500/10 border-primary-500/40'
-                  : 'bg-white/5 border-white/10',
+                  : 'bg-slate-100 border-slate-200',
                 !active && !canAfford(pu.cost, false) && 'opacity-40'
               )}
             >
               <span className="text-lg">{pu.emoji}</span>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-white">{pu.name}</p>
-                <p className="text-[10px] text-white/40 leading-tight">{pu.description}</p>
+                <p className="text-xs font-bold text-slate-900">{pu.name}</p>
+                <p className="text-[10px] text-slate-500 leading-tight">{pu.description}</p>
               </div>
-              <span className="text-[10px] font-black text-yellow-400 flex-shrink-0">
+              <span className="text-[10px] font-black text-yellow-700 flex-shrink-0">
                 {pu.cost} 🪙
               </span>
             </button>
@@ -147,7 +147,7 @@ export function PowerUpSelector({
         })}
       </div>
 
-      <p className="text-[10px] text-white/30 mt-2">
+      <p className="text-[10px] text-slate-600 mt-2">
         Guadagna gettoni con i minigiochi e le missioni 🎮
       </p>
     </div>

@@ -7,9 +7,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: '#080c18', // Very dark navy
-        surface: '#0f1726',    // Dark card
-        card: '#141f35',       // Slightly lighter card
+        // Tema chiaro (mockup 09/09/2026): la pagina e le card sono chiare.
+        background: '#eef1f7', // fondo pagina
+        surface: '#ffffff',    // card
+        card: '#f8fafc',       // card secondaria
+        // Il "chrome" resta scuro: header, bottom nav, sidebar, login, scene di gioco.
+        night: {
+          DEFAULT: '#080c18',
+          surface: '#0f1726',
+          card: '#141f35',
+        },
         primary: {
           50: '#f6ffe6',
           100: '#e9ffc2',
@@ -47,6 +54,15 @@ export default {
           900: '#0f172a',
         },
         live: '#ef4444', // Red for Live/Danger
+        // Tema chiaro della home (mockup 09/09/2026): fondo pagina tenue,
+        // card bianche, testo scuro. Convive col tema scuro del resto dell'app.
+        paper: {
+          DEFAULT: '#eef1f7', // fondo pagina
+          card: '#ffffff',    // card
+          line: '#e2e8f0',    // bordi
+          ink: '#0f172a',     // testo principale
+          muted: '#64748b',   // testo secondario
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

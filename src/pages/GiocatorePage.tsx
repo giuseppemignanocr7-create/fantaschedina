@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { CountdownTimer, EmptyState, ErrorState } from '@/components/ui';
 import { betLabel } from '@/lib/markets';
@@ -39,7 +40,12 @@ export function GiocatorePage() {
   const { uid = '' } = useParams();
   const { user } = useAuthContext();
   const sonoIo = user?.uid === uid;
-  const { rankings, currentMatchday, loadRankings, loadMatchday } = useAppStore();
+  const { rankings, currentMatchday, loadRankings, loadMatchday } = useAppStore(useShallow(s => ({
+      rankings: s.rankings,
+      currentMatchday: s.currentMatchday,
+      loadRankings: s.loadRankings,
+      loadMatchday: s.loadMatchday,
+    })));
 
   const [passate, setPassate] = useState<SchedinaDoc[]>([]);
   const [inCorso, setInCorso] = useState<SchedinaDoc | null>(null);
@@ -120,7 +126,7 @@ export function GiocatorePage() {
   if (caricamento && !giocatore) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 size={24} className="text-primary-400 animate-spin" />
+        <Loader2 size={24} className="text-primary-700 animate-spin" />
       </div>
     );
   }
@@ -140,21 +146,21 @@ export function GiocatorePage() {
         <div className="flex items-center gap-2">
           <Link
             to="/classifica"
-            className="p-2 rounded-lg hover:bg-white/5 transition-colors"
+            className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
             aria-label="Torna alla classifica"
           >
-            <ArrowLeft size={18} className="text-white/60" />
+            <ArrowLeft size={18} className="text-slate-500" />
           </Link>
-          <div className="w-10 h-10 rounded-full bg-surface border border-white/10 flex items-center justify-center flex-shrink-0">
-            <User size={18} className="text-primary-400" />
+          <div className="w-10 h-10 rounded-full bg-surface border border-slate-200 flex items-center justify-center flex-shrink-0">
+            <User size={18} className="text-primary-700" />
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="page-title truncate">
               {giocatore?.username ?? 'Giocatore'}
-              {sonoIo && <span className="text-[10px] text-primary-400 ml-2">TU</span>}
+              {sonoIo && <span className="text-[10px] text-primary-700 ml-2">TU</span>}
             </h1>
             {giocatore && (
-              <p className="text-[11px] text-white/40">
+              <p className="text-[11px] text-slate-500">
                 {medaglia(giocatore.rank) ?? `${giocatore.rank}º`} in classifica generale
               </p>
             )}
@@ -170,7 +176,7 @@ export function GiocatorePage() {
             <Numero
               etichetta="Vittorie"
               valore={String(giocatore.weeklyWins)}
-              icona={giocatore.weeklyWins > 0 ? <Medal size={11} className="text-amber-400" /> : undefined}
+              icona={giocatore.weeklyWins > 0 ? <Medal size={11} className="text-amber-600" /> : undefined}
             />
           </div>
         )}
@@ -178,44 +184,44 @@ export function GiocatorePage() {
         {/* Giornata in corso */}
         {currentMatchday && (
           <div className="glass-card overflow-hidden">
-            <div className="px-3 py-2 bg-white/5 border-b border-white/5 flex items-center gap-1.5">
-              <Calendar size={12} className="text-primary-400" />
-              <p className="text-xs font-bold text-white/70">
+            <div className="px-3 py-2 bg-slate-100 border-b border-slate-200 flex items-center gap-1.5">
+              <Calendar size={12} className="text-primary-700" />
+              <p className="text-xs font-bold text-slate-500">
                 Giornata {currentMatchday.number} — in corso
               </p>
             </div>
 
             {!deadlinePassata ? (
               <div className="p-4 flex items-start gap-3">
-                <Lock size={16} className="text-white/30 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-white/50">
+                <Lock size={16} className="text-slate-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-slate-500">
                   <p>
                     La schedina di questa giornata resta coperta finché si può ancora
                     giocare: si scopre alla chiusura.
                   </p>
-                  <p className="text-[11px] text-white/35 mt-1.5 flex items-center gap-1.5">
+                  <p className="text-[11px] text-slate-600 mt-1.5 flex items-center gap-1.5">
                     <Clock size={11} />
                     Chiude tra <CountdownTimer deadline={currentMatchday.deadline} />
                   </p>
                 </div>
               </div>
             ) : inCorso ? (
-              <div className="divide-y divide-white/5">
+              <div className="divide-y divide-slate-200">
                 {inCorso.predictions.map((p, i) => (
                   <div key={`${p.matchId}-${p.betType}`} className="flex items-center gap-2 px-3 py-2">
-                    <span className="w-5 text-white/25 text-xs flex-shrink-0">{i + 1}</span>
+                    <span className="w-5 text-slate-600 text-xs flex-shrink-0">{i + 1}</span>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm truncate">{nomePartita(p.matchId)}</p>
-                      <p className="text-[11px] text-white/40">{betLabel(p.betType, p.outcome)}</p>
+                      <p className="text-[11px] text-slate-500">{betLabel(p.betType, p.outcome)}</p>
                     </div>
-                    <span className="text-xs font-mono text-white/60 flex-shrink-0">
+                    <span className="text-xs font-mono text-slate-500 flex-shrink-0">
                       {p.odds.toFixed(2)}
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="p-4 text-sm text-white/40">
+              <p className="p-4 text-sm text-slate-500">
                 Non ha giocato la schedina di questa giornata.
               </p>
             )}
@@ -224,8 +230,8 @@ export function GiocatorePage() {
 
         {/* Fantaschedine delle giornate passate */}
         <div className="flex items-center gap-1.5 px-1 pt-1">
-          <Trophy size={12} className="text-primary-400" />
-          <p className="text-xs font-bold text-white/60">Le sue fantaschedine</p>
+          <Trophy size={12} className="text-primary-700" />
+          <p className="text-xs font-bold text-slate-500">Le sue fantaschedine</p>
         </div>
 
         {passate.length === 0 && !caricamento ? (
@@ -242,31 +248,31 @@ export function GiocatorePage() {
                 <div key={s.id} className="glass-card overflow-hidden">
                   <button
                     onClick={() => setAperta(apertaQui ? null : s.id)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/5 transition-colors"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-100 transition-colors"
                   >
-                    <div className="w-10 h-10 rounded-xl bg-surface border border-white/10 flex flex-col items-center justify-center flex-shrink-0">
-                      <span className="text-[9px] text-white/40 uppercase">G</span>
-                      <span className="text-sm font-black text-white leading-none">
+                    <div className="w-10 h-10 rounded-xl bg-surface border border-slate-200 flex flex-col items-center justify-center flex-shrink-0">
+                      <span className="text-[9px] text-slate-500 uppercase">G</span>
+                      <span className="text-sm font-black text-slate-900 leading-none">
                         {s.matchdayNumber}
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-white">
+                      <p className="text-sm font-bold text-slate-900">
                         {s.correctPredictions}/10 esatti
                       </p>
                       {s.bonusPoints > 0 && (
-                        <p className="text-[10px] text-green-400 flex items-center gap-1">
+                        <p className="text-[10px] text-green-600 flex items-center gap-1">
                           <Award size={10} /> bonus +{s.bonusPoints}
                         </p>
                       )}
                     </div>
-                    <p className="font-black text-primary-300 flex-shrink-0">
+                    <p className="font-black text-primary-700 flex-shrink-0">
                       {s.finalPoints} pt
                     </p>
                   </button>
 
                   {apertaQui && (
-                    <div className="border-t border-white/5 divide-y divide-white/5">
+                    <div className="border-t border-slate-200 divide-y divide-slate-200">
                       {(s.predictionResults ?? []).map(p => (
                         <div
                           key={`${p.matchId}-${p.betType}`}
@@ -274,23 +280,23 @@ export function GiocatorePage() {
                         >
                           <span className="w-5 flex-shrink-0">
                             {p.isCorrect ? (
-                              <Check size={13} className="text-green-400" />
+                              <Check size={13} className="text-green-600" />
                             ) : (
-                              <X size={13} className="text-red-400" />
+                              <X size={13} className="text-red-600" />
                             )}
                           </span>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm truncate">{nomePartita(p.matchId)}</p>
-                            <p className="text-[11px] text-white/40">
+                            <p className="text-[11px] text-slate-500">
                               {betLabel(p.betType, p.outcome)}
                             </p>
                           </div>
                           <div className="flex-shrink-0 text-right">
-                            <p className="text-xs font-mono text-white/60">{p.odds.toFixed(2)}</p>
+                            <p className="text-xs font-mono text-slate-500">{p.odds.toFixed(2)}</p>
                             <p
                               className={cn(
                                 'text-[11px] font-bold',
-                                p.pointsEarned > 0 ? 'text-green-400' : 'text-white/30'
+                                p.pointsEarned > 0 ? 'text-green-600' : 'text-slate-600'
                               )}
                             >
                               {p.pointsEarned > 0 ? `+${p.pointsEarned}` : '0'}
@@ -323,11 +329,11 @@ function Numero({
 }) {
   return (
     <div className="glass-card p-2.5 text-center">
-      <p className="text-[10px] text-white/40">{etichetta}</p>
+      <p className="text-[10px] text-slate-500">{etichetta}</p>
       <p
         className={cn(
           'font-black text-sm flex items-center justify-center gap-1',
-          evidenzia ? 'text-primary-300' : 'text-white'
+          evidenzia ? 'text-primary-700' : 'text-slate-900'
         )}
       >
         {icona}

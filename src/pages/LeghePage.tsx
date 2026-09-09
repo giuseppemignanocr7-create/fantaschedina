@@ -145,14 +145,14 @@ export function LeghePage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Link to="/" className="p-1.5 text-white/60 hover:text-white transition-colors">
+            <Link to="/" className="p-1.5 text-slate-500 hover:text-slate-900 transition-colors">
               <ArrowLeft size={20} />
             </Link>
             <h1 className="page-title">LEGHE PRIVATE</h1>
           </div>
           <button
             onClick={() => setActiveTab(1)}
-            className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-400 text-white font-bold text-xs uppercase tracking-wide px-3 py-2 rounded-xl transition-colors"
+            className="flex items-center gap-1.5 bg-primary-500 hover:bg-primary-400 text-night font-bold text-xs uppercase tracking-wide px-3 py-2 rounded-xl transition-colors"
           >
             <Plus size={14} />
             CREA LEGA
@@ -160,7 +160,7 @@ export function LeghePage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-4 bg-surface rounded-xl p-1 border border-white/5">
+        <div className="flex gap-1 mb-4 bg-surface rounded-xl p-1 border border-slate-200">
           {TABS.map((tab, i) => (
             <button
               key={tab}
@@ -168,8 +168,8 @@ export function LeghePage() {
               className={cn(
                 'flex-1 py-2 text-[10px] font-bold uppercase tracking-wide rounded-lg transition-all',
                 activeTab === i
-                  ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30'
-                  : 'text-white/40 hover:text-white/70'
+                  ? 'bg-primary-500/20 text-primary-800 border border-primary-500/30'
+                  : 'text-slate-500 hover:text-slate-500'
               )}
             >
               {tab}
@@ -178,7 +178,7 @@ export function LeghePage() {
         </div>
 
         {error && (
-          <div className="glass-card p-3 mb-4 border-red-500/30 text-sm text-red-300">
+          <div className="glass-card p-3 mb-4 border-red-500/30 text-sm text-red-600">
             {error}
           </div>
         )}
@@ -188,20 +188,20 @@ export function LeghePage() {
           <div className="space-y-3">
             {loading ? (
               <div className="flex justify-center py-10">
-                <Loader2 size={28} className="text-primary-400 animate-spin" />
+                <Loader2 size={28} className="text-primary-700 animate-spin" />
               </div>
             ) : myLeagues.length === 0 ? (
               <div className="glass-card p-8 text-center animate-pop-in">
                 <p className="text-5xl mb-3 animate-float inline-block">🏟️</p>
-                <p className="font-bold text-white mb-1">Nessuna lega... per ora!</p>
-                <p className="text-xs text-white/40 mb-4">
+                <p className="font-bold text-slate-900 mb-1">Nessuna lega... per ora!</p>
+                <p className="text-xs text-slate-500 mb-4">
                   Sfida i tuoi amici: crea la tua lega o entra con un codice invito
                 </p>
                 <div className="flex gap-2 justify-center">
                   <button onClick={() => setActiveTab(1)} className="btn-green text-xs px-4 py-2.5 active:scale-95 transition-transform">
                     ➕ CREA LEGA
                   </button>
-                  <button onClick={() => setActiveTab(2)} className="text-xs font-black uppercase px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 transition-all active:scale-95">
+                  <button onClick={() => setActiveTab(2)} className="text-xs font-black uppercase px-4 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 hover:bg-slate-100 transition-all active:scale-95">
                     🔑 HO UN CODICE
                   </button>
                 </div>
@@ -220,31 +220,31 @@ export function LeghePage() {
                         fantacalcio. Prima si apriva a fisarmonica e finiva li’. */}
                     <Link
                       to={`/leghe/${league.id}`}
-                      className="block p-4 hover:bg-white/5 transition-colors active:scale-[0.99]"
+                      className="block p-4 hover:bg-slate-100 transition-colors active:scale-[0.99]"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-black text-white truncate">
+                          <p className="font-black text-slate-900 truncate">
                             {league.name}
                             {isOwner && (
-                              <span className="ml-2 text-[9px] font-bold text-yellow-400 bg-yellow-500/10 px-1.5 py-0.5 rounded uppercase">
+                              <span className="ml-2 text-[9px] font-bold text-yellow-700 bg-yellow-500/10 px-1.5 py-0.5 rounded uppercase">
                                 Owner
                               </span>
                             )}
                           </p>
-                          <p className="text-xs text-white/40 truncate">
+                          <p className="text-xs text-slate-500 truncate">
                             {league.description || 'Schedina, classifica e partite della lega'}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="flex items-center gap-1 text-xs text-white/50">
+                          <span className="flex items-center gap-1 text-xs text-slate-500">
                             <Users size={12} />
                             {league.memberCount}/{league.maxMembers}
                           </span>
-                          <ChevronRight size={18} className="text-primary-300" />
+                          <ChevronRight size={18} className="text-primary-700" />
                         </div>
                       </div>
-                      <div className="mt-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white/35">
+                      <div className="mt-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">
                         <span className="flex items-center gap-1">
                           <Target size={10} /> Schedina
                         </span>
@@ -262,7 +262,7 @@ export function LeghePage() {
                         <button
                           onClick={() => handleDelete(league)}
                           disabled={busy}
-                          className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
+                          className="flex items-center gap-1 text-xs text-red-600 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
                         >
                           <Trash2 size={12} /> Elimina lega
                         </button>
@@ -270,7 +270,7 @@ export function LeghePage() {
                         <button
                           onClick={() => handleLeave(league)}
                           disabled={busy}
-                          className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
+                          className="flex items-center gap-1 text-xs text-red-600 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
                         >
                           <LogOut size={12} /> Abbandona
                         </button>
@@ -287,7 +287,7 @@ export function LeghePage() {
         {activeTab === 1 && (
           <div className="glass-card p-4 space-y-4">
             <div>
-              <label htmlFor="leagueName" className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
+              <label htmlFor="leagueName" className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
                 Nome lega *
               </label>
               <input
@@ -296,11 +296,11 @@ export function LeghePage() {
                 onChange={e => setNome(e.target.value)}
                 maxLength={40}
                 placeholder="Amici del Gol"
-                className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/20 focus:border-primary-500/50 focus:outline-none"
+                className="w-full bg-surface border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 focus:outline-none"
               />
             </div>
             <div>
-              <label htmlFor="leagueDescription" className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
+              <label htmlFor="leagueDescription" className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
                 Descrizione
               </label>
               <input
@@ -309,33 +309,33 @@ export function LeghePage() {
                 onChange={e => setDescrizione(e.target.value)}
                 maxLength={80}
                 placeholder="Sfida tra amici veri!"
-                className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/20 focus:border-primary-500/50 focus:outline-none"
+                className="w-full bg-surface border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 focus:outline-none"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="leagueVisibility" className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
+                <label htmlFor="leagueVisibility" className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
                   Visibilità
                 </label>
                 <select
                   id="leagueVisibility"
                   value={isPrivate ? 'private' : 'public'}
                   onChange={e => setIsPrivate(e.target.value === 'private')}
-                  className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-primary-500/50 focus:outline-none"
+                  className="w-full bg-surface border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:border-primary-500/50 focus:outline-none"
                 >
                   <option value="private">Solo su invito</option>
                   <option value="public">Pubblica</option>
                 </select>
               </div>
               <div>
-                <label htmlFor="leagueMaxMembers" className="text-[10px] font-bold uppercase tracking-widest text-white/40 block mb-1.5">
+                <label htmlFor="leagueMaxMembers" className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
                   Max partecipanti
                 </label>
                 <select
                   id="leagueMaxMembers"
                   value={maxMembers}
                   onChange={e => setMaxMembers(e.target.value)}
-                  className="w-full bg-surface border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-primary-500/50 focus:outline-none"
+                  className="w-full bg-surface border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:border-primary-500/50 focus:outline-none"
                 >
                   {['10', '20', '50', '100'].map(n => (
                     <option key={n} value={n}>{n}</option>
@@ -346,7 +346,7 @@ export function LeghePage() {
             <button
               onClick={handleCreate}
               disabled={!nome.trim() || busy}
-              className="w-full py-3 rounded-xl bg-primary-500 hover:bg-primary-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-sm uppercase tracking-wide transition-colors flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl bg-primary-500 hover:bg-primary-400 disabled:opacity-40 disabled:cursor-not-allowed text-night font-black text-sm uppercase tracking-wide transition-colors flex items-center justify-center gap-2"
             >
               {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
               Crea lega
@@ -358,7 +358,7 @@ export function LeghePage() {
         {activeTab === 2 && (
           <div className="space-y-4">
             <div className="glass-card p-4 space-y-3">
-              <label htmlFor="leagueInviteCode" className="text-[10px] font-bold uppercase tracking-widest text-white/40 block">
+              <label htmlFor="leagueInviteCode" className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block">
                 Codice invito
               </label>
               <div className="flex gap-2">
@@ -368,12 +368,12 @@ export function LeghePage() {
                   onChange={e => setInviteCode(e.target.value.toUpperCase())}
                   maxLength={6}
                   placeholder="ABC123"
-                  className="flex-1 bg-surface border border-white/10 rounded-xl px-3 py-2.5 text-sm font-mono tracking-[0.3em] text-white placeholder:text-white/20 focus:border-primary-500/50 focus:outline-none uppercase"
+                  className="flex-1 bg-surface border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono tracking-[0.3em] text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 focus:outline-none uppercase"
                 />
                 <button
                   onClick={handleJoinByCode}
                   disabled={inviteCode.trim().length < 6 || busy}
-                  className="px-4 rounded-xl bg-primary-500 hover:bg-primary-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs uppercase transition-colors"
+                  className="px-4 rounded-xl bg-primary-500 hover:bg-primary-400 disabled:opacity-40 disabled:cursor-not-allowed text-night font-black text-xs uppercase transition-colors"
                 >
                   {busy ? <Loader2 size={14} className="animate-spin" /> : 'ENTRA'}
                 </button>
@@ -382,11 +382,11 @@ export function LeghePage() {
 
             {/* Leghe pubbliche */}
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
                 Leghe pubbliche
               </p>
               {publicLeagues.length === 0 ? (
-                <div className="glass-card p-5 text-center text-xs text-white/40">
+                <div className="glass-card p-5 text-center text-xs text-slate-500">
                   Nessuna lega pubblica disponibile
                 </div>
               ) : (
@@ -394,15 +394,15 @@ export function LeghePage() {
                   {publicLeagues.map(league => (
                     <div key={league.id} className="glass-card p-3 flex items-center gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm text-white truncate">{league.name}</p>
-                        <p className="text-[11px] text-white/40 truncate">
+                        <p className="font-bold text-sm text-slate-900 truncate">{league.name}</p>
+                        <p className="text-[11px] text-slate-500 truncate">
                           {league.memberCount}/{league.maxMembers} membri · di {league.ownerName}
                         </p>
                       </div>
                       <button
                         onClick={() => handleJoinPublic(league.id)}
                         disabled={busy || league.memberCount >= league.maxMembers}
-                        className="px-3 py-1.5 rounded-lg bg-primary-500/20 border border-primary-500/40 text-primary-400 font-black text-[10px] uppercase hover:bg-primary-500/30 disabled:opacity-40 transition-colors"
+                        className="px-3 py-1.5 rounded-lg bg-primary-500/20 border border-primary-500/40 text-primary-800 font-black text-[10px] uppercase hover:bg-primary-500/30 disabled:opacity-40 transition-colors"
                       >
                         Unisciti
                       </button>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Megaphone } from 'lucide-react';
+import { ChevronRight, Megaphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
@@ -27,32 +27,49 @@ const DEFAULT_SPONSORS: Sponsor[] = [];
 // AdminPage). Non linkano da nessuna parte: nessun href, quindi nessun
 // link morto. Da rimuovere quando arrivano i primi sponsor veri.
 const DEMO_SPONSORS: Sponsor[] = [
-  { name: 'SportBet Pro', tagline: 'Scommesse sportive', accent: '#84d80c' },
   { name: 'GoalZone', tagline: 'Abbigliamento sportivo', accent: '#3b82f6' },
   { name: 'MaxEnergy', tagline: 'Energy drink ufficiale', accent: '#f59e0b' },
-  { name: 'FastBet', tagline: 'Il tuo bookmaker', accent: '#ef4444' },
-  { name: 'ProKit', tagline: 'Equipaggiamento da gioco', accent: '#8b5cf6' },
 ];
 
-function SponsorPill({ s }: { s: Sponsor }) {
+/**
+ * Card sponsor: badge colorato con l'iniziale del brand, nome in tinta e
+ * claim sotto. `fill` la fa espandere nella griglia statica, altrimenti
+ * resta a larghezza fissa per scorrere nel marquee.
+ */
+function SponsorCard({ s, fill = false }: { s: Sponsor; fill?: boolean }) {
   const accent = s.accent ?? '#84d80c';
   const content = (
-    <div className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-surface/90 border border-white/10 hover:border-white/25 transition-all hover:scale-[1.03] shadow-lg">
+    <div
+      className={cn(
+        'flex items-center gap-2 px-2.5 py-2 rounded-xl bg-night-surface border transition-all hover:brightness-125',
+        fill ? 'w-full' : 'w-[230px] flex-shrink-0'
+      )}
+      style={{ borderColor: `${accent}33`, boxShadow: `inset 0 1px 0 rgba(255,255,255,0.04)` }}
+    >
       <span
-        className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse"
-        style={{ backgroundColor: accent, boxShadow: `0 0 10px ${accent}` }}
-      />
-      <div className="leading-tight whitespace-nowrap">
-        <p className="text-sm font-black uppercase tracking-wide" style={{ color: accent }}>
+        className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 font-display font-black italic text-[13px]"
+        style={{ backgroundColor: `${accent}22`, color: accent, boxShadow: `0 0 12px ${accent}33` }}
+        aria-hidden
+      >
+        {s.name.slice(0, 1).toUpperCase()}
+      </span>
+      <div className="leading-tight min-w-0 flex-1">
+        <p
+          className="text-[11px] font-display font-black italic uppercase tracking-tight truncate"
+          style={{ color: accent }}
+        >
           {s.name}
         </p>
-        {s.tagline && <p className="text-[10px] text-white/50 uppercase tracking-wider font-bold">{s.tagline}</p>}
+        {s.tagline && (
+          <p className="text-[7px] text-white/45 uppercase tracking-tight font-semibold truncate">{s.tagline}</p>
+        )}
       </div>
+      {s.href && <ChevronRight size={12} className="text-white/25 flex-shrink-0" />}
     </div>
   );
   if (s.href) {
     return (
-      <a href={s.href} target="_blank" rel="noopener noreferrer">
+      <a href={s.href} target="_blank" rel="noopener noreferrer" className={fill ? 'block w-full' : undefined}>
         {content}
       </a>
     );
@@ -71,11 +88,11 @@ export function SponsorTicker({ sponsors = DEFAULT_SPONSORS, className }: Sponso
   return (
     <div className={cn('relative overflow-hidden', className)}>
       {/* Fade laterali */}
-      <div className="absolute left-0 top-0 bottom-0 w-12 z-10 bg-gradient-to-r from-background to-transparent pointer-events-none" />
-      <div className="absolute right-0 top-0 bottom-0 w-12 z-10 bg-gradient-to-l from-background to-transparent pointer-events-none" />
-      <div className="flex w-max animate-marquee hover:[animation-play-state:paused] gap-4 py-1">
+      <div className="absolute left-0 top-0 bottom-0 w-12 z-10 bg-gradient-to-r from-night to-transparent pointer-events-none" />
+      <div className="absolute right-0 top-0 bottom-0 w-12 z-10 bg-gradient-to-l from-night to-transparent pointer-events-none" />
+      <div className="flex w-max animate-marquee hover:[animation-play-state:paused] gap-3 py-1">
         {loop.map((s, i) => (
-          <SponsorPill key={`${s.name}-${i}`} s={s} />
+          <SponsorCard key={`${s.name}-${i}`} s={s} />
         ))}
       </div>
     </div>
@@ -83,8 +100,9 @@ export function SponsorTicker({ sponsors = DEFAULT_SPONSORS, className }: Sponso
 }
 
 /**
- * SponsorBanner: fetches active sponsors from Firestore and renders
- * a prominent scrolling marquee bar. Auto-updates in realtime.
+ * SponsorBanner: legge gli sponsor attivi da Firestore e li mostra sotto
+ * l'header. Fino a due stanno affiancati e fermi (come da mockup); da tre in
+ * su tornano a scorrere, altrimenti non ci starebbero.
  */
 export function SponsorBanner() {
   const [sponsors, setSponsors] = useState<Sponsor[]>(DEMO_SPONSORS);
@@ -110,14 +128,22 @@ export function SponsorBanner() {
   if (sponsors.length === 0) return null;
 
   return (
-    <div className="sticky top-14 z-20 bg-surface/95 backdrop-blur-md border-b border-white/8">
-      <div className="flex items-center gap-2 px-3 py-2">
-        <div className="flex items-center gap-1.5 flex-shrink-0 pr-2 border-r border-white/8">
-          <Megaphone size={16} className="text-primary-400 animate-wiggle" />
-          <span className="text-[10px] font-black uppercase tracking-widest text-primary-400 hidden sm:block">Sponsor</span>
+    <div className="sticky top-14 z-20 bg-night/95 backdrop-blur-md border-b border-white/5">
+      {sponsors.length <= 2 ? (
+        <div className="max-w-2xl mx-auto grid grid-cols-2 gap-2.5 px-4 py-2.5">
+          {sponsors.map(s => (
+            <SponsorCard key={s.name} s={s} fill />
+          ))}
         </div>
-        <SponsorTicker sponsors={sponsors} className="flex-1" />
-      </div>
+      ) : (
+        <div className="flex items-center gap-2 px-3 py-2">
+          <div className="flex items-center gap-1.5 flex-shrink-0 pr-2 border-r border-white/10">
+            <Megaphone size={16} className="text-primary-400 animate-wiggle" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-primary-400 hidden sm:block">Sponsor</span>
+          </div>
+          <SponsorTicker sponsors={sponsors} className="flex-1" />
+        </div>
+      )}
     </div>
   );
 }

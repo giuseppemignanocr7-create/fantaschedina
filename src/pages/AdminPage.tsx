@@ -53,9 +53,9 @@ export function AdminPage() {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="glass-card p-8 text-center max-w-md">
-          <AlertTriangle size={48} className="text-red-400 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2">Accesso Negato</h2>
-          <p className="text-white/60">Non hai i permessi per accedere a questa pagina.</p>
+          <AlertTriangle size={48} className="text-red-600 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Accesso Negato</h2>
+          <p className="text-slate-500">Non hai i permessi per accedere a questa pagina.</p>
         </div>
       </div>
     );
@@ -72,12 +72,12 @@ export function AdminPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
       <div className="flex items-center gap-3">
-        <Zap size={28} className="text-primary-400" />
-        <h1 className="text-2xl font-bold text-white">Pannello Admin</h1>
+        <Zap size={28} className="text-primary-700" />
+        <h1 className="text-2xl font-bold text-slate-900">Pannello Admin</h1>
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 p-1 rounded-xl bg-surface/50 border border-white/5 overflow-x-auto">
+      <div className="flex gap-1 p-1 rounded-xl bg-surface/50 border border-slate-200 overflow-x-auto">
         {tabs.map(t => {
           const Icon = t.icon;
           return (
@@ -87,8 +87,8 @@ export function AdminPage() {
               className={cn(
                 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap',
                 tab === t.id
-                  ? 'bg-primary-500/20 text-primary-300 border border-primary-500/30'
-                  : 'text-white/50 hover:text-white/80 hover:bg-white/5'
+                  ? 'bg-primary-500/20 text-primary-800 border border-primary-500/30'
+                  : 'text-slate-500 hover:text-slate-600 hover:bg-slate-100'
               )}
             >
               <Icon size={16} />
@@ -99,12 +99,12 @@ export function AdminPage() {
       </div>
 
       {error && (
-        <div className="glass-card p-3 border-red-500/30 bg-red-500/10 text-red-300 text-sm">
+        <div className="glass-card p-3 border-red-500/30 bg-red-500/10 text-red-600 text-sm">
           {error}
         </div>
       )}
       {success && (
-        <div className="glass-card p-3 border-green-500/30 bg-green-500/10 text-green-300 text-sm">
+        <div className="glass-card p-3 border-green-500/30 bg-green-500/10 text-green-600 text-sm">
           {success}
         </div>
       )}
@@ -127,7 +127,7 @@ function StatsTab({ stats, loading, onRefresh }: {
   onRefresh: () => void;
 }) {
   if (loading && !stats) {
-    return <div className="text-white/40 text-center py-8">Caricamento...</div>;
+    return <div className="text-slate-500 text-center py-8">Caricamento...</div>;
   }
   if (!stats) return null;
 
@@ -142,8 +142,8 @@ function StatsTab({ stats, loading, onRefresh }: {
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-bold text-white">Panoramica</h2>
-        <button onClick={onRefresh} aria-label="Aggiorna panoramica" className="p-2 rounded-lg hover:bg-white/5 text-white/60">
+        <h2 className="text-lg font-bold text-slate-900">Panoramica</h2>
+        <button onClick={onRefresh} aria-label="Aggiorna panoramica" className="p-2 rounded-lg hover:bg-slate-100 text-slate-500">
           <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
@@ -154,9 +154,9 @@ function StatsTab({ stats, loading, onRefresh }: {
             <div key={c.label} className="glass-card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Icon size={18} style={{ color: c.color }} />
-                <span className="text-white/50 text-xs">{c.label}</span>
+                <span className="text-slate-500 text-xs">{c.label}</span>
               </div>
-              <p className="text-2xl font-bold text-white">{c.value}</p>
+              <p className="text-2xl font-bold text-slate-900">{c.value}</p>
             </div>
           );
         })}
@@ -256,14 +256,14 @@ function MatchdayTab({ onError, onSuccess }: {
   return (
     <div className="space-y-4">
       <div className="glass-card p-5">
-        <h2 className="text-lg font-bold text-white mb-1">Sync Giornata</h2>
-        <p className="text-white/50 text-sm mb-3">
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Sync Giornata</h2>
+        <p className="text-slate-500 text-sm mb-3">
           Forza la sincronizzazione della prossima giornata da ESPN + quote reali.
         </p>
         <button
           onClick={() => handleSync(false)}
           disabled={syncing}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-500/20 text-primary-300 border border-primary-500/30 hover:bg-primary-500/30 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-500/20 text-primary-800 border border-primary-500/30 hover:bg-primary-500/30 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
           {syncing ? 'Sincronizzazione...' : 'Sync ora'}
@@ -271,7 +271,7 @@ function MatchdayTab({ onError, onSuccess }: {
         <button
           onClick={() => handleSync(true)}
           disabled={syncing}
-          className="flex items-center gap-2 px-4 py-2 ml-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 ml-2 rounded-xl bg-amber-500/20 text-amber-600 border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
           {syncing ? 'Rigenerazione...' : 'Rigenera quote'}
@@ -279,8 +279,8 @@ function MatchdayTab({ onError, onSuccess }: {
       </div>
 
       <div className="glass-card p-5">
-        <h2 className="text-lg font-bold text-white mb-1">Force Settlement</h2>
-        <p className="text-white/50 text-sm mb-3">
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Force Settlement</h2>
+        <p className="text-slate-500 text-sm mb-3">
           Forza il settlement di una giornata specifica (fetch risultati + valutazione schedine).
         </p>
         <div className="flex gap-2">
@@ -292,12 +292,12 @@ function MatchdayTab({ onError, onSuccess }: {
             onChange={e => setSettleNumber(e.target.value)}
             placeholder="N. giornata"
             aria-label="Numero giornata da liquidare"
-            className="flex-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
+            className="flex-1 px-3 py-2 rounded-xl bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 outline-none"
           />
           <button
             onClick={() => handleSettle(false)}
             disabled={settling}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/20 text-amber-600 border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
           >
             <Zap size={16} className={settling ? 'animate-pulse' : ''} />
             {settling ? 'Settlement...' : 'Settle'}
@@ -306,8 +306,8 @@ function MatchdayTab({ onError, onSuccess }: {
 
         {settleWarning && (
           <div className="mt-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
-            <p className="text-red-300 text-sm font-bold mb-1">{settleWarning}</p>
-            <p className="text-white/50 text-xs mb-3">
+            <p className="text-red-600 text-sm font-bold mb-1">{settleWarning}</p>
+            <p className="text-slate-500 text-xs mb-3">
               Valutare adesso conta come sbagliati i pronostici sulle partite non
               ancora giocate. L'operazione non è reversibile.
             </p>
@@ -315,13 +315,13 @@ function MatchdayTab({ onError, onSuccess }: {
               <button
                 onClick={() => handleSettle(true)}
                 disabled={settling}
-                className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-bold hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-600 border border-red-500/30 text-xs font-bold hover:bg-red-500/30 transition-colors disabled:opacity-50"
               >
                 Valuta comunque
               </button>
               <button
                 onClick={() => setSettleWarning(null)}
-                className="px-3 py-1.5 rounded-lg bg-white/5 text-white/60 border border-white/10 text-xs font-bold hover:bg-white/10 transition-colors"
+                className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-500 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-colors"
               >
                 Annulla
               </button>
@@ -332,12 +332,12 @@ function MatchdayTab({ onError, onSuccess }: {
       <PremiSettimanaliCard onError={onError} onSuccess={onSuccess} />
 
       <div className="glass-card p-5 border-red-500/30">
-        <h2 className="text-lg font-bold text-white mb-1">Azzera stagione</h2>
-        <p className="text-white/50 text-sm mb-1">
-          Riporta <span className="font-bold text-white">tutti</span> i profili allo stato
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Azzera stagione</h2>
+        <p className="text-slate-500 text-sm mb-1">
+          Riporta <span className="font-bold text-slate-900">tutti</span> i profili allo stato
           iniziale: punti, statistiche e missioni riscosse a zero, gettoni a {STARTING_COINS}.
         </p>
-        <p className="text-white/40 text-xs mb-3">
+        <p className="text-slate-500 text-xs mb-3">
           Schedine, giornate e premi passati restano come storico. L'operazione non è
           reversibile: scrivi AZZERA per abilitare il pulsante.
         </p>
@@ -348,12 +348,12 @@ function MatchdayTab({ onError, onSuccess }: {
             onChange={e => setResetConferma(e.target.value)}
             placeholder="AZZERA"
             aria-label="Conferma azzeramento stagione"
-            className="flex-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-red-500/50 outline-none"
+            className="flex-1 px-3 py-2 rounded-xl bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-red-500/50 outline-none"
           />
           <button
             onClick={handleResetStagione}
             disabled={resetting || resetConferma !== 'AZZERA'}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 text-red-600 border border-red-500/30 hover:bg-red-500/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <RotateCcw size={16} className={resetting ? 'animate-spin' : ''} />
             {resetting ? 'Azzeramento...' : 'Azzera'}
@@ -362,14 +362,14 @@ function MatchdayTab({ onError, onSuccess }: {
       </div>
 
       <div className="glass-card p-5">
-        <h2 className="text-lg font-bold text-white mb-1">Seed Quiz DB</h2>
-        <p className="text-white/50 text-sm mb-3">
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Seed Quiz DB</h2>
+        <p className="text-slate-500 text-sm mb-3">
           Carica tutte le domande del Quiz Calcio in Firestore (una tantum).
         </p>
         <button
           onClick={handleSeedQuiz}
           disabled={seeding}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 hover:bg-purple-500/30 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-500/20 text-purple-600 border border-purple-500/30 hover:bg-purple-500/30 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={16} className={seeding ? 'animate-spin' : ''} />
           {seeding ? 'Caricamento...' : 'Seed domande quiz'}
@@ -425,8 +425,8 @@ function CompetitionsTab({ onError, onSuccess }: {
   return (
     <div className="space-y-3">
       <div className="glass-card p-4">
-        <h2 className="text-lg font-bold text-white mb-1">Campionati Attivi</h2>
-        <p className="text-white/50 text-sm">
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Campionati Attivi</h2>
+        <p className="text-slate-500 text-sm">
           Le partite dei campionati attivi alimentano il pool da cui ogni utente sceglie
           le sue 10 partite. Utile per tenere il gioco vivo quando la Serie A è ferma
           (soste, fine stagione): attiva Champions League, Premier League, ecc.
@@ -434,21 +434,21 @@ function CompetitionsTab({ onError, onSuccess }: {
       </div>
 
       {loading ? (
-        <div className="text-white/40 text-center py-8">Caricamento...</div>
+        <div className="text-slate-500 text-center py-8">Caricamento...</div>
       ) : (
         <div className="space-y-2">
           {competitions.map(c => (
             <div key={c.code} className="glass-card p-3 flex items-center gap-3">
               <div className="flex-1 min-w-0">
-                <p className="text-white font-medium truncate">{c.name}</p>
-                <p className="text-white/30 text-xs">{c.code}</p>
+                <p className="text-slate-900 font-medium truncate">{c.name}</p>
+                <p className="text-slate-600 text-xs">{c.code}</p>
               </div>
               <button
                 onClick={() => handleToggle(c)}
                 disabled={togglingCode === c.code}
                 className={cn(
                   'p-1.5 rounded-lg disabled:opacity-40',
-                  c.active ? 'text-green-400' : 'text-white/30'
+                  c.active ? 'text-green-600' : 'text-slate-600'
                 )}
                 title={c.active ? 'Attivo' : 'Disattivato'}
                 aria-label={`${c.name}: ${c.active ? 'Attivo, clicca per disattivare' : 'Disattivato, clicca per attivare'}`}
@@ -459,7 +459,7 @@ function CompetitionsTab({ onError, onSuccess }: {
             </div>
           ))}
           {activeCount === 0 && (
-            <div className="glass-card p-3 border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm text-center">
+            <div className="glass-card p-3 border-amber-500/30 bg-amber-500/10 text-amber-600 text-sm text-center">
               Nessun campionato attivo: il pool partite sarà vuoto al prossimo sync.
             </div>
           )}
@@ -538,10 +538,10 @@ function SponsorsTab({ onError, onSuccess }: {
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-bold text-white">Sponsor ({sponsors.length})</h2>
+        <h2 className="text-lg font-bold text-slate-900">Sponsor ({sponsors.length})</h2>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-300 border border-primary-500/30 text-sm hover:bg-primary-500/30"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500/20 text-primary-800 border border-primary-500/30 text-sm hover:bg-primary-500/30"
         >
           <Plus size={14} />
           Nuovo
@@ -556,7 +556,7 @@ function SponsorsTab({ onError, onSuccess }: {
             aria-label="Nome sponsor"
             value={form.name}
             onChange={e => setForm({ ...form, name: e.target.value })}
-            className="w-full px-3 py-2 rounded-lg bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
+            className="w-full px-3 py-2 rounded-lg bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 outline-none"
           />
           <input
             type="text"
@@ -564,7 +564,7 @@ function SponsorsTab({ onError, onSuccess }: {
             aria-label="Tagline sponsor"
             value={form.tagline}
             onChange={e => setForm({ ...form, tagline: e.target.value })}
-            className="w-full px-3 py-2 rounded-lg bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
+            className="w-full px-3 py-2 rounded-lg bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 outline-none"
           />
           <div className="flex gap-2">
             <input
@@ -572,7 +572,7 @@ function SponsorsTab({ onError, onSuccess }: {
               value={form.accent}
               onChange={e => setForm({ ...form, accent: e.target.value })}
               aria-label="Colore accento sponsor"
-              className="w-12 h-10 rounded-lg bg-surface border border-white/10 cursor-pointer"
+              className="w-12 h-10 rounded-lg bg-surface border border-slate-200 cursor-pointer"
             />
             <input
               type="text"
@@ -580,12 +580,12 @@ function SponsorsTab({ onError, onSuccess }: {
               aria-label="URL link sponsor"
               value={form.href}
               onChange={e => setForm({ ...form, href: e.target.value })}
-              className="flex-1 px-3 py-2 rounded-lg bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
+              className="flex-1 px-3 py-2 rounded-lg bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 outline-none"
             />
           </div>
           <button
             onClick={handleCreate}
-            className="w-full py-2 rounded-lg bg-primary-500 text-white font-medium hover:bg-primary-600"
+            className="w-full py-2 rounded-lg bg-primary-500 text-night font-medium hover:bg-primary-600"
           >
             Crea sponsor
           </button>
@@ -593,9 +593,9 @@ function SponsorsTab({ onError, onSuccess }: {
       )}
 
       {loading ? (
-        <div className="text-white/40 text-center py-4">Caricamento...</div>
+        <div className="text-slate-500 text-center py-4">Caricamento...</div>
       ) : sponsors.length === 0 ? (
-        <div className="text-white/40 text-center py-8 text-sm">Nessuno sponsor. Clicca "Nuovo" per aggiungerne.</div>
+        <div className="text-slate-500 text-center py-8 text-sm">Nessuno sponsor. Clicca "Nuovo" per aggiungerne.</div>
       ) : (
         <div className="space-y-2">
           {sponsors.map(s => (
@@ -605,12 +605,12 @@ function SponsorsTab({ onError, onSuccess }: {
                 style={{ backgroundColor: s.accent }}
               />
               <div className="flex-1 min-w-0">
-                <p className="text-white font-medium truncate">{s.name}</p>
-                {s.tagline && <p className="text-white/40 text-xs truncate">{s.tagline}</p>}
+                <p className="text-slate-900 font-medium truncate">{s.name}</p>
+                {s.tagline && <p className="text-slate-500 text-xs truncate">{s.tagline}</p>}
               </div>
               <button
                 onClick={() => handleToggle(s.id)}
-                className={cn('p-1.5 rounded-lg', s.active ? 'text-green-400' : 'text-white/30')}
+                className={cn('p-1.5 rounded-lg', s.active ? 'text-green-600' : 'text-slate-600')}
                 title={s.active ? 'Attivo' : 'Disattivato'}
                 aria-label={`${s.name}: ${s.active ? 'Attivo, clicca per disattivare' : 'Disattivato, clicca per attivare'}`}
                 aria-pressed={s.active}
@@ -620,7 +620,7 @@ function SponsorsTab({ onError, onSuccess }: {
               <button
                 onClick={() => handleDelete(s.id)}
                 aria-label={`Elimina sponsor ${s.name}`}
-                className="p-1.5 rounded-lg text-red-400/70 hover:text-red-400 hover:bg-red-500/10"
+                className="p-1.5 rounded-lg text-red-600/80 hover:text-red-600 hover:bg-red-500/10"
               >
                 <Trash2 size={16} />
               </button>
@@ -669,20 +669,20 @@ function UsersTab({ onError, onSuccess }: {
     }
   };
 
-  if (loading) return <div className="text-white/40 text-center py-8">Caricamento...</div>;
+  if (loading) return <div className="text-slate-500 text-center py-8">Caricamento...</div>;
 
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-bold text-white">Utenti ({users.length})</h2>
-        <button onClick={load} aria-label="Aggiorna elenco utenti" className="p-2 rounded-lg hover:bg-white/5 text-white/60">
+        <h2 className="text-lg font-bold text-slate-900">Utenti ({users.length})</h2>
+        <button onClick={load} aria-label="Aggiorna elenco utenti" className="p-2 rounded-lg hover:bg-slate-100 text-slate-500">
           <RefreshCw size={18} />
         </button>
       </div>
       <div className="space-y-2">
         {users.map(u => (
           <div key={u.id} className="glass-card p-3 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-surface flex items-center justify-center text-white/60 text-xs font-bold overflow-hidden">
+            <div className="w-8 h-8 rounded-full bg-surface flex items-center justify-center text-slate-500 text-xs font-bold overflow-hidden">
               {u.avatarUrl ? (
                 <img src={u.avatarUrl} alt="" className="w-full h-full object-cover" />
               ) : (
@@ -690,16 +690,16 @@ function UsersTab({ onError, onSuccess }: {
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-white font-medium truncate">{u.username}</p>
-              <p className="text-white/40 text-xs">{u.totalPoints} pt</p>
+              <p className="text-slate-900 font-medium truncate">{u.username}</p>
+              <p className="text-slate-500 text-xs">{u.totalPoints} pt</p>
             </div>
             <button
               onClick={() => handleBan(u.id, u.username)}
               className={cn(
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-colors',
                 u.isActive === false
-                  ? 'bg-green-500/10 text-green-300 border-green-500/20 hover:bg-green-500/20'
-                  : 'bg-red-500/10 text-red-300 border-red-500/20 hover:bg-red-500/20'
+                  ? 'bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20'
+                  : 'bg-red-500/10 text-red-600 border-red-500/20 hover:bg-red-500/20'
               )}
             >
               <Ban size={14} />
@@ -769,8 +769,8 @@ function PremiSettimanaliCard({ onError, onSuccess }: {
 
   return (
     <div className="glass-card p-5">
-      <h2 className="text-lg font-bold text-white mb-1">Premi settimanali</h2>
-      <p className="text-white/50 text-sm mb-3">
+      <h2 className="text-lg font-bold text-slate-900 mb-1">Premi settimanali</h2>
+      <p className="text-slate-500 text-sm mb-3">
         Cosa si vince in una giornata. Il primo premio va a chi fa più punti in
         quella giornata, il secondo al secondo e così via.
       </p>
@@ -784,12 +784,12 @@ function PremiSettimanaliCard({ onError, onSuccess }: {
           onChange={e => setGiornata(e.target.value)}
           placeholder="N. giornata"
           aria-label="Giornata dei premi"
-          className="flex-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-white placeholder:text-white/30 focus:border-primary-500/50 outline-none"
+          className="flex-1 px-3 py-2 rounded-xl bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 outline-none"
         />
         <button
           onClick={carica}
           disabled={caricando}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-500/20 text-primary-300 border border-primary-500/30 hover:bg-primary-500/30 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-500/20 text-primary-800 border border-primary-500/30 hover:bg-primary-500/30 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={16} className={caricando ? 'animate-spin' : ''} />
           Carica
@@ -798,7 +798,7 @@ function PremiSettimanaliCard({ onError, onSuccess }: {
 
       {premi.length > 0 && (
         <>
-          <p className="text-white/40 text-xs mb-2">
+          <p className="text-slate-500 text-xs mb-2">
             {personalizzati
               ? 'Premi già impostati per questa giornata.'
               : 'Nessun premio impostato: questi sono quelli di partenza, salvali per confermarli.'}
@@ -806,7 +806,7 @@ function PremiSettimanaliCard({ onError, onSuccess }: {
           <div className="space-y-2 mb-3">
             {premi.map((premio, i) => (
               <div key={premio.position} className="flex items-center gap-2">
-                <span className="w-8 text-center font-black text-white/70">
+                <span className="w-8 text-center font-black text-slate-500">
                   {premio.position}°
                 </span>
                 <input
@@ -815,7 +815,7 @@ function PremiSettimanaliCard({ onError, onSuccess }: {
                   onChange={e => aggiorna(i, 'label', e.target.value)}
                   maxLength={60}
                   aria-label={`Premio ${premio.position}° posto`}
-                  className="flex-1 px-3 py-2 rounded-xl bg-surface border border-white/10 text-white outline-none focus:border-primary-500/50"
+                  className="flex-1 px-3 py-2 rounded-xl bg-surface border border-slate-200 text-slate-900 outline-none focus:border-primary-500/50"
                 />
                 <input
                   type="text"
@@ -824,12 +824,12 @@ function PremiSettimanaliCard({ onError, onSuccess }: {
                   maxLength={8}
                   placeholder="🎁"
                   aria-label={`Emoji premio ${premio.position}° posto`}
-                  className="w-16 px-2 py-2 rounded-xl bg-surface border border-white/10 text-white text-center outline-none focus:border-primary-500/50"
+                  className="w-16 px-2 py-2 rounded-xl bg-surface border border-slate-200 text-slate-900 text-center outline-none focus:border-primary-500/50"
                 />
                 <button
                   onClick={() => setPremi(premi.filter((_, j) => j !== i))}
                   aria-label={`Rimuovi premio ${premio.position}° posto`}
-                  className="p-2 rounded-lg text-red-400 hover:bg-red-500/10"
+                  className="p-2 rounded-lg text-red-600 hover:bg-red-500/10"
                 >
                   <Trash2 size={16} />
                 </button>
@@ -844,7 +844,7 @@ function PremiSettimanaliCard({ onError, onSuccess }: {
                   { position: premi.length + 1, label: '', emoji: '' },
                 ])
               }
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/70 text-xs font-bold hover:bg-white/10"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold hover:bg-slate-100"
             >
               <Plus size={14} />
               Aggiungi posizione
@@ -852,7 +852,7 @@ function PremiSettimanaliCard({ onError, onSuccess }: {
             <button
               onClick={salva}
               disabled={salvando}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30 text-green-300 text-xs font-bold hover:bg-green-500/30 disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-500/30 text-green-600 text-xs font-bold hover:bg-green-500/30 disabled:opacity-50"
             >
               {salvando ? 'Salvataggio...' : 'Salva premi'}
             </button>

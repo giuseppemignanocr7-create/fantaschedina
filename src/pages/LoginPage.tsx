@@ -136,14 +136,14 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex">
       {/* Left Panel - Features */}
-      <div className="hidden lg:flex lg:w-1/2 bg-surface relative overflow-hidden flex-col justify-between p-12 border-r border-white/5">
+      <div className="hidden lg:flex lg:w-1/2 bg-night-surface relative overflow-hidden flex-col justify-between p-12 border-r border-white/5">
         {/* Background Effects */}
         <div className="absolute inset-0 bg-stadium-gradient opacity-80" />
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1518091043644-c1d4457512c6?q=80&w=1931&auto=format&fit=crop')] bg-cover bg-center mix-blend-overlay opacity-20" />
         
         <div className="relative z-10">
           <Link to="/">
-            <img src="/logo-full.png" alt="FantaSchedina" className="h-16 w-auto" />
+            <img src="/logo-full.png" alt="FantaSchedina" width={238} height={64} className="h-16 w-auto" />
             <p className="text-[10px] text-white/35 tracking-[0.3em] uppercase mt-2 ml-1">
               PREDICI. SFIDA. VINCI.
             </p>
@@ -183,14 +183,14 @@ export function LoginPage() {
       </div>
       
       {/* Right Panel - Form */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-12 bg-background relative">
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-12 bg-night relative">
         <div className="absolute inset-0 bg-gradient-radial from-primary-900/10 to-transparent opacity-50" />
         
         <div className="w-full max-w-md relative z-10 animate-slide-up">
           {/* Mobile Logo */}
           <div className="lg:hidden mb-8 flex justify-center">
             <Link to="/">
-              <img src="/logo-full.png" alt="FantaSchedina" className="h-10 w-auto" />
+              <img src="/logo-full.png" alt="FantaSchedina" width={148} height={40} className="h-10 w-auto" />
             </Link>
           </div>
           
@@ -208,7 +208,7 @@ export function LoginPage() {
           </div>
           
           {/* Mode Toggle */}
-          <div className="flex rounded-xl bg-surface border border-white/5 p-1 mb-8">
+          <div className="flex rounded-xl bg-night-surface border border-white/5 p-1 mb-8">
             <button
               type="button"
               onClick={() => setMode('login')}
@@ -264,7 +264,7 @@ export function LoginPage() {
                     value={formData.username}
                     onChange={handleInputChange('username')}
                     placeholder="Il tuo nome in campo"
-                    className={`input-field pl-12 bg-surface ${errors.username ? 'border-red-500 focus:ring-red-500/50' : ''}`}
+                    className={`night-input pl-12 bg-night-surface ${errors.username ? 'border-red-500 focus:ring-red-500/50' : ''}`}
                   />
                 </div>
                 {errors.username && (
@@ -286,7 +286,7 @@ export function LoginPage() {
                   value={formData.email}
                   onChange={handleInputChange('email')}
                   placeholder="nome@esempio.com"
-                  className={`input-field pl-12 bg-surface ${errors.email ? 'border-red-500 focus:ring-red-500/50' : ''}`}
+                  className={`night-input pl-12 bg-night-surface ${errors.email ? 'border-red-500 focus:ring-red-500/50' : ''}`}
                 />
               </div>
               {errors.email && (
@@ -307,7 +307,7 @@ export function LoginPage() {
                   value={formData.password}
                   onChange={handleInputChange('password')}
                   placeholder="••••••••"
-                  className={`input-field pl-12 pr-12 bg-surface ${errors.password ? 'border-red-500 focus:ring-red-500/50' : ''}`}
+                  className={`night-input pl-12 pr-12 bg-night-surface ${errors.password ? 'border-red-500 focus:ring-red-500/50' : ''}`}
                 />
                 <button
                   type="button"
@@ -337,7 +337,7 @@ export function LoginPage() {
                     value={formData.confirmPassword}
                     onChange={handleInputChange('confirmPassword')}
                     placeholder="••••••••"
-                    className={`input-field pl-12 bg-surface ${errors.confirmPassword ? 'border-red-500 focus:ring-red-500/50' : ''}`}
+                    className={`night-input pl-12 bg-night-surface ${errors.confirmPassword ? 'border-red-500 focus:ring-red-500/50' : ''}`}
                   />
                 </div>
                 {errors.confirmPassword && (
@@ -364,7 +364,7 @@ export function LoginPage() {
                 <input
                   type="checkbox"
                   id="terms"
-                  className="mt-1 w-4 h-4 rounded border-white/20 bg-surface text-primary-500 focus:ring-primary-500"
+                  className="mt-1 w-4 h-4 rounded border-white/20 bg-night-surface text-primary-500 focus:ring-primary-500"
                   required
                 />
                 <label htmlFor="terms" className="text-xs text-slate-400 leading-relaxed">

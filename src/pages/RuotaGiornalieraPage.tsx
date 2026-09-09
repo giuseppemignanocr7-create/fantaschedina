@@ -76,12 +76,12 @@ export function RuotaGiornalieraPage() {
       <div className="w-full max-w-sm space-y-5">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Link to="/minigiochi" className="p-2 text-white/40 hover:text-white transition-colors">
+          <Link to="/minigiochi" className="p-2 text-slate-500 hover:text-slate-900 transition-colors">
             <ArrowLeft size={20} />
           </Link>
           <div>
-            <h1 className="font-display font-black text-xl text-white uppercase">Ruota Giornaliera</h1>
-            <p className="text-[10px] text-white/40">1 giro gratuito ogni giorno</p>
+            <h1 className="font-display font-black text-xl text-slate-900 uppercase">Ruota Giornaliera</h1>
+            <p className="text-[10px] text-slate-500">1 giro gratuito ogni giorno</p>
           </div>
         </div>
 
@@ -152,8 +152,8 @@ export function RuotaGiornalieraPage() {
               })}
 
               {/* Center */}
-              <div className="absolute inset-[35%] rounded-full bg-background flex items-center justify-center shadow-lg ring-4 ring-yellow-500/30">
-                <RefreshCw size={22} className={cn('text-yellow-400', spinning && 'animate-spin')} />
+              <div className="absolute inset-[35%] rounded-full bg-night flex items-center justify-center shadow-lg ring-4 ring-yellow-500/30">
+                <RefreshCw size={22} className={cn('text-yellow-700', spinning && 'animate-spin')} />
               </div>
             </div>
           </div>
@@ -164,18 +164,18 @@ export function RuotaGiornalieraPage() {
             disabled={spinning || alreadySpun}
             className={cn(
               'w-full py-4 rounded-2xl font-black text-base uppercase tracking-wide transition-all',
-              spinning ? 'bg-white/10 text-white/40 cursor-not-allowed'
-              : alreadySpun ? 'bg-white/5 text-white/30 cursor-not-allowed border border-white/10'
+              spinning ? 'bg-slate-100 text-slate-500 cursor-not-allowed'
+              : alreadySpun ? 'bg-slate-100 text-slate-600 cursor-not-allowed border border-slate-200'
               : 'bg-gradient-to-r from-yellow-600 via-yellow-500 to-orange-500 text-black shadow-lg shadow-yellow-500/40 hover:shadow-yellow-500/70 active:scale-[0.97] animate-pulse-glow'
             )}
           >
             {spinning ? '🌀 La ruota gira…' : alreadySpun ? '✓ Già girato oggi' : '🎡 GIRA LA RUOTA'}
           </button>
 
-          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+          {error && <p className="text-xs text-red-600 text-center">{error}</p>}
 
           {alreadySpun && !spinning && (
-            <p className="text-xs text-white/30 text-center">Torna domani per un nuovo giro gratuito!</p>
+            <p className="text-xs text-slate-600 text-center">Torna domani per un nuovo giro gratuito!</p>
           )}
         </div>
 
@@ -186,25 +186,25 @@ export function RuotaGiornalieraPage() {
             style={{ borderColor: `${prize.color}70`, boxShadow: `0 0 40px -10px ${prize.color}66` }}
           >
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              <div className="absolute top-0 bottom-0 w-24 bg-white/10 animate-shine" />
+              <div className="absolute top-0 bottom-0 w-24 bg-white/50 animate-shine" />
             </div>
             <p className="text-6xl animate-heartbeat">{prize.pts >= 150 ? '🏆' : prize.pts >= 50 ? '🎉' : '🪙'}</p>
-            <p className="text-[10px] text-white/40 uppercase tracking-widest">{prize.pts >= 150 ? 'JACKPOT!!!' : 'Hai vinto'}</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest">{prize.pts >= 150 ? 'JACKPOT!!!' : 'Hai vinto'}</p>
             <p className="font-black text-5xl animate-coin-pop" style={{ color: prize.color }}>
               +<CountUp to={prize.pts} durationMs={1200} /> 🪙
             </p>
-            <p className="text-sm text-white/60">gettoni aggiunti al tuo portafoglio</p>
+            <p className="text-sm text-slate-500">gettoni aggiunti al tuo portafoglio</p>
           </div>
         )}
 
         {/* Prizes list */}
         <div className="glass-card p-4">
-          <p className="text-[10px] text-white/40 uppercase tracking-widest mb-3 font-bold">Premi disponibili</p>
+          <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-3 font-bold">Premi disponibili</p>
           <div className="grid grid-cols-2 gap-1.5">
             {SEGMENTS.map((s, i) => (
-              <div key={i} className="flex items-center gap-2 p-2 rounded-xl bg-white/3">
+              <div key={i} className="flex items-center gap-2 p-2 rounded-xl bg-slate-50">
                 <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                <span className="text-xs text-white/70 font-medium">{s.label}</span>
+                <span className="text-xs text-slate-500 font-medium">{s.label}</span>
               </div>
             ))}
           </div>

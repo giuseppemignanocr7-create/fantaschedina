@@ -26,13 +26,13 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="min-h-screen flex items-center justify-center bg-background px-4">
           <div className="text-center max-w-sm">
             <p className="text-5xl mb-4">⚽💥</p>
-            <h1 className="text-xl font-black text-white mb-2">Ops, autogol!</h1>
-            <p className="text-sm text-white/50 mb-6">
+            <h1 className="text-xl font-black text-slate-900 mb-2">Ops, autogol!</h1>
+            <p className="text-sm text-slate-500 mb-6">
               Qualcosa è andato storto. Ricarica la pagina per riprendere la partita.
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="px-5 py-2.5 rounded-xl bg-primary-500 hover:bg-primary-400 text-white font-bold text-sm transition-colors"
+              className="px-5 py-2.5 rounded-xl bg-primary-500 hover:bg-primary-400 text-night font-bold text-sm transition-colors"
             >
               Ricarica
             </button>

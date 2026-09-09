@@ -156,31 +156,31 @@ export function SfidePage() {
     <div className="min-h-screen px-4 py-6 max-w-2xl mx-auto">
       <Link
         to="/minigiochi"
-        className="inline-flex items-center gap-2 text-white/50 hover:text-white text-sm mb-4"
+        className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-900 text-sm mb-4"
       >
         <ArrowLeft size={16} />
         Minigiochi
       </Link>
 
       <div className="flex items-center gap-3 mb-2">
-        <Swords className="text-teal-400" size={24} />
-        <h1 className="font-display font-black text-2xl text-white uppercase">Sfide 1vs1</h1>
+        <Swords className="text-teal-600" size={24} />
+        <h1 className="font-display font-black text-2xl text-slate-900 uppercase">Sfide 1vs1</h1>
       </div>
-      <p className="text-white/50 text-sm mb-6">
+      <p className="text-slate-500 text-sm mb-6">
         Cinque rigori contro un altro giocatore. Vinci fino a {COINS.sfidaMaxReward} gettoni; puoi
         sfidare lo stesso avversario una volta ogni {COINS.sfidaCooldownDays} giorni.
       </p>
 
       {fase === 'scelta' && (
         <div className="glass-card p-4">
-          <h2 className="font-bold text-white mb-3">Scegli chi sfidare</h2>
+          <h2 className="font-bold text-slate-900 mb-3">Scegli chi sfidare</h2>
           {caricamento ? (
-            <div className="flex items-center gap-2 text-white/50 py-6 justify-center">
+            <div className="flex items-center gap-2 text-slate-500 py-6 justify-center">
               <Loader2 size={16} className="animate-spin" />
               Carico i giocatori...
             </div>
           ) : avversari.length === 0 ? (
-            <p className="text-white/50 text-sm py-6 text-center">
+            <p className="text-slate-500 text-sm py-6 text-center">
               Non c'è ancora nessun altro giocatore da sfidare.
             </p>
           ) : (
@@ -188,16 +188,16 @@ export function SfidePage() {
               {avversari.map(a => (
                 <li
                   key={a.uid}
-                  className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/5 border border-white/10"
+                  className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-100 border border-slate-200"
                 >
                   <div className="min-w-0">
-                    <p className="font-bold text-white truncate">{a.username}</p>
-                    <p className="text-xs text-white/40">{a.totalPoints.toFixed(1)} pt</p>
+                    <p className="font-bold text-slate-900 truncate">{a.username}</p>
+                    <p className="text-xs text-slate-500">{a.totalPoints.toFixed(1)} pt</p>
                   </div>
                   <button
                     onClick={() => iniziaSfida(a)}
                     disabled={avvio}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500/20 border border-teal-500/30 text-teal-300 text-xs font-bold hover:bg-teal-500/30 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500/20 border border-teal-500/30 text-teal-600 text-xs font-bold hover:bg-teal-500/30 transition-colors disabled:opacity-50"
                   >
                     <Swords size={14} />
                     Sfida
@@ -212,10 +212,10 @@ export function SfidePage() {
       {fase === 'tiri' && sfidato && (
         <div className="glass-card p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-white/60 text-sm">
-              Contro <span className="font-bold text-white">{sfidato.username}</span>
+            <p className="text-slate-500 text-sm">
+              Contro <span className="font-bold text-slate-900">{sfidato.username}</span>
             </p>
-            <p className="font-mono text-sm text-teal-300">
+            <p className="font-mono text-sm text-teal-600">
               Tiro {Math.min(tiri.length + 1, TIRI)} / {TIRI}
             </p>
           </div>
@@ -231,7 +231,7 @@ export function SfidePage() {
               onCancel={() => setZonaScelta(null)}
             />
           ) : (
-            <p className="text-center text-white/50 text-sm">
+            <p className="text-center text-slate-500 text-sm">
               Tocca la porta per scegliere dove tirare.
             </p>
           )}
@@ -242,14 +242,14 @@ export function SfidePage() {
                 key={i}
                 className={cn(
                   'w-2.5 h-2.5 rounded-full',
-                  i < tiri.length ? 'bg-teal-400' : 'bg-white/15'
+                  i < tiri.length ? 'bg-teal-400' : 'bg-slate-200'
                 )}
               />
             ))}
           </div>
 
           {invio && (
-            <div className="flex items-center justify-center gap-2 text-white/60 text-sm">
+            <div className="flex items-center justify-center gap-2 text-slate-500 text-sm">
               <Loader2 size={16} className="animate-spin" />
               Il portiere si prepara...
             </div>
@@ -259,7 +259,7 @@ export function SfidePage() {
 
       {fase === 'rivelazione' && esito && (
         <div className="glass-card p-4 space-y-4">
-          <p className="text-center text-white/60 text-sm">
+          <p className="text-center text-slate-500 text-sm">
             Tiro {Math.min(tiroMostrato + 1, TIRI)} di {TIRI}
           </p>
           <PenaltyStadium revealShot={tiroCorrente} revealKey={tiroMostrato} />
@@ -276,57 +276,57 @@ export function SfidePage() {
       {fase === 'risultato' && esito && sfidato && (
         <div className="glass-card p-6 text-center space-y-5">
           <div className="text-6xl">{esito.won ? '🏆' : esito.draw ? '🤝' : '😢'}</div>
-          <h2 className="font-display font-black text-2xl text-white uppercase">
+          <h2 className="font-display font-black text-2xl text-slate-900 uppercase">
             {esito.won ? 'Hai vinto!' : esito.draw ? 'Pareggio!' : 'Hai perso!'}
           </h2>
 
           <div className="flex items-center justify-center gap-6">
             <div>
-              <p className="text-xs text-white/40 uppercase">Tu</p>
-              <p className="font-black text-4xl text-teal-400">{esito.myGoals}</p>
+              <p className="text-xs text-slate-500 uppercase">Tu</p>
+              <p className="font-black text-4xl text-teal-600">{esito.myGoals}</p>
             </div>
-            <span className="text-2xl text-white/30 font-black">-</span>
+            <span className="text-2xl text-slate-600 font-black">-</span>
             <div>
-              <p className="text-xs text-white/40 uppercase truncate max-w-[120px]">
+              <p className="text-xs text-slate-500 uppercase truncate max-w-[120px]">
                 {sfidato.username}
               </p>
-              <p className="font-black text-4xl text-red-400">{esito.oppGoals}</p>
+              <p className="font-black text-4xl text-red-600">{esito.oppGoals}</p>
             </div>
           </div>
 
           <div className="flex justify-center gap-6 text-sm">
             <div>
-              <p className="text-white/40 text-xs mb-1">I tuoi tiri</p>
+              <p className="text-slate-500 text-xs mb-1">I tuoi tiri</p>
               <p>{esito.myResults.map(r => (r.goal ? '⚽' : '🧤')).join(' ')}</p>
             </div>
             <div>
-              <p className="text-white/40 text-xs mb-1">I suoi</p>
+              <p className="text-slate-500 text-xs mb-1">I suoi</p>
               <p>{esito.oppResults.map(r => (r.goal ? '⚽' : '🧤')).join(' ')}</p>
             </div>
           </div>
 
           {esito.reward > 0 ? (
             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4">
-              <p className="text-yellow-200/60 text-xs uppercase tracking-widest mb-1">Premio</p>
-              <p className="font-black text-3xl text-yellow-400 flex items-center justify-center gap-2">
+              <p className="text-yellow-800/80 text-xs uppercase tracking-widest mb-1">Premio</p>
+              <p className="font-black text-3xl text-yellow-700 flex items-center justify-center gap-2">
                 <Coins size={24} />+{esito.reward}
               </p>
             </div>
           ) : (
-            <p className="text-white/40 text-sm">Nessun premio questa volta.</p>
+            <p className="text-slate-500 text-sm">Nessun premio questa volta.</p>
           )}
 
           <div className="flex flex-wrap gap-2 justify-center">
             <button
               onClick={ricomincia}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-500/20 border border-teal-500/30 text-teal-300 font-bold text-sm hover:bg-teal-500/30 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-500/20 border border-teal-500/30 text-teal-600 font-bold text-sm hover:bg-teal-500/30 transition-colors"
             >
               <Swords size={16} />
               Sfida un altro
             </button>
             <Link
               to="/minigiochi"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/60 font-bold text-sm hover:bg-white/10 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 font-bold text-sm hover:bg-slate-100 transition-colors"
             >
               <Trophy size={16} />
               Altri minigiochi
