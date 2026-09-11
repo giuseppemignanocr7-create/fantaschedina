@@ -49,14 +49,32 @@ function ProtectedRoute({ children }: { children: ReactElement }) {
 }
 
 function App() {
-  const { isAuthenticated, loading, profile } = useAuthContext();
+  const { isAuthenticated, loading, profile, refreshProfile } = useAuthContext();
   const loadMatchday = useAppStore(s => s.loadMatchday);
+  const loadRankings = useAppStore(s => s.loadRankings);
   const syncCurrentUser = useAppStore(s => s.syncCurrentUser);
   const loadUserSchedina = useAppStore(s => s.loadUserSchedina);
 
   useEffect(() => {
     if (!loading && isAuthenticated) loadMatchday();
   }, [isAuthenticated, loading, loadMatchday]);
+
+  // La posizione in classifica sulla home viene dalla lista `rankings`, che
+  // prima si caricava solo aprendo la Classifica: fino ad allora restava "—".
+  // Punti e posizione cambiano anche mentre l'app e' aperta (il server
+  // valuta le giornate): al ritorno in primo piano si rileggono entrambi.
+  // loadRankings ha una cache di 60 s, quindi non costa letture inutili.
+  useEffect(() => {
+    if (loading || !isAuthenticated) return;
+    void loadRankings();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      void refreshProfile();
+      void loadRankings();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [isAuthenticated, loading, loadRankings, refreshProfile]);
 
   useEffect(() => {
     syncCurrentUser(profile);
