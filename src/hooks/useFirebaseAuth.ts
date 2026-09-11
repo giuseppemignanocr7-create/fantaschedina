@@ -76,8 +76,12 @@ function mapFirebaseError(code?: string): string {
       return 'Questa email è già registrata con una password: entra con email e password';
     case 'auth/operation-not-allowed':
       return 'Accesso con Google non ancora attivo su questo progetto';
+    case 'auth/unauthorized-domain':
+      return 'Questo dominio non è autorizzato per l’accesso con Google (Firebase → Authentication → Domini autorizzati)';
     default:
-      return 'Errore di autenticazione';
+      // Il codice in coda: un errore che non conosciamo deve dire cos'è,
+      // non nascondersi dietro una frase generica.
+      return code ? `Errore di autenticazione (${code})` : 'Errore di autenticazione';
   }
 }
 
