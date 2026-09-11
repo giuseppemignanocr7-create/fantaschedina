@@ -7,7 +7,7 @@
 // partite e' viva allo stesso modo.
 //
 // Due fonti che si sommano:
-//  A) polling ESPN ogni 45 secondi (`refreshLiveScores` non fa nulla fuori
+//  A) polling ESPN ogni 30 secondi (`refreshLiveScores` non fa nulla fuori
 //     dalla finestra live, quindi chiamarlo sempre non costa niente);
 //  B) il documento della giornata su Firestore, aggiornato dal server, in
 //     tempo reale.
@@ -16,7 +16,7 @@
 import { useEffect } from 'react';
 import { useAppStore } from '@/store';
 
-const INTERVALLO_POLLING_MS = 45_000;
+const INTERVALLO_POLLING_MS = 30_000;
 
 export function useLiveMatchday(): void {
   const currentMatchday = useAppStore(s => s.currentMatchday);

@@ -51,6 +51,8 @@ interface AppStore {
   currentMatchday: Matchday | null;
   matchOdds: Record<string, MatchOdds>;
   liveScores: Record<string, LiveScore>;
+  /** Quando il client ha letto per l'ultima volta i punteggi da ESPN (ms). */
+  liveFetchedAt: number;
   rankings: RankingEntry[];
   weeklyRankings: WeeklyRanking[];
   prizePool: PrizePool;
@@ -134,6 +136,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   currentMatchday: null,
   matchOdds: {},
   liveScores: {},
+  liveFetchedAt: 0,
   rankings: [],
   weeklyRankings: [],
   prizePool: initialPrizePool,
@@ -585,6 +588,7 @@ export const useAppStore = create<AppStore>()((set, get) => ({
         return {
           currentMatchday: { ...current, matches },
           liveScores: { ...state.liveScores, ...fetchedScores },
+          liveFetchedAt: Date.now(),
         };
       });
     } catch (err) {
@@ -593,9 +597,29 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   },
 
   // ── B: realtime dal doc giornata Firestore (aggiornato da updateLiveScores) ──
+  // Il doc lo scrive updateLiveScores ogni 2 minuti: i suoi risultati sono
+  // per forza piu' vecchi di quelli che il client ha appena letto da ESPN
+  // (ogni 30 s). Prima ogni snapshot sovrascriveva tutto e il punteggio
+  // tornava indietro fino al giro successivo: in campo sembrava una
+  // differita di 3-4 minuti. Ora status e risultato delle partite restano
+  // quelli del client finche' la sua lettura e' recente; il resto del doc
+  // (quote, scadenza, stato giornata) passa sempre.
   subscribeMatchday: (matchdayNumber: number) =>
     subscribeMatchdayDoc(matchdayNumber, next => {
-      if (next) set({ currentMatchday: next });
+      if (!next) return;
+      set(state => {
+        const prev = state.currentMatchday;
+        const clientIsFresh = Date.now() - state.liveFetchedAt < 3 * 60 * 1000;
+        if (!prev || prev.number !== next.number || !clientIsFresh) {
+          return { currentMatchday: next };
+        }
+        const mine = new Map(prev.matches.map(m => [m.id, m]));
+        const matches = next.matches.map(m => {
+          const c = mine.get(m.id);
+          return c && c.status !== 'scheduled' ? { ...m, status: c.status, result: c.result } : m;
+        });
+        return { currentMatchday: { ...next, matches } };
+      });
     }),
 
   clearError: () => set({ error: null }),
