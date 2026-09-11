@@ -8,7 +8,8 @@
 // ============================================
 
 import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, firebaseApp } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { auth, db, firebaseApp, functions } from '@/lib/firebase';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
 
@@ -100,6 +101,18 @@ export async function disattivaPush(): Promise<void> {
     await deleteToken(getMessaging(firebaseApp));
   } catch (e) {
     console.warn('[push] disattivazione:', e);
+  }
+}
+
+/** Chiede al server una notifica di prova per i propri dispositivi. */
+export async function inviaNotificaDiProva(): Promise<{ ok: true; consegnati: number } | { ok: false; motivo: string }> {
+  try {
+    const fn = httpsCallable<void, { dispositivi: number; consegnati: number }>(functions, 'sendTestPush');
+    const res = await fn();
+    return { ok: true, consegnati: res.data.consegnati };
+  } catch (e) {
+    const msg = (e as { message?: string }).message ?? 'Invio non riuscito';
+    return { ok: false, motivo: msg };
   }
 }
 
