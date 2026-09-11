@@ -1854,6 +1854,30 @@ export const getPublicProfiles = onCall(callableOpts, async request => {
   };
 });
 
+// ---------- Notifica di prova ----------
+//
+// Chi attiva le notifiche vuole sapere subito se arrivano, senza aspettare
+// una scadenza. Manda ai soli dispositivi dell'utente che chiama.
+
+export const sendTestPush = onCall(callableOpts, async request => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await enforceRateLimit(uid, 'sendTestPush', 3, 60_000);
+  const perUtente = await caricaTokenPush([uid]);
+  const tokens = perUtente.get(uid) ?? [];
+  if (tokens.length === 0) {
+    throw new HttpsError('failed-precondition', 'Nessun dispositivo registrato: attiva prima le notifiche');
+  }
+  const consegnati = await inviaPush(tokens, {
+    title: '🔔 Le notifiche funzionano',
+    body: 'Ti avviseremo alla scadenza della schedina, al calcio d’inizio e a giornata valutata.',
+    path: '/account',
+    tag: 'test',
+  });
+  logger.info('sendTestPush', { uid, dispositivi: tokens.length, consegnati });
+  return { dispositivi: tokens.length, consegnati };
+});
+
 export const manageLeague = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');

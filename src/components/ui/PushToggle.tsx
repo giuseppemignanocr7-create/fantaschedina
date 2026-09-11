@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Bell, BellOff, BellRing, Loader2 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { attivaPush, disattivaPush, statoPush, type PushStatus } from '@/lib/push';
+import { attivaPush, disattivaPush, inviaNotificaDiProva, statoPush, type PushStatus } from '@/lib/push';
 import { cn } from '@/lib/utils';
 
 function usePush() {
@@ -73,7 +73,39 @@ export function PushCard() {
           </p>
         </div>
       </button>
+      {acceso && <ProvaInvio />}
       {errore && <p className="text-xs text-red-600 font-medium">{errore}</p>}
+    </div>
+  );
+}
+
+function ProvaInvio() {
+  const [esito, setEsito] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const invia = async () => {
+    setBusy(true);
+    setEsito(null);
+    const r = await inviaNotificaDiProva();
+    setEsito(
+      r.ok
+        ? r.consegnati > 0
+          ? 'Inviata: dovrebbe comparire fra pochi secondi.'
+          : 'Il server non ha trovato dispositivi validi: prova a disattivare e riattivare.'
+        : r.motivo
+    );
+    setBusy(false);
+  };
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-[11px] text-slate-500">{esito ?? 'Vuoi verificare che arrivino?'}</p>
+      <button
+        type="button"
+        onClick={invia}
+        disabled={busy}
+        className="text-[11px] font-bold text-primary-700 hover:text-primary-800 whitespace-nowrap disabled:opacity-60"
+      >
+        {busy ? 'Invio…' : 'Invia una prova'}
+      </button>
     </div>
   );
 }
