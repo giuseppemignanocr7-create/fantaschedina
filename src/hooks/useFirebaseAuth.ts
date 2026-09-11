@@ -12,6 +12,9 @@ import {
   updatePassword,
   EmailAuthProvider,
   reauthenticateWithCredential,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
   type User as FbUser,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -34,6 +37,8 @@ interface AuthState {
 interface AuthApi {
   signUp: (email: string, password: string, username: string) => Promise<{ error: { message: string } | null }>;
   signIn: (email: string, password: string) => Promise<{ error: { message: string } | null }>;
+  /** Accesso o iscrizione con Google: lo stesso pulsante fa entrambe le cose. */
+  signInWithGoogle: () => Promise<{ error: { message: string } | null }>;
   signOut: () => Promise<{ error: { message: string } | null }>;
   updateProfile: (
     updates: Pick<ProfileDoc, 'username'> | Pick<ProfileDoc, 'avatarUrl'>
@@ -64,9 +69,26 @@ function mapFirebaseError(code?: string): string {
       return 'Troppi tentativi, riprova più tardi';
     case 'auth/network-request-failed':
       return 'Errore di rete, riprova';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'Accesso con Google annullato';
+    case 'auth/account-exists-with-different-credential':
+      return 'Questa email è già registrata con una password: entra con email e password';
+    case 'auth/operation-not-allowed':
+      return 'Accesso con Google non ancora attivo su questo progetto';
     default:
       return 'Errore di autenticazione';
   }
+}
+
+/**
+ * Nome utente per chi arriva da Google: il displayName ("Mario Rossi") va
+ * bene così com'è, ma le regole Firestore lo vogliono fra 2 e 30 caratteri.
+ * Chi non ha un nome su Google prende la parte dell'email prima della @.
+ */
+export function usernameFromAccount(displayName: string | null, email: string | null): string {
+  const base = (displayName?.trim() || email?.split('@')[0] || 'player').slice(0, 30);
+  return base.length >= 2 ? base : 'player';
 }
 
 export function useFirebaseAuth(): UseFirebaseAuth {
@@ -88,7 +110,7 @@ export function useFirebaseAuth(): UseFirebaseAuth {
               (await ensureProfile(
                 fbUser.uid,
                 fbUser.email ?? '',
-                fbUser.displayName ?? fbUser.email?.split('@')[0] ?? 'player'
+                usernameFromAccount(fbUser.displayName, fbUser.email)
               ))
           );
         } catch (e) {
@@ -130,6 +152,28 @@ export function useFirebaseAuth(): UseFirebaseAuth {
       return { error: null };
     } catch (e) {
       const code = (e as { code?: string }).code;
+      const message = mapFirebaseError(code);
+      setError(message);
+      return { error: { message } };
+    }
+  };
+
+  // Il profilo Firestore lo crea onAuthStateChanged (ensureProfile), come per
+  // l'email: qui basta l'accesso. Se il browser blocca il popup (capita nelle
+  // PWA installate su iOS) si passa al redirect, e l'esito arriva allo stesso
+  // listener al ritorno sulla pagina.
+  const signInWithGoogle: AuthApi['signInWithGoogle'] = async () => {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    try {
+      await signInWithPopup(auth, provider);
+      return { error: null };
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'auth/popup-blocked') {
+        await signInWithRedirect(auth, provider);
+        return { error: null };
+      }
       const message = mapFirebaseError(code);
       setError(message);
       return { error: { message } };
@@ -186,6 +230,7 @@ export function useFirebaseAuth(): UseFirebaseAuth {
     error,
     signUp,
     signIn,
+    signInWithGoogle,
     signOut,
     updateProfile,
     changePassword,

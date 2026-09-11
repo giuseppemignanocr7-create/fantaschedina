@@ -33,6 +33,9 @@ export function ProfiloPage() {
     updateProfile,
     changePassword,
   } = useAuthContext();
+  // Chi entra con Google non ha una password da cambiare: si gestisce dal
+  // suo account Google, e il pulsante qui creerebbe solo un errore.
+  const hasPassword = authUser?.providerData.some(p => p.providerId === 'password') ?? false;
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -206,13 +209,15 @@ export function ProfiloPage() {
                   Annulla
                 </button>
               )}
-              <button 
+              {hasPassword && (
+<button 
                 onClick={() => setShowPasswordModal(true)}
                 className="text-xs py-2 px-4 text-slate-500 hover:text-slate-900 flex items-center justify-center gap-2 uppercase tracking-wide transition-colors"
               >
                 <Lock size={14} />
                 Sicurezza
               </button>
+)}
             </div>
           </div>
         </div>
@@ -359,12 +364,14 @@ export function ProfiloPage() {
                   <p className="text-xs text-slate-500">Ultima modifica 3 mesi fa</p>
                 </div>
               </div>
-              <button 
+              {hasPassword && (
+<button 
                 onClick={() => setShowPasswordModal(true)}
                 className="text-primary-700 text-xs font-bold uppercase tracking-wider hover:text-slate-900 transition-colors"
               >
                 Aggiorna
               </button>
+)}
             </div>
 
             <div className="pt-4 mt-2">
