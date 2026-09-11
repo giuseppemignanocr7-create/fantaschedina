@@ -4,6 +4,7 @@ import { useAppStore } from '@/store';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { LoginPage } from '@/pages/LoginPage';
 import { Layout } from '@/components/layout';
+import { riprendiPush } from '@/lib/push';
 
 // Route lazy-loaded per code splitting
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
@@ -79,6 +80,10 @@ function App() {
   useEffect(() => {
     syncCurrentUser(profile);
   }, [profile, syncCurrentUser]);
+
+  useEffect(() => {
+    if (profile?.id) void riprendiPush(profile.id);
+  }, [profile?.id]);
 
   useEffect(() => {
     if (isAuthenticated) loadUserSchedina();
