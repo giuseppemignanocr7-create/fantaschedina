@@ -6,6 +6,7 @@ import {
 import { useAppStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { cn } from '@/lib/utils';
+import { PushBanner } from '@/components/ui/PushToggle';
 import { teamColor } from '@/lib/teamColors';
 
 // Le nove icone della home, nell'ordine chiesto dal regolamento di gioco
@@ -271,6 +272,7 @@ export function DashboardPage() {
 
       {/* ══ Area chiara: tile colorate e sezioni gettoni ══ */}
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+        <PushBanner />
 
         {/* ── Griglia delle nove icone ── */}
         <div className="grid grid-cols-4 gap-2.5">

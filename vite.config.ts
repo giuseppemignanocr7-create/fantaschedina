@@ -48,6 +48,8 @@ export default defineConfig({
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
+        // Notifiche push: gestite dallo stesso SW della PWA (vedi public/push-sw.js).
+        importScripts: ['push-sw.js'],
         globPatterns: ['**/*.{svg,png,woff2,ico}'],
         runtimeCaching: [
           {
@@ -111,6 +113,8 @@ export default defineConfig({
           'firebase-auth-vendor': ['firebase/auth'],
           'firebase-firestore-vendor': ['firebase/firestore'],
           'firebase-functions-vendor': ['firebase/functions'],
+          // Caricato solo quando l'utente attiva le notifiche (import dinamico).
+          'firebase-messaging-vendor': ['firebase/messaging'],
           // Incluso solo se VITE_SENTRY_DSN è configurata: senza, il ramo che
           // chiama Sentry.init() è irraggiungibile e rollup lo elimina.
           // Chunk a parte perché cambia molto meno spesso del codice dell'app.

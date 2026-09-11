@@ -83,6 +83,22 @@ service cloud.firestore {
     // Le schedine altrui sono leggibili solo DOPO la deadline
     // della giornata (anti-copia).
     // ============================================
+    // ============================================
+    // PUSH TOKENS — un doc per dispositivo, id = token FCM.
+    // L'utente registra e cancella i propri; le Cloud Functions li leggono
+    // per inviare (Admin SDK) e cancellano quelli non piu' validi.
+    // ============================================
+    match /push_tokens/{token} {
+      allow get: if isAuth() && resource.data.uid == request.auth.uid;
+      allow list: if false;
+      allow create, update: if isAuth()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt', 'ua'])
+        && request.resource.data.ua is string
+        && request.resource.data.ua.size() <= 120;
+      allow delete: if isAuth() && resource.data.uid == request.auth.uid;
+    }
+
     match /schedine/{id} {
       allow read: if isAuth() && (
         resource.data.userId == request.auth.uid ||

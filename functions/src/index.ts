@@ -10,6 +10,7 @@
 
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { getMessaging } from 'firebase-admin/messaging';
 import {
   getFirestore,
   Timestamp,
@@ -118,6 +119,9 @@ interface MatchdayDoc {
   matches: StoredMatch[];
   odds: Record<string, MatchOdds>;
   settled: boolean;
+  /** Notifiche gia' inviate per questa giornata (una sola volta ciascuna). */
+  reminderSentAt?: Timestamp;
+  kickoffNotifiedAt?: Timestamp;
 }
 
 interface SchedinaDoc {
@@ -348,6 +352,136 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
   return docData;
 }
 
+// ---------- Notifiche push ----------
+//
+// I token stanno in push_tokens/{token} = { uid }. Un utente puo' averne
+// piu' d'uno (telefono e pc). I token scaduti li segnala FCM alla prima
+// consegna fallita e vengono cancellati qui, cosi' la lista non cresce
+// all'infinito.
+
+const APP_URL = 'https://fantaschedina.vercel.app';
+
+interface MessaggioPush {
+  title: string;
+  body: string;
+  /** Percorso nell'app, es. '/pronostici'. */
+  path: string;
+  /** Stesso tag = la notifica nuova sostituisce la vecchia. */
+  tag?: string;
+}
+
+/** Token di tutti gli utenti (uids = null) o solo di quelli indicati. */
+async function caricaTokenPush(uids: string[] | null): Promise<Map<string, string[]>> {
+  const perUtente = new Map<string, string[]>();
+  const aggiungi = (snap: FirebaseFirestore.QuerySnapshot) =>
+    snap.forEach(d => {
+      const uid = d.data().uid as string;
+      perUtente.set(uid, [...(perUtente.get(uid) ?? []), d.id]);
+    });
+  if (uids === null) {
+    aggiungi(await db.collection('push_tokens').get());
+    return perUtente;
+  }
+  for (let i = 0; i < uids.length; i += 30) {
+    aggiungi(await db.collection('push_tokens').where('uid', 'in', uids.slice(i, i + 30)).get());
+  }
+  return perUtente;
+}
+
+/** Invia lo stesso messaggio a una lista di token. Ritorna quanti consegnati. */
+async function inviaPush(tokens: string[], msg: MessaggioPush): Promise<number> {
+  if (tokens.length === 0) return 0;
+  const url = `${APP_URL}${msg.path}`;
+  let consegnati = 0;
+  for (let i = 0; i < tokens.length; i += 500) {
+    const lotto = tokens.slice(i, i + 500);
+    try {
+      const res = await getMessaging().sendEachForMulticast({
+        tokens: lotto,
+        notification: { title: msg.title, body: msg.body },
+        data: { url, ...(msg.tag ? { tag: msg.tag } : {}) },
+        webpush: {
+          fcmOptions: { link: url },
+          notification: { icon: `${APP_URL}/pwa-192x192.png`, badge: `${APP_URL}/pwa-64x64.png` },
+          headers: { TTL: '3600', Urgency: 'high' },
+        },
+      });
+      res.responses.forEach((r, j) => {
+        if (r.success) {
+          consegnati += 1;
+          return;
+        }
+        const code = r.error?.code ?? '';
+        if (
+          code === 'messaging/registration-token-not-registered' ||
+          code === 'messaging/invalid-registration-token' ||
+          code === 'messaging/invalid-argument'
+        ) {
+          void db.collection('push_tokens').doc(lotto[j]).delete();
+        } else {
+          logger.warn('[push] invio fallito', { code });
+        }
+      });
+    } catch (e) {
+      logger.error('[push] sendEachForMulticast', e);
+    }
+  }
+  return consegnati;
+}
+
+function oraRoma(t: Timestamp): string {
+  return t.toDate().toLocaleTimeString('it-IT', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Rome',
+  });
+}
+
+// ---------- 2c. PROMEMORIA SCADENZA (ogni 30 min) ----------
+//
+// Fra 2 h 30 e 30 min prima della chiusura, una sola volta per giornata,
+// a chi ha attivato le notifiche e non ha ancora giocato la schedina
+// generale. La finestra e' larga apposta: la function gira ogni 30 minuti
+// e non deve mancare l'appuntamento se un giro salta.
+
+export const remindSchedina = onSchedule(
+  { schedule: 'every 30 minutes', region: REGION, timeZone: 'Europe/Rome', maxInstances: 1 },
+  async () => {
+    const md = await getCurrentMatchday();
+    if (!md || md.settled || md.status !== 'open' || md.reminderSentAt) return;
+    const mancano = md.deadline.toMillis() - Date.now();
+    if (mancano <= 30 * 60 * 1000 || mancano > 150 * 60 * 1000) return;
+
+    const giocate = await db
+      .collection('schedine')
+      .where('matchdayNumber', '==', md.number)
+      .select('userId', 'leagueId')
+      .get();
+    const haGiocato = new Set<string>();
+    giocate.forEach(d => {
+      const x = d.data();
+      if (x.leagueId == null) haGiocato.add(x.userId as string);
+    });
+
+    const tuttiToken = await caricaTokenPush(null);
+    const tokens: string[] = [];
+    for (const [uid, t] of tuttiToken) if (!haGiocato.has(uid)) tokens.push(...t);
+
+    // Segna prima di inviare: se l'invio va lungo e il giro dopo riparte,
+    // non si manda due volte.
+    await db.collection('matchdays').doc(String(md.number)).update({
+      reminderSentAt: FieldValue.serverTimestamp(),
+    });
+    const n = await inviaPush(tokens, {
+      title: `⏰ La schedina chiude alle ${oraRoma(md.deadline)}`,
+      body: `Giornata ${md.number}: non hai ancora giocato. Bastano due minuti.`,
+      path: '/pronostici',
+      tag: `reminder-${md.number}`,
+    });
+    logger.info(`Giornata ${md.number}: promemoria scadenza a ${n} dispositivi`);
+  }
+);
+
 async function getCurrentMatchday(): Promise<MatchdayDoc | null> {
   const meta = await db.collection('matchdays').doc('_meta').get();
   const num = meta.exists ? (meta.data()?.currentNumber as number) : null;
@@ -438,6 +572,34 @@ export const settleMatchdays = onSchedule(
         });
       });
       logger.info(`Giornata ${md.number} valutata: ${valutate} schedine`);
+
+      // Ognuno riceve i propri punti della schedina generale.
+      try {
+        const generali = await db
+          .collection('schedine')
+          .where('matchdayNumber', '==', md.number)
+          .select('userId', 'leagueId', 'finalPoints')
+          .get();
+        const punti = new Map<string, number>();
+        generali.forEach(d => {
+          const x = d.data();
+          if (x.leagueId == null) punti.set(x.userId as string, (x.finalPoints as number) ?? 0);
+        });
+        const tokenPer = await caricaTokenPush([...punti.keys()]);
+        let inviati = 0;
+        for (const [uid, tokens] of tokenPer) {
+          const p = punti.get(uid) ?? 0;
+          inviati += await inviaPush(tokens, {
+            title: `Giornata ${md.number} valutata`,
+            body: `Hai fatto ${p.toFixed(1)} punti. Guarda dove sei in classifica.`,
+            path: '/classifica',
+            tag: `settled-${md.number}`,
+          });
+        }
+        logger.info(`Giornata ${md.number}: esito inviato a ${inviati} dispositivi`);
+      } catch (e) {
+        logger.error('[push] esito giornata', e);
+      }
     }
   }
 );
@@ -470,9 +632,11 @@ export const updateLiveScores = onSchedule(
     if (results.size === 0) return;
 
     let changed = false;
+    let primoFischio: StoredMatch | null = null;
     const updatedMatches = md.matches.map(m => {
       const r = results.get(m.id);
       if (!r || r.status === 'scheduled') return m;
+      if (m.status === 'scheduled' && r.status === 'live' && !primoFischio) primoFischio = m;
       const result: MatchResult = {
         homeGoals: r.homeGoals,
         awayGoals: r.awayGoals,
@@ -500,11 +664,30 @@ export const updateLiveScores = onSchedule(
     });
 
     if (!changed) return;
+    const avvisaKickoff = primoFischio !== null && !md.kickoffNotifiedAt;
     await db.collection('matchdays').doc(String(md.number)).update({
       matches: updatedMatches,
       updatedAt: FieldValue.serverTimestamp(),
+      ...(avvisaKickoff ? { kickoffNotifiedAt: FieldValue.serverTimestamp() } : {}),
     });
     logger.info(`Giornata ${md.number}: punteggi live aggiornati`);
+
+    if (avvisaKickoff && primoFischio) {
+      const pm = primoFischio as StoredMatch;
+      try {
+        const tokenPer = await caricaTokenPush(null);
+        const tokens = [...tokenPer.values()].flat();
+        const n = await inviaPush(tokens, {
+          title: `⚽ Si gioca: ${pm.homeTeam?.shortName ?? pm.homeTeam?.name ?? ''} – ${pm.awayTeam?.shortName ?? pm.awayTeam?.name ?? ''}`,
+          body: `Giornata ${md.number} iniziata. Segui i tuoi pronostici in diretta.`,
+          path: '/live',
+          tag: `kickoff-${md.number}`,
+        });
+        logger.info(`Giornata ${md.number}: calcio d'inizio a ${n} dispositivi`);
+      } catch (e) {
+        logger.error('[push] calcio d\'inizio', e);
+      }
+    }
   }
 );
 
