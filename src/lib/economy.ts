@@ -78,6 +78,12 @@ export const POWERUPS: Record<PowerUpId, PowerUpInfo> = {
  * Premi settimanali di partenza (mirror di functions/src/config.ts).
  * L'admin li ridefinisce giornata per giornata dal pannello.
  */
+// Estrazione di giornata: allineata a functions/src/raffle.ts
+export const RAFFLE = {
+  ticketCost: 100,
+  maxTicketsPerUser: 10,
+} as const;
+
 export const DEFAULT_WEEKLY_PRIZES = [
   { position: 1, label: 'Felpa', emoji: '🧥' },
   { position: 2, label: 'T-shirt', emoji: '👕' },

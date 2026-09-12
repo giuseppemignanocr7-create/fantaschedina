@@ -145,6 +145,21 @@ service cloud.firestore {
     // WEEKLY PRIZES — cosa si vince in una data giornata. Li decide l'admin
     // (adminManageWeeklyPrizes) e devono essere visibili a chi gioca.
     // ============================================
+    // ============================================
+    // ESTRAZIONE DI GIORNATA — stato pubblico e biglietti personali.
+    // Scrive solo il server (callable buyRaffleTicket, sorteggio al settlement).
+    // ============================================
+    match /raffles/{matchday} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
+    match /raffle_tickets/{id} {
+      allow get: if isAuth() && resource.data.uid == request.auth.uid;
+      allow list: if false;
+      allow write: if false;
+    }
+
     match /weekly_prizes/{matchday} {
       allow read: if isAuth();
       allow write: if false;

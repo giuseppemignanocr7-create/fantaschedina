@@ -9,6 +9,7 @@ import {
   type WeeklyPrizeItem,
 } from '@/lib/db';
 import { DEFAULT_WEEKLY_PRIZES } from '@/lib/economy';
+import { RaffleCard } from '@/components/ui/RaffleCard';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 const PRIZE_LABELS: Record<PrizeDoc['type'], { label: string; icon: string }> = {
@@ -98,6 +99,8 @@ export function PremiPage() {
             </div>
           </div>
         </div>
+
+        <RaffleCard giornata={giornata} />
 
         {/* Albo d'oro (dai settlement reali) */}
         <p className="section-title">Albo d'Oro</p>
