@@ -1,12 +1,14 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Calendar, Trophy, User } from 'lucide-react';
+import { Home, Radio, Users, Trophy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// Ordine chiesto da Giovanni (12/09/2026): Home, Live, [Gioca], Leghe,
+// Classifica. Account resta nel menu laterale e nell'header.
 const navItems = [
   { to: '/', label: 'HOME', icon: Home },
-  { to: '/match', label: 'MATCH', icon: Calendar },
+  { to: '/live', label: 'LIVE', icon: Radio },
+  { to: '/leghe', label: 'LEGHE', icon: Users },
   { to: '/classifica', label: 'CLASSIFICA', icon: Trophy },
-  { to: '/account', label: 'ACCOUNT', icon: User },
 ];
 
 export function BottomNav() {
@@ -64,7 +66,7 @@ export function BottomNav() {
       {/* Last two items */}
       {navItems.slice(2).map((item) => {
         const Icon = item.icon;
-        const isActive = location.pathname === item.to;
+        const isActive = location.pathname === item.to || location.pathname.startsWith(item.to + '/');
         return (
           <Link
             key={item.to}
