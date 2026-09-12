@@ -63,7 +63,7 @@ export const COINS = {
   quizMaxQuestions: 10,
   rigoriPerGoal: 2, // max 5 tiri → 10 gettoni (gocce!)
   rigoriMaxShots: 5,
-  rigoriDailyCap: 50, // max gettoni cumulabili al giorno da rigori
+  rigoriDailyCap: 25, // max gettoni cumulabili al giorno da rigori
   wheelPrizes: [5, 10, 10, 15, 20, 30, 50, 100] as number[], // pesi uniformi su 8 spicchi
   // Sfide 1vs1
   sfidaBaseReward: 5, // premio base per vittoria
@@ -72,7 +72,7 @@ export const COINS = {
   // Memoria Calcio
   memoriaPerLevel: 5, // gettoni per livello completato
   memoriaTimeBonus: 1, // gettoni per 5 secondi rimanenti
-  memoriaDailyCap: 40, // max gettoni al giorno da memoria
+  memoriaDailyCap: 20, // max gettoni al giorno da memoria
   // Secondi a disposizione per livello. Il server ne ha bisogno per sapere
   // quanto tempo residuo è fisicamente possibile: il client dichiara il
   // proprio risultato, e senza questo tetto potrebbe dichiarare qualunque cosa.
@@ -83,7 +83,7 @@ export const COINS = {
   // Un duello contro il bot si crea e si chiude in circa un minuto: senza
   // tetto giornaliero è la sorgente di gettoni più redditizia del gioco,
   // molto sopra rigori (50) e memoria (40).
-  duelDailyCap: 150,
+  duelDailyCap: 50,
 } as const;
 
 // --- POWER-UP ---

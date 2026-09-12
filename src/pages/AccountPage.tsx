@@ -4,6 +4,7 @@ import {
   Shield, Download, Trash2, Loader2, AlertTriangle,
 } from 'lucide-react';
 import { PushCard } from '@/components/ui/PushToggle';
+import { WalletCard } from '@/components/ui/WalletHistory';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useAppStore } from '@/store';
@@ -130,6 +131,8 @@ export function AccountPage() {
             );
           })}
         </div>
+
+        <WalletCard />
 
         <PushCard />
 

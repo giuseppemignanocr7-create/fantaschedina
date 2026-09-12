@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ShoppingBag, Clock, Sparkles, Shirt } from 'lucide-react';
+import { ChevronRight, ArrowLeft, ShoppingBag, Clock, Sparkles, Shirt } from 'lucide-react';
 
 import magliaGara from '@/assets/store/maglia-gara.jpg';
 import tshirtTraining from '@/assets/store/tshirt-training.jpg';
@@ -254,15 +254,33 @@ export function NegozioPage() {
           </p>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white/[0.03] p-4 text-center">
-          <p className="text-sm text-slate-500">
-            Nel frattempo puoi usare i gettoni nella sezione premi.
-          </p>
-          <Link
-            to="/premi"
-            className="mt-3 inline-flex items-center justify-center rounded-xl bg-primary-500 px-5 py-2.5 text-sm font-bold text-night transition-colors hover:bg-primary-400"
-          >
-            Vai ai Premi
+        {/* I gettoni servono gia' oggi: qui si spiega dove, prima che il
+            merchandising sia in vendita. */}
+        <section className="glass-card p-4 space-y-3">
+          <p className="font-black text-sm text-slate-900">A cosa servono i gettoni, oggi</p>
+          <Link to="/pronostici" className="flex items-center gap-3 rounded-xl bg-slate-100 hover:bg-slate-200 p-3 transition-colors">
+            <span className="text-xl">🃏</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-900">Power-up sulla schedina</p>
+              <p className="text-[11px] text-slate-500">Jolly, Scudo, Assicurazione, Cambio last-minute: da 100 a 200 gettoni</p>
+            </div>
+            <ChevronRight size={16} className="text-slate-500" />
+          </Link>
+          <Link to="/premi" className="flex items-center gap-3 rounded-xl bg-slate-100 hover:bg-slate-200 p-3 transition-colors">
+            <span className="text-xl">🎟️</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-900">Biglietti per l&apos;estrazione</p>
+              <p className="text-[11px] text-slate-500">Ogni giornata un premio va a sorte fra chi ha comprato biglietti</p>
+            </div>
+            <ChevronRight size={16} className="text-slate-500" />
+          </Link>
+          <Link to="/minigiochi" className="flex items-center gap-3 rounded-xl bg-slate-100 hover:bg-slate-200 p-3 transition-colors">
+            <span className="text-xl">🎮</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-slate-900">Guadagnarne altri</p>
+              <p className="text-[11px] text-slate-500">Quiz e ruota gratis ogni giorno, poi rigori, memoria e duelli</p>
+            </div>
+            <ChevronRight size={16} className="text-slate-500" />
           </Link>
         </section>
 
