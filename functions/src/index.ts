@@ -11,6 +11,7 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getMessaging } from 'firebase-admin/messaging';
+import { RAFFLE, bigliettiAcquistabili, estraiVincitore } from './raffle';
 import {
   getFirestore,
   Timestamp,
@@ -611,6 +612,12 @@ export const settleMatchdays = onSchedule(
         });
       });
       logger.info(`Giornata ${md.number} valutata: ${valutate} schedine`);
+
+      try {
+        await estraiPremioGiornata(md.number);
+      } catch (e) {
+        logger.error('[raffle] estrazione', e);
+      }
 
       // Ognuno riceve i propri punti della schedina generale.
       try {
@@ -1916,6 +1923,98 @@ export const sendTestPush = onCall(callableOpts, async request => {
   logger.info('sendTestPush', { uid, dispositivi: tokens.length, consegnati });
   return { dispositivi: tokens.length, consegnati };
 });
+
+// ---------- Estrazione di giornata ----------
+//
+// Il pozzo dei gettoni: un biglietto costa RAFFLE.ticketCost, il premio
+// (il terzo dei premi settimanali, di norma il cappellino) va a sorte fra
+// chi ha biglietti quando la giornata viene valutata. Tetto per utente,
+// cosi' chi ha accumulato molto non compra l'urna intera.
+
+export const buyRaffleTicket = onCall(callableOpts, async request => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await enforceRateLimit(uid, 'buyRaffleTicket', 10, 60_000);
+  const richiesti = Number(request.data?.count);
+  if (!Number.isInteger(richiesti) || richiesti < 1 || richiesti > RAFFLE.maxTicketsPerUser) {
+    throw new HttpsError('invalid-argument', 'Numero di biglietti non valido');
+  }
+  const md = await getCurrentMatchday();
+  if (!md || md.settled) throw new HttpsError('failed-precondition', 'Nessuna giornata aperta');
+
+  const premi = await leggiPremiSettimanali(md.number);
+  const premio = premi.find(p => p.position === 3) ?? premi[premi.length - 1] ?? { label: 'Cappellino', emoji: '🧢' };
+  const ticketRef = db.collection('raffle_tickets').doc(`${md.number}_${uid}`);
+  const raffleRef = db.collection('raffles').doc(String(md.number));
+  const profileRef = db.collection('profiles').doc(uid);
+
+  return db.runTransaction(async tx => {
+    const [prof, tk, rf] = await Promise.all([tx.get(profileRef), tx.get(ticketRef), tx.get(raffleRef)]);
+    if (!prof.exists) throw new HttpsError('not-found', 'Profilo non trovato');
+    if (rf.exists && rf.data()?.status === 'drawn') {
+      throw new HttpsError('failed-precondition', 'Estrazione gia\' fatta per questa giornata');
+    }
+    const gia = tk.exists ? ((tk.data()?.count as number) ?? 0) : 0;
+    const n = bigliettiAcquistabili(gia, richiesti);
+    if (n === 0) {
+      throw new HttpsError('failed-precondition', `Massimo ${RAFFLE.maxTicketsPerUser} biglietti per giornata`);
+    }
+    const costo = n * RAFFLE.ticketCost;
+    const coins = (prof.data()?.coins as number) ?? 0;
+    if (coins < costo) throw new HttpsError('failed-precondition', `Servono ${costo} gettoni, ne hai ${coins}`);
+
+    await adjustCoins(uid, -costo, `raffle_g${md.number}`, tx);
+    tx.set(ticketRef, { uid, matchday: md.number, count: gia + n, updatedAt: FieldValue.serverTimestamp() });
+    const totale = (rf.exists ? ((rf.data()?.totalTickets as number) ?? 0) : 0) + n;
+    const partecipanti = (rf.exists ? ((rf.data()?.participants as number) ?? 0) : 0) + (gia === 0 ? 1 : 0);
+    tx.set(
+      raffleRef,
+      {
+        matchday: md.number,
+        prize: { label: premio.label, emoji: premio.emoji ?? null },
+        totalTickets: totale,
+        participants: partecipanti,
+        status: 'open',
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    logger.info('buyRaffleTicket', { uid, matchday: md.number, n, totale });
+    return { count: gia + n, totalTickets: totale, coins: coins - costo };
+  });
+});
+
+/** Sorteggio a giornata valutata: una sola volta, poi avvisa chi ha vinto. */
+async function estraiPremioGiornata(matchday: number): Promise<void> {
+  const raffleRef = db.collection('raffles').doc(String(matchday));
+  const rf = await raffleRef.get();
+  if (!rf.exists || rf.data()?.status === 'drawn') return;
+  const tickets = await db.collection('raffle_tickets').where('matchday', '==', matchday).get();
+  const entries = tickets.docs.map(d => ({
+    uid: d.data().uid as string,
+    count: (d.data().count as number) ?? 0,
+  }));
+  const vincitore = estraiVincitore(entries);
+  let username: string | null = null;
+  if (vincitore) {
+    const p = await db.collection('profiles').doc(vincitore).get();
+    username = (p.data()?.username as string) ?? null;
+  }
+  await raffleRef.set(
+    { status: 'drawn', winnerUid: vincitore, winnerUsername: username, drawnAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  );
+  logger.info(`Giornata ${matchday}: estrazione, vincitore ${vincitore ?? 'nessuno'} su ${entries.length} partecipanti`);
+  if (!vincitore) return;
+  const premio = (rf.data()?.prize ?? {}) as { label?: string; emoji?: string | null };
+  const tokenPer = await caricaTokenPush([vincitore]);
+  await inviaPush(tokenPer.get(vincitore) ?? [], {
+    title: '🎉 Hai vinto l\'estrazione!',
+    body: `${premio.emoji ?? ''} ${premio.label ?? 'Il premio'} della giornata ${matchday} e' tuo. Ti contattiamo per la consegna.`.trim(),
+    path: '/premi',
+    tag: `raffle-${matchday}`,
+  });
+}
 
 export const manageLeague = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
