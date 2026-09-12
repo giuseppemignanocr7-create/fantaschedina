@@ -17,7 +17,7 @@ export const COINS = {
   quizMaxQuestions: 10,
   rigoriPerGoal: 2,
   rigoriMaxShots: 5,
-  rigoriDailyCap: 50,
+  rigoriDailyCap: 25,
   wheelPrizes: [5, 10, 10, 15, 20, 30, 50, 100],
   sfidaBaseReward: 5,
   sfidaMaxReward: 30,
@@ -25,12 +25,12 @@ export const COINS = {
   // Memoria Calcio
   memoriaPerLevel: 5,
   memoriaTimeBonus: 1,
-  memoriaDailyCap: 40,
+  memoriaDailyCap: 20,
   memoriaLevelTimes: [30, 45, 60],
   // Duelli rigori 1v1
   duelWin: 50,
   duelDraw: 25,
-  duelDailyCap: 150,
+  duelDailyCap: 50,
 } as const;
 
 export type PowerUpId = 'jolly' | 'shield' | 'insurance' | 'lastminute';
