@@ -482,6 +482,45 @@ export const remindSchedina = onSchedule(
   }
 );
 
+// ---------- 2d. GIRO QUOTIDIANO (ogni giorno alle 18:00) ----------
+//
+// Quiz e ruota sono gratis una volta al giorno: sono il motivo per aprire
+// l'app anche quando non si gioca la schedina. A chi ha le notifiche e non
+// ha ancora fatto il giro di oggi, un promemoria nell'ora in cui si ha
+// tempo. Un solo invio al giorno per dispositivo; il tag sostituisce quello
+// del giorno prima se e' rimasto nel centro notifiche.
+
+export const remindMinigiochi = onSchedule(
+  { schedule: '0 18 * * *', region: REGION, timeZone: 'Europe/Rome', maxInstances: 1 },
+  async () => {
+    const oggi = romeDateString();
+    const tuttiToken = await caricaTokenPush(null);
+    if (tuttiToken.size === 0) return;
+
+    const uids = [...tuttiToken.keys()];
+    const tokens: string[] = [];
+    for (let i = 0; i < uids.length; i += 100) {
+      const refs = uids.slice(i, i + 100).map(uid => db.collection('profiles').doc(uid));
+      const snaps = await db.getAll(...refs);
+      for (const snap of snaps) {
+        if (!snap.exists) continue;
+        const last = (snap.data()?.lastPlayed ?? {}) as Record<string, string | undefined>;
+        const giroFatto = last.quiz === oggi && last.ruota === oggi;
+        if (!giroFatto) tokens.push(...(tuttiToken.get(snap.id) ?? []));
+      }
+    }
+
+    const massimo = COINS.quizMaxQuestions * COINS.quizPerCorrect + Math.max(...COINS.wheelPrizes);
+    const n = await inviaPush(tokens, {
+      title: '🎮 Il tuo giro gratis di oggi',
+      body: `Quiz e ruota ti aspettano: fino a ${massimo} gettoni. Bastano due minuti.`,
+      path: '/minigiochi',
+      tag: 'giro-quotidiano',
+    });
+    logger.info(`Giro quotidiano: promemoria a ${n} dispositivi`);
+  }
+);
+
 async function getCurrentMatchday(): Promise<MatchdayDoc | null> {
   const meta = await db.collection('matchdays').doc('_meta').get();
   const num = meta.exists ? (meta.data()?.currentNumber as number) : null;
