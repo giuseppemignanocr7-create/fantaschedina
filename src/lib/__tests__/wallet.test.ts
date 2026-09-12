@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { etichettaCausale } from '../wallet';
+import { etichettaCausale } from '../walletLabels';
 
 // Le causali sono stringhe tecniche scritte dal server: l'utente deve
 // leggere "Power-up giornata 3", non "powerups_g3". Una causale nuova
