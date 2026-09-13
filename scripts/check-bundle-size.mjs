@@ -28,7 +28,9 @@ const BUDGETS = {
   // 09/09/2026: 'index-' da 45 a 38 dopo la rimozione di pagine morte
   // (HomePage, Impostazioni, CommunityStats) e lo spostamento delle icone
   // condivise nel chunk 'icons-vendor-' (35,9 KB misurati).
-  'index-': 38,
+  // 13/09/2026: 'index-' da 38 a 39. L'header ascolta la casella notifiche
+  // (badge non lette) e non puo' essere lazy: +0,4 KB misurati.
+  'index-': 39,
   'icons-vendor-': 6,
   'react-vendor-': 62,
   'firebase-firestore-vendor-': 152,
