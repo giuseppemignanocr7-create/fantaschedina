@@ -1,15 +1,7 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, Trash2, X } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
-import {
-  ascoltaCasella,
-  eliminaNotifica,
-  segnaLetta,
-  segnaTutteLette,
-  svuotaCasella,
-  type Notifica,
-} from '@/lib/inbox';
+import { eliminaNotifica, segnaLetta, segnaTutteLette, svuotaCasella, type Notifica } from '@/lib/inbox';
 import { cn } from '@/lib/utils';
 
 function quando(d: Date | null): string {
@@ -19,19 +11,6 @@ function quando(d: Date | null): string {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min fa`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} h fa`;
   return d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
-}
-
-/** Ascolta la casella dell'utente loggato: lista e conteggio non lette. */
-export function useCasella(): { notifiche: Notifica[]; nonLette: number } {
-  const { user } = useAuthContext();
-  const [notifiche, setNotifiche] = useState<Notifica[]>([]);
-  useEffect(() => {
-    if (!user) return;
-    return ascoltaCasella(user.uid, setNotifiche);
-  }, [user]);
-  // Senza utente la lista e' vuota per costruzione: niente setState nell'effetto.
-  const lista = user ? notifiche : [];
-  return { notifiche: lista, nonLette: lista.filter(n => !n.read).length };
 }
 
 interface Props {

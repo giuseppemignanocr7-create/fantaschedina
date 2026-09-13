@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Bell, Menu } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Logo } from './Logo';
-import { NotificationsPanel, useCasella } from '@/components/ui/NotificationsPanel';
+import { useCasella } from '@/hooks/useCasella';
+
+// Il pannello arriva solo al primo tocco sulla campanella: nell'index resta
+// il solo ascolto delle non lette, che serve per il badge.
+const NotificationsPanel = lazy(() =>
+  import('@/components/ui/NotificationsPanel').then(m => ({ default: m.NotificationsPanel }))
+);
 
 interface MobileHeaderProps {
   onMenuClick: () => void;
@@ -11,6 +17,12 @@ interface MobileHeaderProps {
 export function MobileHeader({ onMenuClick }: MobileHeaderProps) {
   const { notifiche, nonLette } = useCasella();
   const [aperto, setAperto] = useState(false);
+  const [mai, setMai] = useState(false);
+
+  const toggle = () => {
+    setMai(true);
+    setAperto(a => !a);
+  };
 
   return (
     <>
@@ -41,7 +53,7 @@ export function MobileHeader({ onMenuClick }: MobileHeaderProps) {
               le stesse notifiche arrivate come push. */}
           <button
             type="button"
-            onClick={() => setAperto(a => !a)}
+            onClick={toggle}
             className="relative p-2 text-white/50 hover:text-white transition-colors rounded-xl hover:bg-white/5"
             aria-label={nonLette > 0 ? `Notifiche, ${nonLette} non lette` : 'Notifiche'}
             aria-expanded={aperto}
@@ -58,7 +70,11 @@ export function MobileHeader({ onMenuClick }: MobileHeaderProps) {
           </Link>
         </div>
       </header>
-      <NotificationsPanel aperto={aperto} onClose={() => setAperto(false)} notifiche={notifiche} />
+      {mai && (
+        <Suspense fallback={null}>
+          <NotificationsPanel aperto={aperto} onClose={() => setAperto(false)} notifiche={notifiche} />
+        </Suspense>
+      )}
     </>
   );
 }
