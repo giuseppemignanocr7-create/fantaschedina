@@ -160,6 +160,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ============================================
+    // CASELLA NOTIFICHE — una copia di ogni avviso inviato come push.
+    // Scrive solo il server; l'utente legge le sue, le segna lette, le cancella.
+    // ============================================
+    match /notifications/{uid}/items/{id} {
+      allow read: if isOwner(uid);
+      allow create: if false;
+      allow update: if isOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt'])
+        && request.resource.data.read == true;
+      allow delete: if isOwner(uid);
+    }
+
     match /weekly_prizes/{matchday} {
       allow read: if isAuth();
       allow write: if false;

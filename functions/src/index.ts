@@ -430,6 +430,42 @@ async function inviaPush(tokens: string[], msg: MessaggioPush): Promise<number> 
   return consegnati;
 }
 
+/** Uid di tutti i profili attivi: l'audience degli avvisi "a tutti". */
+async function utentiAttivi(): Promise<string[]> {
+  const snap = await db.collection('profiles').where('isActive', '==', true).select().get();
+  return snap.docs.map(d => d.id);
+}
+
+/**
+ * Copia dell'avviso nella casella di ogni destinatario (notifications/{uid}/items):
+ * la campanella la mostra anche a chi non ha le push o le ha gia' scartate.
+ */
+async function salvaInCasella(uids: string[], msg: MessaggioPush): Promise<void> {
+  for (let i = 0; i < uids.length; i += 400) {
+    const batch = db.batch();
+    for (const uid of uids.slice(i, i + 400)) {
+      batch.set(db.collection('notifications').doc(uid).collection('items').doc(), {
+        title: msg.title,
+        body: msg.body,
+        path: msg.path,
+        tag: msg.tag ?? null,
+        read: false,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+}
+
+/** Avviso completo: casella per tutti i destinatari, push a chi ha un token. */
+async function notifica(uids: string[], msg: MessaggioPush): Promise<number> {
+  const unici = [...new Set(uids)];
+  if (unici.length === 0) return 0;
+  await salvaInCasella(unici, msg);
+  const tokenPer = await caricaTokenPush(unici);
+  return inviaPush([...tokenPer.values()].flat(), msg);
+}
+
 function oraRoma(t: Timestamp): string {
   return t.toDate().toLocaleTimeString('it-IT', {
     hour: '2-digit',
@@ -464,16 +500,14 @@ export const remindSchedina = onSchedule(
       if (x.leagueId == null) haGiocato.add(x.userId as string);
     });
 
-    const tuttiToken = await caricaTokenPush(null);
-    const tokens: string[] = [];
-    for (const [uid, t] of tuttiToken) if (!haGiocato.has(uid)) tokens.push(...t);
+    const destinatari = (await utentiAttivi()).filter(uid => !haGiocato.has(uid));
 
     // Segna prima di inviare: se l'invio va lungo e il giro dopo riparte,
     // non si manda due volte.
     await db.collection('matchdays').doc(String(md.number)).update({
       reminderSentAt: FieldValue.serverTimestamp(),
     });
-    const n = await inviaPush(tokens, {
+    const n = await notifica(destinatari, {
       title: `⏰ La schedina chiude alle ${oraRoma(md.deadline)}`,
       body: `Giornata ${md.number}: non hai ancora giocato. Bastano due minuti.`,
       path: '/pronostici',
@@ -495,24 +529,16 @@ export const remindMinigiochi = onSchedule(
   { schedule: '0 18 * * *', region: REGION, timeZone: 'Europe/Rome', maxInstances: 1 },
   async () => {
     const oggi = romeDateString();
-    const tuttiToken = await caricaTokenPush(null);
-    if (tuttiToken.size === 0) return;
-
-    const uids = [...tuttiToken.keys()];
-    const tokens: string[] = [];
-    for (let i = 0; i < uids.length; i += 100) {
-      const refs = uids.slice(i, i + 100).map(uid => db.collection('profiles').doc(uid));
-      const snaps = await db.getAll(...refs);
-      for (const snap of snaps) {
-        if (!snap.exists) continue;
-        const last = (snap.data()?.lastPlayed ?? {}) as Record<string, string | undefined>;
-        const giroFatto = last.quiz === oggi && last.ruota === oggi;
-        if (!giroFatto) tokens.push(...(tuttiToken.get(snap.id) ?? []));
-      }
-    }
+    const snaps = await db.collection('profiles').where('isActive', '==', true).select('lastPlayed').get();
+    const destinatari: string[] = [];
+    snaps.forEach(snap => {
+      const last = (snap.data()?.lastPlayed ?? {}) as Record<string, string | undefined>;
+      if (!(last.quiz === oggi && last.ruota === oggi)) destinatari.push(snap.id);
+    });
+    if (destinatari.length === 0) return;
 
     const massimo = COINS.quizMaxQuestions * COINS.quizPerCorrect + Math.max(...COINS.wheelPrizes);
-    const n = await inviaPush(tokens, {
+    const n = await notifica(destinatari, {
       title: '🎮 Il tuo giro gratis di oggi',
       body: `Quiz e ruota ti aspettano: fino a ${massimo} gettoni. Bastano due minuti.`,
       path: '/minigiochi',
@@ -631,11 +657,9 @@ export const settleMatchdays = onSchedule(
           const x = d.data();
           if (x.leagueId == null) punti.set(x.userId as string, (x.finalPoints as number) ?? 0);
         });
-        const tokenPer = await caricaTokenPush([...punti.keys()]);
         let inviati = 0;
-        for (const [uid, tokens] of tokenPer) {
-          const p = punti.get(uid) ?? 0;
-          inviati += await inviaPush(tokens, {
+        for (const [uid, p] of punti) {
+          inviati += await notifica([uid], {
             title: `Giornata ${md.number} valutata`,
             body: `Hai fatto ${p.toFixed(1)} punti. Guarda dove sei in classifica.`,
             path: '/classifica',
@@ -721,9 +745,7 @@ export const updateLiveScores = onSchedule(
     if (avvisaKickoff && primoFischio) {
       const pm = primoFischio as StoredMatch;
       try {
-        const tokenPer = await caricaTokenPush(null);
-        const tokens = [...tokenPer.values()].flat();
-        const n = await inviaPush(tokens, {
+        const n = await notifica(await utentiAttivi(), {
           title: `⚽ Si gioca: ${pm.homeTeam?.shortName ?? pm.homeTeam?.name ?? ''} – ${pm.awayTeam?.shortName ?? pm.awayTeam?.name ?? ''}`,
           body: `Giornata ${md.number} iniziata. Segui i tuoi pronostici in diretta.`,
           path: '/live',
@@ -1914,7 +1936,7 @@ export const sendTestPush = onCall(callableOpts, async request => {
   if (tokens.length === 0) {
     throw new HttpsError('failed-precondition', 'Nessun dispositivo registrato: attiva prima le notifiche');
   }
-  const consegnati = await inviaPush(tokens, {
+  const consegnati = await notifica([uid], {
     title: '🔔 Le notifiche funzionano',
     body: 'Ti avviseremo alla scadenza della schedina, al calcio d’inizio e a giornata valutata.',
     path: '/account',
@@ -2007,8 +2029,7 @@ async function estraiPremioGiornata(matchday: number): Promise<void> {
   logger.info(`Giornata ${matchday}: estrazione, vincitore ${vincitore ?? 'nessuno'} su ${entries.length} partecipanti`);
   if (!vincitore) return;
   const premio = (rf.data()?.prize ?? {}) as { label?: string; emoji?: string | null };
-  const tokenPer = await caricaTokenPush([vincitore]);
-  await inviaPush(tokenPer.get(vincitore) ?? [], {
+  await notifica([vincitore], {
     title: '🎉 Hai vinto l\'estrazione!',
     body: `${premio.emoji ?? ''} ${premio.label ?? 'Il premio'} della giornata ${matchday} e' tuo. Ti contattiamo per la consegna.`.trim(),
     path: '/premi',
