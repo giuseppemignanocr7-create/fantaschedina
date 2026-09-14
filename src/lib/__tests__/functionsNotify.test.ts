@@ -22,17 +22,18 @@ describe('preferenze e silenzio', () => {
     expect(categoriaAttiva({ live: true }, 'live')).toBe(true);
   });
 
-  it('le ore di silenzio coprono la notte, non la sera', () => {
-    expect(inOreDiSilenzio(23)).toBe(true);
+  it('le ore di silenzio vanno da mezzanotte alle 8: la sera si manda', () => {
+    expect(inOreDiSilenzio(0)).toBe(true);
     expect(inOreDiSilenzio(3)).toBe(true);
     expect(inOreDiSilenzio(7)).toBe(true);
     expect(inOreDiSilenzio(8)).toBe(false);
     expect(inOreDiSilenzio(18)).toBe(false);
     expect(inOreDiSilenzio(22)).toBe(false);
+    expect(inOreDiSilenzio(23)).toBe(false);
   });
 
   it('oraDiRoma converte dall’ora UTC al fuso italiano', () => {
-    // 21:30 UTC d'estate = 23:30 a Roma: dentro le ore di silenzio.
+    // 21:30 UTC d'estate = 23:30 a Roma.
     expect(oraDiRoma(new Date('2026-07-01T21:30:00Z'))).toBe(23);
     // 21:30 UTC d'inverno = 22:30 a Roma: fuori.
     expect(oraDiRoma(new Date('2026-01-15T21:30:00Z'))).toBe(22);
@@ -149,6 +150,7 @@ describe('testoGiornata', () => {
     const t = testoGiornata(3, 42.5, null, null, 's');
     expect(t.body).toContain('42.5 punti');
     expect(t.body).not.toContain('°');
+    expect(t.body).toContain('di lega');
   });
 
   it('i punti tondi non mostrano il decimale inutile', () => {

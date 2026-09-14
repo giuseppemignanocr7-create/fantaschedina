@@ -29,6 +29,7 @@ import {
 import {
   getFirestore,
   Timestamp,
+  DocumentReference,
   FieldValue,
   Transaction,
 } from 'firebase-admin/firestore';
@@ -138,6 +139,8 @@ interface MatchdayDoc {
   /** Notifiche gia' inviate per questa giornata (una sola volta ciascuna). */
   reminderSentAt?: Timestamp;
   kickoffNotifiedAt?: Timestamp;
+  /** Claim della valutazione in corso (vedi valutaGiornata). */
+  settlingAt?: Timestamp;
 }
 
 interface SchedinaDoc {
@@ -657,7 +660,6 @@ export const syncMatchday = onSchedule(
 export const settleMatchdays = onSchedule(
   { schedule: 'every 60 minutes', region: REGION, timeZone: 'Europe/Rome', maxInstances: 1 },
   async () => {
-    const now = Timestamp.now();
     const pending = await db
       .collection('matchdays')
       .where('settled', '==', false)
@@ -665,101 +667,127 @@ export const settleMatchdays = onSchedule(
 
     for (const mdSnap of pending.docs) {
       if (mdSnap.id === '_meta') continue;
-      const md = mdSnap.data() as MatchdayDoc;
-      if (md.deadline.toMillis() > now.toMillis()) continue;
-
-      // Aggiorna risultati da ESPN
-      const results = await fetchResults(
-        md.matches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
-      );
-
-      const updatedMatches = md.matches.map(m => {
-        const r = results.get(m.id);
-        if (!r) return m;
-        const base = { ...m, status: r.status };
-        if (r.status !== 'finished') return base;
-        return {
-          ...base,
-          result: {
-            homeGoals: r.homeGoals,
-            awayGoals: r.awayGoals,
-            outcome: (r.homeGoals > r.awayGoals
-              ? '1'
-              : r.awayGoals > r.homeGoals
-              ? '2'
-              : 'X') as MatchResult['outcome'],
-            ...(r.htHomeGoals != null
-              ? { htHomeGoals: r.htHomeGoals, htAwayGoals: r.htAwayGoals }
-              : {}),
-          },
-        };
-      });
-
-      await mdSnap.ref.update({
-        matches: updatedMatches,
-        status: 'locked',
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-
-      const allFinished = updatedMatches.every(m => m.status === 'finished' && m.result);
-      if (!allFinished) {
-        logger.info(`Giornata ${md.number}: partite non concluse, skip settlement`);
-        continue;
-      }
-
-      // Posizioni prima della valutazione: servono a dire "sei salito di
-      // due posti", che e' l'informazione che si guarda davvero.
-      const posizioniPrima = await posizioniInClassifica();
-      const valutate = await settleSchedine(md.number, updatedMatches);
-      await db.runTransaction(async tx => {
-        const fresh = await tx.get(mdSnap.ref);
-        if ((fresh.data() as MatchdayDoc).settled) return;
-        tx.update(mdSnap.ref, {
-          settled: true,
-          status: 'completed',
-          settledAt: FieldValue.serverTimestamp(),
-        });
-      });
-      logger.info(`Giornata ${md.number} valutata: ${valutate} schedine`);
-
-      try {
-        await estraiPremioGiornata(md.number);
-      } catch (e) {
-        logger.error('[raffle] estrazione', e);
-      }
-
-      // Ognuno riceve i propri punti e la posizione raggiunta.
-      try {
-        const generali = await db
-          .collection('schedine')
-          .where('matchdayNumber', '==', md.number)
-          .select('userId', 'leagueId', 'finalPoints')
-          .get();
-        const punti = new Map<string, number>();
-        generali.forEach(d => {
-          const x = d.data();
-          if (x.leagueId == null) punti.set(x.userId as string, (x.finalPoints as number) ?? 0);
-        });
-        const posizioni = await posizioniInClassifica();
-        let inviati = 0;
-        for (const [uid, p] of punti) {
-          const pos = posizioni.get(uid) ?? null;
-          const prima = posizioniPrima.get(uid);
-          const variazione = pos != null && prima != null ? prima - pos : null;
-          const testo = testoGiornata(md.number, p, pos, variazione, `${uid}-${md.number}`);
-          inviati += await notifica(
-            [uid],
-            { ...testo, path: '/classifica', tag: `settled-${md.number}` },
-            'esito'
-          );
-        }
-        logger.info(`Giornata ${md.number}: esito inviato a ${inviati} dispositivi`);
-      } catch (e) {
-        logger.error('[push] esito giornata', e);
-      }
+      await valutaGiornata(mdSnap.ref);
     }
   }
 );
+
+/**
+ * Valuta una giornata se e' pronta: risultati definitivi da ESPN, schedine,
+ * classifica, estrazione, avvisi. La chiamano sia lo scheduler orario
+ * (rete di sicurezza) sia updateLiveScores appena l'ultima partita si
+ * chiude, cosi' l'esito arriva entro un paio di minuti dal fischio finale
+ * e non al giro orario successivo. Il claim su `settlingAt` evita che i
+ * due arrivino insieme.
+ */
+async function valutaGiornata(ref: DocumentReference): Promise<void> {
+  const now = Timestamp.now();
+  const mdSnap = await ref.get();
+  if (!mdSnap.exists) return;
+  const md = mdSnap.data() as MatchdayDoc;
+  if (md.settled) return;
+  if (md.deadline.toMillis() > now.toMillis()) return;
+
+  // Aggiorna risultati da ESPN
+  const results = await fetchResults(
+    md.matches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
+  );
+
+  const updatedMatches = md.matches.map(m => {
+    const r = results.get(m.id);
+    if (!r) return m;
+    const base = { ...m, status: r.status };
+    if (r.status !== 'finished') return base;
+    return {
+      ...base,
+      result: {
+        homeGoals: r.homeGoals,
+        awayGoals: r.awayGoals,
+        outcome: (r.homeGoals > r.awayGoals
+          ? '1'
+          : r.awayGoals > r.homeGoals
+          ? '2'
+          : 'X') as MatchResult['outcome'],
+        ...(r.htHomeGoals != null
+          ? { htHomeGoals: r.htHomeGoals, htAwayGoals: r.htAwayGoals }
+          : {}),
+      },
+    };
+  });
+
+  await ref.update({
+    matches: updatedMatches,
+    status: 'locked',
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  const allFinished = updatedMatches.every(m => m.status === 'finished' && m.result);
+  if (!allFinished) {
+    logger.info(`Giornata ${md.number}: partite non concluse, skip settlement`);
+    return;
+  }
+
+  // Posizioni prima della valutazione: servono a dire "sei salito di
+  // due posti", che e' l'informazione che si guarda davvero.
+  // Un solo valutatore alla volta: live e scheduler possono arrivare insieme.
+  const preso = await db.runTransaction(async tx => {
+    const fresh = (await tx.get(ref)).data() as MatchdayDoc;
+    if (fresh.settled) return false;
+    if (fresh.settlingAt && now.toMillis() - fresh.settlingAt.toMillis() < 10 * 60 * 1000) return false;
+    tx.update(ref, { settlingAt: FieldValue.serverTimestamp() });
+    return true;
+  });
+  if (!preso) return;
+
+  const posizioniPrima = await posizioniInClassifica();
+  const valutate = await settleSchedine(md.number, updatedMatches);
+  await db.runTransaction(async tx => {
+    const fresh = await tx.get(ref);
+    if ((fresh.data() as MatchdayDoc).settled) return;
+    tx.update(ref, {
+      settled: true,
+      status: 'completed',
+      settledAt: FieldValue.serverTimestamp(),
+    });
+  });
+  logger.info(`Giornata ${md.number} valutata: ${valutate} schedine`);
+
+  try {
+    await estraiPremioGiornata(md.number);
+  } catch (e) {
+    logger.error('[raffle] estrazione', e);
+  }
+
+  // Ognuno riceve i propri punti e la posizione raggiunta.
+  try {
+    const generali = await db
+      .collection('schedine')
+      .where('matchdayNumber', '==', md.number)
+      .select('userId', 'leagueId', 'finalPoints')
+      .get();
+    const punti = new Map<string, number>();
+    generali.forEach(d => {
+      const x = d.data();
+      if (x.leagueId == null) punti.set(x.userId as string, (x.finalPoints as number) ?? 0);
+    });
+    const posizioni = await posizioniInClassifica();
+    let inviati = 0;
+    for (const [uid, p] of punti) {
+      const pos = posizioni.get(uid) ?? null;
+      const prima = posizioniPrima.get(uid);
+      const variazione = pos != null && prima != null ? prima - pos : null;
+      const testo = testoGiornata(md.number, p, pos, variazione, `${uid}-${md.number}`);
+      inviati += await notifica(
+        [uid],
+        { ...testo, path: '/classifica', tag: `settled-${md.number}` },
+        'esito'
+      );
+    }
+    logger.info(`Giornata ${md.number}: esito inviato a ${inviati} dispositivi`);
+  } catch (e) {
+    logger.error('[push] esito giornata', e);
+  }
+}
 
 // ---------- 2b. PUNTEGGI LIVE (scheduled ogni 2 min, solo in finestra partite) ----------
 
@@ -838,6 +866,9 @@ export const updateLiveScores = onSchedule(
     });
     logger.info(`Giornata ${md.number}: punteggi live aggiornati`);
 
+    // Ultima partita chiusa: la valutazione parte adesso, non al giro orario.
+    const tutteChiuse = updatedMatches.every(m => m.status === 'finished');
+
     if (avvisaKickoff && primoFischio) {
       const pm = primoFischio as StoredMatch;
       try {
@@ -858,6 +889,14 @@ export const updateLiveScores = onSchedule(
         await avvisaPronostici(md.number, appenaFinite, esitoCambiato);
       } catch (e) {
         logger.error('[push] esiti live', e);
+      }
+    }
+
+    if (tutteChiuse) {
+      try {
+        await valutaGiornata(db.collection('matchdays').doc(String(md.number)));
+      } catch (e) {
+        logger.error('[settlement] avvio dal live', e);
       }
     }
   }
