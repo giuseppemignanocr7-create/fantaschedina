@@ -13,6 +13,20 @@ import { getAuth } from 'firebase-admin/auth';
 import { getMessaging } from 'firebase-admin/messaging';
 import { RAFFLE, bigliettiAcquistabili, estraiVincitore } from './raffle';
 import {
+  TETTI,
+  categoriaAttiva,
+  inOreDiSilenzio,
+  oraDiRoma,
+  testoCambio,
+  testoEsiti,
+  testoGiornata,
+  testoGiro,
+  type Categoria,
+  type CambioPartita,
+  type EsitoPartita,
+  type PrefNotifiche,
+} from './notify';
+import {
   getFirestore,
   Timestamp,
   FieldValue,
@@ -33,6 +47,7 @@ import {
 } from './config';
 import { ALL_QUIZ_QUESTIONS } from './quizData';
 import {
+  evaluateBet,
   evaluateSchedina,
   MatchResult,
   Prediction,
@@ -457,12 +472,53 @@ async function salvaInCasella(uids: string[], msg: MessaggioPush): Promise<void>
   }
 }
 
-/** Avviso completo: casella per tutti i destinatari, push a chi ha un token. */
-async function notifica(uids: string[], msg: MessaggioPush): Promise<number> {
+/**
+ * Avviso completo, con tre filtri prima di disturbare qualcuno:
+ *  - le preferenze: chi ha spento una categoria non la riceve, nemmeno in casella;
+ *  - le ore di silenzio (23-8): la copia in casella si scrive lo stesso, la push no;
+ *  - il tetto giornaliero per categoria: oltre, resta solo in casella.
+ * La casella e' il registro completo, la push e' l'interruzione: sono due
+ * cose diverse e vanno dosate diversamente.
+ */
+async function notifica(uids: string[], msg: MessaggioPush, cat: Categoria): Promise<number> {
   const unici = [...new Set(uids)];
   if (unici.length === 0) return 0;
-  await salvaInCasella(unici, msg);
-  const tokenPer = await caricaTokenPush(unici);
+  const oggi = romeDateString();
+  const silenzio = inOreDiSilenzio(oraDiRoma(new Date()));
+
+  const ammessi: string[] = [];
+  const daPushare: { uid: string; usate: number; stesso: boolean }[] = [];
+  for (let i = 0; i < unici.length; i += 300) {
+    const refs = unici.slice(i, i + 300).map(u => db.collection('profiles').doc(u));
+    const snaps = await db.getAll(...refs);
+    for (const s of snaps) {
+      if (!s.exists) continue;
+      const d = s.data() ?? {};
+      if (!categoriaAttiva(d.notifPrefs as PrefNotifiche | undefined, cat)) continue;
+      ammessi.push(s.id);
+      const c = (d.notifCount ?? {}) as Record<string, unknown>;
+      const stesso = c.date === oggi;
+      const usate = stesso ? ((c[cat] as number) ?? 0) : 0;
+      if (!silenzio && usate < TETTI[cat]) daPushare.push({ uid: s.id, usate, stesso });
+    }
+  }
+  if (ammessi.length === 0) return 0;
+  await salvaInCasella(ammessi, msg);
+  if (daPushare.length === 0) return 0;
+
+  // Contatori: se il giorno e' cambiato si riscrive la mappa da zero,
+  // altrimenti si incrementa la sola categoria.
+  for (let i = 0; i < daPushare.length; i += 400) {
+    const batch = db.batch();
+    for (const { uid, stesso } of daPushare.slice(i, i + 400)) {
+      const ref = db.collection('profiles').doc(uid);
+      if (stesso) batch.update(ref, { [`notifCount.${cat}`]: FieldValue.increment(1) });
+      else batch.update(ref, { notifCount: { date: oggi, [cat]: 1 } });
+    }
+    await batch.commit();
+  }
+
+  const tokenPer = await caricaTokenPush(daPushare.map(d => d.uid));
   return inviaPush([...tokenPer.values()].flat(), msg);
 }
 
@@ -512,7 +568,7 @@ export const remindSchedina = onSchedule(
       body: `Giornata ${md.number}: non hai ancora giocato. Bastano due minuti.`,
       path: '/pronostici',
       tag: `reminder-${md.number}`,
-    });
+    }, 'schedina');
     logger.info(`Giornata ${md.number}: promemoria scadenza a ${n} dispositivi`);
   }
 );
@@ -525,28 +581,52 @@ export const remindSchedina = onSchedule(
 // tempo. Un solo invio al giorno per dispositivo; il tag sostituisce quello
 // del giorno prima se e' rimasto nel centro notifiche.
 
-export const remindMinigiochi = onSchedule(
-  { schedule: '0 18 * * *', region: REGION, timeZone: 'Europe/Rome', maxInstances: 1 },
-  async () => {
-    const oggi = romeDateString();
-    const snaps = await db.collection('profiles').where('isActive', '==', true).select('lastPlayed').get();
-    const destinatari: string[] = [];
-    snaps.forEach(snap => {
-      const last = (snap.data()?.lastPlayed ?? {}) as Record<string, string | undefined>;
-      if (!(last.quiz === oggi && last.ruota === oggi)) destinatari.push(snap.id);
-    });
-    if (destinatari.length === 0) return;
+/**
+ * Promemoria del giro gratis, due volte al giorno. Non e' lo stesso avviso
+ * ripetuto: la mattina invita, la sera ricorda quello che manca ancora, e a
+ * chi ha gia' fatto tutto non arriva niente.
+ */
+async function promemoriaGiro(momento: 'mattina' | 'sera'): Promise<void> {
+  const oggi = romeDateString();
+  const snaps = await db.collection('profiles').where('isActive', '==', true).select('lastPlayed').get();
+  const massimo = COINS.quizMaxQuestions * COINS.quizPerCorrect + Math.max(...COINS.wheelPrizes);
 
-    const massimo = COINS.quizMaxQuestions * COINS.quizPerCorrect + Math.max(...COINS.wheelPrizes);
-    const n = await notifica(destinatari, {
-      title: '🎮 Il tuo giro gratis di oggi',
-      body: `Quiz e ruota ti aspettano: fino a ${massimo} gettoni. Bastano due minuti.`,
-      path: '/minigiochi',
-      tag: 'giro-quotidiano',
-    });
-    logger.info(`Giro quotidiano: promemoria a ${n} dispositivi`);
+  let inviati = 0;
+  for (const snap of snaps.docs) {
+    const last = (snap.data()?.lastPlayed ?? {}) as Record<string, string | undefined>;
+    const mancanti = { quiz: last.quiz !== oggi, ruota: last.ruota !== oggi };
+    const testo = testoGiro(momento, mancanti, massimo, `${snap.id}-${oggi}-${momento}`);
+    if (!testo) continue;
+    inviati += await notifica(
+      [snap.id],
+      { ...testo, path: '/minigiochi', tag: `giro-${oggi}` },
+      'giro'
+    );
   }
+  logger.info(`Giro ${momento}: promemoria a ${inviati} dispositivi`);
+}
+
+export const remindMinigiochiMattina = onSchedule(
+  { schedule: '45 10 * * *', region: REGION, timeZone: 'Europe/Rome', maxInstances: 1 },
+  () => promemoriaGiro('mattina')
 );
+
+export const remindMinigiochiSera = onSchedule(
+  { schedule: '45 17 * * *', region: REGION, timeZone: 'Europe/Rome', maxInstances: 1 },
+  () => promemoriaGiro('sera')
+);
+
+/** Posizione di ogni utente attivo in classifica generale, dal punteggio. */
+async function posizioniInClassifica(): Promise<Map<string, number>> {
+  const snap = await db
+    .collection('profiles')
+    .where('isActive', '==', true)
+    .orderBy('totalPoints', 'desc')
+    .get();
+  const out = new Map<string, number>();
+  snap.docs.forEach((d, i) => out.set(d.id, i + 1));
+  return out;
+}
 
 async function getCurrentMatchday(): Promise<MatchdayDoc | null> {
   const meta = await db.collection('matchdays').doc('_meta').get();
@@ -627,6 +707,9 @@ export const settleMatchdays = onSchedule(
         continue;
       }
 
+      // Posizioni prima della valutazione: servono a dire "sei salito di
+      // due posti", che e' l'informazione che si guarda davvero.
+      const posizioniPrima = await posizioniInClassifica();
       const valutate = await settleSchedine(md.number, updatedMatches);
       await db.runTransaction(async tx => {
         const fresh = await tx.get(mdSnap.ref);
@@ -645,7 +728,7 @@ export const settleMatchdays = onSchedule(
         logger.error('[raffle] estrazione', e);
       }
 
-      // Ognuno riceve i propri punti della schedina generale.
+      // Ognuno riceve i propri punti e la posizione raggiunta.
       try {
         const generali = await db
           .collection('schedine')
@@ -657,14 +740,18 @@ export const settleMatchdays = onSchedule(
           const x = d.data();
           if (x.leagueId == null) punti.set(x.userId as string, (x.finalPoints as number) ?? 0);
         });
+        const posizioni = await posizioniInClassifica();
         let inviati = 0;
         for (const [uid, p] of punti) {
-          inviati += await notifica([uid], {
-            title: `Giornata ${md.number} valutata`,
-            body: `Hai fatto ${p.toFixed(1)} punti. Guarda dove sei in classifica.`,
-            path: '/classifica',
-            tag: `settled-${md.number}`,
-          });
+          const pos = posizioni.get(uid) ?? null;
+          const prima = posizioniPrima.get(uid);
+          const variazione = pos != null && prima != null ? prima - pos : null;
+          const testo = testoGiornata(md.number, p, pos, variazione, `${uid}-${md.number}`);
+          inviati += await notifica(
+            [uid],
+            { ...testo, path: '/classifica', tag: `settled-${md.number}` },
+            'esito'
+          );
         }
         logger.info(`Giornata ${md.number}: esito inviato a ${inviati} dispositivi`);
       } catch (e) {
@@ -703,6 +790,10 @@ export const updateLiveScores = onSchedule(
 
     let changed = false;
     let primoFischio: StoredMatch | null = null;
+    // Partite appena chiuse e pronostici ribaltati da un gol: sono le due
+    // cose che vale la pena raccontare mentre si gioca.
+    const appenaFinite: { match: StoredMatch; result: MatchResult }[] = [];
+    const esitoCambiato: { match: StoredMatch; prima: MatchResult; dopo: MatchResult }[] = [];
     const updatedMatches = md.matches.map(m => {
       const r = results.get(m.id);
       if (!r || r.status === 'scheduled') return m;
@@ -730,6 +821,11 @@ export const updateLiveScores = onSchedule(
         return m;
       }
       changed = true;
+      if (r.status === 'finished' && m.status !== 'finished') {
+        appenaFinite.push({ match: m, result });
+      } else if (r.status === 'live' && prev && prev.outcome !== result.outcome) {
+        esitoCambiato.push({ match: m, prima: prev, dopo: result });
+      }
       return { ...m, status: r.status, result };
     });
 
@@ -750,14 +846,98 @@ export const updateLiveScores = onSchedule(
           body: `Giornata ${md.number} iniziata. Segui i tuoi pronostici in diretta.`,
           path: '/live',
           tag: `kickoff-${md.number}`,
-        });
+        }, 'live');
         logger.info(`Giornata ${md.number}: calcio d'inizio a ${n} dispositivi`);
       } catch (e) {
         logger.error('[push] calcio d\'inizio', e);
       }
     }
+
+    if (appenaFinite.length > 0 || esitoCambiato.length > 0) {
+      try {
+        await avvisaPronostici(md.number, appenaFinite, esitoCambiato);
+      } catch (e) {
+        logger.error('[push] esiti live', e);
+      }
+    }
   }
 );
+
+/** Sigla leggibile di una partita, es. "FIO-TOR". */
+function siglaPartita(m: StoredMatch): string {
+  return `${m.homeTeam?.shortName ?? m.homeTeam?.name ?? '?'}-${m.awayTeam?.shortName ?? m.awayTeam?.name ?? '?'}`;
+}
+
+/**
+ * Avvisa chi ha pronosticato le partite che si sono appena chiuse o che un
+ * gol ha ribaltato. Una sola notifica per utente per giro: se tre partite
+ * finiscono insieme, si raccontano insieme. Solo la schedina del circuito
+ * generale, altrimenti chi gioca anche nelle leghe verrebbe avvisato
+ * piu' volte per la stessa partita.
+ */
+async function avvisaPronostici(
+  matchday: number,
+  finite: { match: StoredMatch; result: MatchResult }[],
+  cambi: { match: StoredMatch; prima: MatchResult; dopo: MatchResult }[]
+): Promise<void> {
+  const coinvolte = new Set([...finite, ...cambi].map(x => x.match.id));
+  const snap = await db
+    .collection('schedine')
+    .where('matchdayNumber', '==', matchday)
+    .select('userId', 'leagueId', 'predictions')
+    .get();
+
+  const perUtente = new Map<string, { esiti: EsitoPartita[]; cambi: CambioPartita[] }>();
+  snap.forEach(d => {
+    const x = d.data();
+    if (x.leagueId != null) return;
+    const uid = x.userId as string;
+    const predictions = (x.predictions ?? []) as Prediction[];
+    for (const p of predictions) {
+      if (!coinvolte.has(p.matchId)) continue;
+      const acc = perUtente.get(uid) ?? { esiti: [], cambi: [] };
+
+      const f = finite.find(y => y.match.id === p.matchId);
+      if (f) {
+        const ok = evaluateBet(p.betType, p.outcome, f.result);
+        if (ok !== null) {
+          acc.esiti.push({
+            label: siglaPartita(f.match),
+            score: `${f.result.homeGoals}-${f.result.awayGoals}`,
+            corretto: ok,
+          });
+        }
+      }
+
+      const c = cambi.find(y => y.match.id === p.matchId);
+      if (c) {
+        const prima = evaluateBet(p.betType, p.outcome, c.prima);
+        const dopo = evaluateBet(p.betType, p.outcome, c.dopo);
+        // Solo un vero ribaltamento: un gol che non cambia l'esito del
+        // pronostico non merita di far vibrare il telefono.
+        if (prima !== null && dopo !== null && prima !== dopo) {
+          acc.cambi.push({
+            label: siglaPartita(c.match),
+            score: `${c.dopo.homeGoals}-${c.dopo.awayGoals}`,
+            oraCorretto: dopo,
+          });
+        }
+      }
+      perUtente.set(uid, acc);
+    }
+  });
+
+  let inviati = 0;
+  for (const [uid, acc] of perUtente) {
+    const seme = `${uid}-${matchday}-${Date.now()}`;
+    // Una partita chiusa e' una notizia definitiva: viene prima di un
+    // ribaltamento, che puo' ancora cambiare.
+    const testo = testoEsiti(acc.esiti, seme) ?? testoCambio(acc.cambi, seme);
+    if (!testo) continue;
+    inviati += await notifica([uid], { ...testo, path: '/live' }, 'live');
+  }
+  logger.info(`Giornata ${matchday}: esiti live a ${inviati} dispositivi`);
+}
 
 /** Valuta le schedine della giornata. Restituisce quante ne ha valutate. */
 /** Premi definiti dall'admin per la giornata, o quelli di partenza. */
@@ -1941,7 +2121,7 @@ export const sendTestPush = onCall(callableOpts, async request => {
     body: 'Ti avviseremo alla scadenza della schedina, al calcio d’inizio e a giornata valutata.',
     path: '/account',
     tag: 'test',
-  });
+  }, 'esito');
   logger.info('sendTestPush', { uid, dispositivi: tokens.length, consegnati });
   return { dispositivi: tokens.length, consegnati };
 });
@@ -2034,7 +2214,7 @@ async function estraiPremioGiornata(matchday: number): Promise<void> {
     body: `${premio.emoji ?? ''} ${premio.label ?? 'Il premio'} della giornata ${matchday} e' tuo. Ti contattiamo per la consegna.`.trim(),
     path: '/premi',
     tag: `raffle-${matchday}`,
-  });
+  }, 'social');
 }
 
 export const manageLeague = onCall(callableOpts, async request => {

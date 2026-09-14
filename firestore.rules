@@ -62,7 +62,7 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
       allow update: if isOwner(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['username', 'avatarUrl', 'updatedAt'])
+          .hasOnly(['username', 'avatarUrl', 'notifPrefs', 'updatedAt'])
         && validUsername(request.resource.data.username)
         && validAvatar(request.resource.data.avatarUrl)
         && request.resource.data.updatedAt == request.time;
