@@ -16,6 +16,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Award, Calendar, Check, Copy, Crown, Loader2, Medal,
   Target, Trophy, Users, X,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -200,7 +201,7 @@ export function LegaPage() {
           />
         )}
 
-        {sezione === 'CLASSIFICA' && <SezioneClassifica righe={classifica} uid={uid} />}
+        {sezione === 'CLASSIFICA' && <SezioneClassifica righe={classifica} uid={uid} legaId={leagueId} />}
 
         {sezione === 'PARTITE' && (
           <SezionePartite
@@ -389,7 +390,7 @@ function Riquadro({
 
 // --- CLASSIFICA di lega ------------------------------------------------------
 
-function SezioneClassifica({ righe, uid }: { righe: RankingRow[]; uid: string }) {
+function SezioneClassifica({ righe, uid, legaId }: { righe: RankingRow[]; uid: string; legaId: string }) {
   if (righe.length === 0) {
     return (
       <EmptyState
@@ -406,9 +407,13 @@ function SezioneClassifica({ righe, uid }: { righe: RankingRow[]; uid: string })
         {righe.map(r => {
           const sonoIo = r.participantId === uid;
           return (
-            <div
+            <Link
               key={r.participantId}
-              className={cn('flex items-center gap-3 px-3 py-2.5', sonoIo && 'bg-primary-500/10')}
+              to={`/giocatore/${r.participantId}?lega=${legaId}`}
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 hover:bg-slate-100 transition-colors',
+                sonoIo && 'bg-primary-500/10'
+              )}
             >
               <div className="w-7 text-center flex-shrink-0">
                 {medaglia(r.rank) ?? <span className="text-xs font-bold text-slate-500">{r.rank}</span>}
@@ -430,11 +435,13 @@ function SezioneClassifica({ righe, uid }: { righe: RankingRow[]; uid: string })
                 </p>
               </div>
               <p className="font-black text-primary-700 flex-shrink-0">{r.totalPoints}</p>
-            </div>
+              <ChevronRight size={16} className="text-slate-400 flex-shrink-0" />
+            </Link>
           );
         })}
       </div>
       <p className="text-[11px] text-slate-500 text-center px-4">
+        Tocca un nome per vedere le sue schedine, a giornata valutata.
         Punti fatti con le schedine di questa lega. La classifica generale dell&apos;app è
         un&apos;altra cosa e si vede in{' '}
         <Link to="/classifica" className="text-primary-700 hover:underline">
