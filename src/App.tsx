@@ -60,6 +60,24 @@ function App() {
     if (!loading && isAuthenticated) loadMatchday();
   }, [isAuthenticated, loading, loadMatchday]);
 
+  // Le due pagine che apre chiunque, home e schedina, si scaricano in
+  // background appena si e' autenticati, quando il browser e' libero: al
+  // primo tocco compaiono all'istante invece di aspettare un giro di rete.
+  // Stessi specifier delle lazy() qui sopra, cosi' Vite riusa gli stessi chunk.
+  useEffect(() => {
+    if (loading || !isAuthenticated) return;
+    const precarica = () => {
+      void import('@/pages/DashboardPage');
+      void import('@/pages/PronosticiPage');
+    };
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(precarica, { timeout: 3000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const t = setTimeout(precarica, 1500);
+    return () => clearTimeout(t);
+  }, [isAuthenticated, loading]);
+
   // La posizione in classifica sulla home viene dalla lista `rankings`, che
   // prima si caricava solo aprendo la Classifica: fino ad allora restava "—".
   // Punti e posizione cambiano anche mentre l'app e' aperta (il server
