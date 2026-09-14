@@ -13,7 +13,7 @@
 // ============================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Award, Calendar, Check, Clock, Loader2, Lock, Medal, Trophy,
   User, X,
@@ -38,6 +38,10 @@ function medaglia(rank: number): string | null {
 
 export function GiocatorePage() {
   const { uid = '' } = useParams();
+  // Con ?lega=ID si vedono le schedine giocate in quella lega (dalla
+  // classifica di lega); senza, quelle del circuito generale.
+  const [searchParams] = useSearchParams();
+  const lega = searchParams.get('lega');
   const { user } = useAuthContext();
   const sonoIo = user?.uid === uid;
   const { rankings, currentMatchday, loadRankings, loadMatchday } = useAppStore(useShallow(s => ({
@@ -84,12 +88,13 @@ export function GiocatorePage() {
     setCaricamento(true);
     setErrore(null);
     try {
-      const vecchie = await getPublicSchedine(uid);
+      const vecchie = await getPublicSchedine(uid, lega);
       setPassate(vecchie);
 
       // La schedina della giornata in corso si chiede solo a tempo scaduto:
-      // prima, le regole la negherebbero comunque (anti-copia).
-      if (currentMatchday && deadlinePassata) {
+      // prima, le regole la negherebbero comunque (anti-copia). Nel circuito
+      // di lega si mostrano solo quelle valutate.
+      if (currentMatchday && deadlinePassata && !lega) {
         const corrente = await getUserSchedinaForMatchday(uid, currentMatchday.number).catch(
           () => null
         );
@@ -110,7 +115,7 @@ export function GiocatorePage() {
     } finally {
       setCaricamento(false);
     }
-  }, [uid, currentMatchday, deadlinePassata]);
+  }, [uid, currentMatchday, deadlinePassata, lega]);
 
   useEffect(() => {
     const t = setTimeout(() => void carica(), 0);
@@ -145,7 +150,7 @@ export function GiocatorePage() {
         {/* Testata */}
         <div className="flex items-center gap-2">
           <Link
-            to="/classifica"
+            to={lega ? `/leghe/${lega}` : '/classifica'}
             className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
             aria-label="Torna alla classifica"
           >
@@ -231,7 +236,9 @@ export function GiocatorePage() {
         {/* Fantaschedine delle giornate passate */}
         <div className="flex items-center gap-1.5 px-1 pt-1">
           <Trophy size={12} className="text-primary-700" />
-          <p className="text-xs font-bold text-slate-500">Le sue fantaschedine</p>
+          <p className="text-xs font-bold text-slate-500">
+            {lega ? 'Le sue schedine in questa lega' : 'Le sue fantaschedine'}
+          </p>
         </div>
 
         {passate.length === 0 && !caricamento ? (

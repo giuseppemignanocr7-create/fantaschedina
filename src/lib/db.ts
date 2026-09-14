@@ -302,7 +302,12 @@ export async function getUserSchedinaForMatchday(
  * filtra cosi’, e ordina qui invece che con orderBy, che con due filtri
  * chiederebbe un indice composito.
  */
-export async function getPublicSchedine(uid: string): Promise<SchedinaDoc[]> {
+/**
+ * Schedine gia' valutate di un giocatore, visibili a tutti (le regole le
+ * aprono solo a giornata chiusa). `leagueId` null = circuito generale,
+ * altrimenti quelle giocate in quella lega.
+ */
+export async function getPublicSchedine(uid: string, leagueId: string | null = null): Promise<SchedinaDoc[]> {
   const snap = await getDocs(
     query(
       collection(db, COL.schedine),
@@ -312,7 +317,7 @@ export async function getPublicSchedine(uid: string): Promise<SchedinaDoc[]> {
   );
   return snap.docs
     .map(d => d.data() as SchedinaDoc)
-    .filter(s => !s.leagueId)
+    .filter(s => (s.leagueId ?? null) === leagueId)
     .sort((a, b) => b.matchdayNumber - a.matchdayNumber);
 }
 
