@@ -801,7 +801,19 @@ export const updateLiveScores = onSchedule(
     // Fuori dalle finestre usciamo subito senza chiamare ESPN (costo ~0).
     const now = Date.now();
     const allFinished = md.matches.every(m => m.status === 'finished');
-    if (allFinished) return;
+    if (allFinished) {
+      // Partite tutte chiuse ma giornata non ancora valutata: si prova a ogni
+      // giro, finche' non e' fatta. Prima l'aggancio scattava solo se questo
+      // ciclo assisteva in diretta all'ultimo cambio: bastava un deploy o un
+      // giro perso e l'esito slittava allo scheduler orario (14/09/2026,
+      // giornata 3 valutata a mano alle 23:45).
+      try {
+        await valutaGiornata(db.collection('matchdays').doc(String(md.number)));
+      } catch (e) {
+        logger.error('[settlement] avvio dal live (partite chiuse)', e);
+      }
+      return;
+    }
     const activeMatches = md.matches.filter(m => {
       const kickoff = m.scheduledAt.toMillis();
       const nearKickoff =

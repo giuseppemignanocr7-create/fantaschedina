@@ -87,7 +87,7 @@ export function LivePage() {
           <div className="glass-card p-4 mb-6 border-green-500/30 bg-green-500/5">
             <p className="font-bold text-green-600">Giornata terminata</p>
             <p className="text-xs text-slate-500">
-              I punteggi vengono calcolati automaticamente entro un'ora dalla fine
+              I punteggi vengono calcolati automaticamente entro pochi minuti dalla fine
               delle partite. La classifica si aggiornerà da sola.
             </p>
           </div>
