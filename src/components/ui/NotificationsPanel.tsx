@@ -114,6 +114,16 @@ export function NotificationsPanel({ aperto, onClose, notifiche }: Props) {
             </li>
           ))}
         </ul>
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            navigate('/account');
+          }}
+          className="border-t border-slate-200 px-4 py-2.5 text-[11px] font-bold text-primary-700 hover:bg-slate-50 text-left"
+        >
+          Gestisci le notifiche →
+        </button>
       </section>
     </>
   );
