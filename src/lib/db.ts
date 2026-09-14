@@ -72,6 +72,8 @@ export interface ProfileDoc {
   leaguesJoined: number;
   role?: 'admin' | 'user';
   lastPlayed?: Record<string, string>;
+  /** Categorie di notifica spente dall'utente (assente = tutte attive). */
+  notifPrefs?: Record<string, boolean>;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
 }

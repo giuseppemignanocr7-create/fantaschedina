@@ -3,6 +3,7 @@ import { Bell, BellOff, BellRing, Loader2 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { attivaPush, disattivaPush, inviaNotificaDiProva, statoPush, type PushStatus } from '@/lib/push';
 import { cn } from '@/lib/utils';
+import { NotifPrefs } from '@/components/ui/NotifPrefs';
 
 function usePush() {
   const { user } = useAuthContext();
@@ -75,6 +76,7 @@ export function PushCard() {
       </button>
       {acceso && <ProvaInvio />}
       {errore && <p className="text-xs text-red-600 font-medium">{errore}</p>}
+      <NotifPrefs />
     </div>
   );
 }
