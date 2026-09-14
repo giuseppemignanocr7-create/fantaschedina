@@ -37,11 +37,13 @@ export const TETTI: Record<Categoria, number> = {
 };
 
 /**
- * Ore di silenzio: fra le 23 e le 8 niente push. La copia in casella si
- * scrive lo stesso, cosi' al risveglio la campanella ha tutto.
+ * Ore di silenzio: da mezzanotte alle 8 niente push. Fino a mezzanotte si
+ * manda: le partite serali finiscono alle 22:45 e l'esito deve arrivare la
+ * sera stessa. La copia in casella si scrive lo stesso, cosi' al risveglio
+ * la campanella ha tutto.
  */
 export function inOreDiSilenzio(oraRoma: number): boolean {
-  return oraRoma >= 23 || oraRoma < 8;
+  return oraRoma < 8;
 }
 
 /** Ora di Roma (0-23) da un istante qualsiasi. */
@@ -177,5 +179,6 @@ export function testoGiornata(
       body += ` ${scegli(SORPASSO_SUBITO, seme)} Sei ${posizione}° (${variazione}).`;
     else body += ` Sei ${posizione}° in classifica.`;
   }
-  return { title: `🏁 Giornata ${giornata} valutata`, body };
+  body += ' Classifica generale e di lega aggiornate.';
+  return { title: `🏁 Giornata ${giornata} terminata`, body };
 }

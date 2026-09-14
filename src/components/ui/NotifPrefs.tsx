@@ -75,7 +75,7 @@ export function NotifPrefs() {
         );
       })}
       <p className="text-[10px] text-slate-500 leading-relaxed pt-1">
-        Fra le 23 e le 8 non arrivano avvisi sul telefono: li trovi nella campanella al risveglio.
+        Da mezzanotte alle 8 non arrivano avvisi sul telefono: li trovi nella campanella al risveglio.
       </p>
       {errore && <p className="text-xs text-red-600 font-medium">{errore}</p>}
     </div>
