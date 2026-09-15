@@ -47,13 +47,17 @@ export function isValidZone(z: unknown): z is PenaltyZone {
  */
 export function resolveShot(zone: PenaltyZone, power: number): ShotResult {
   const clampedPower = Math.max(0, Math.min(100, Math.round(power)));
-  const keeper = randomZone();
+  let keeper = randomZone();
   const base = ZONE_BASE_CHANCE[zone] ?? 0.55;
   const precisionFactor = 0.55 + (clampedPower / 100) * 0.6; // 0.55 → 1.15
   let chance = base * precisionFactor;
   if (keeper === zone) chance *= 0.45; // il portiere ha indovinato la zona
   chance = Math.max(0.05, Math.min(0.95, chance));
   const goal = secureChance(chance);
+  // Una parata e' sempre del portiere sulla palla: se non e' gol, il tuffo
+  // e' sulla zona del tiro (15/09/2026: "tiro a destra, si tuffa a sinistra e
+  // dice parata" non deve succedere).
+  if (!goal) keeper = zone;
   return { shot: zone, keeper, goal, power: clampedPower };
 }
 
@@ -116,15 +120,16 @@ export function duelMissChance(zone: PenaltyZone, precision: number): number {
   const p = Math.max(0, Math.min(1, precision));
   const row = zoneRow(zone);
   const col = zoneColumn(zone);
-  if (col === 'C') return row === 'T' ? 0.01 + 0.12 * (1 - p) : 0.02;
+  if (col === 'C') return row === 'T' ? 0.01 + 0.12 * (1 - p) : 0;
   return row === 'T' ? 0.03 + 0.30 * (1 - p) : 0.02 + 0.18 * (1 - p);
 }
 
 /**
  * Probabilita' di parata quando la palla e' in porta: dipende da quanto il
  * tuffo si avvicina alla zona del tiro. Stessa zona = quasi sempre parata,
- * stessa colonna ma altezza sbagliata = a volte, colonna sbagliata = solo un
- * miracolo. Un tiro potente riduce ogni chance del portiere.
+ * stessa colonna ma altezza sbagliata = a volte (il portiere allunga il
+ * braccio), colonna sbagliata = mai: chi si tuffa dall'altra parte non para.
+ * Un tiro potente riduce ogni chance del portiere.
  */
 export function duelSaveChance(shot: PenaltyZone, keeper: PenaltyZone, precision: number): number {
   const p = Math.max(0, Math.min(1, precision));
@@ -133,7 +138,7 @@ export function duelSaveChance(shot: PenaltyZone, keeper: PenaltyZone, precision
     // Al centro il portiere copre bene entrambe le altezze restando in piedi.
     return zoneColumn(shot) === 'C' ? 0.55 - 0.25 * p : 0.45 - 0.25 * p;
   }
-  return 0.04;
+  return 0;
 }
 
 /**
