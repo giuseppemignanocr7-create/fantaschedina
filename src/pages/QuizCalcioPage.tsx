@@ -1,5 +1,12 @@
+// ============================================
+// QUIZ CALCIO — dieci domande, quindici secondi ciascuna, una partita al giorno
+// Le domande arrivano senza la risposta esatta: correttezza e revisione le
+// restituisce `submitQuiz` alla fine. La grafica segue la home (fascia scura
+// in testa, card chiare sotto).
+// ============================================
+
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Clock, CheckCircle2, Loader2, Lock } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Loader2, Lock, Timer } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { startQuiz, submitQuiz, callableErrorMessage, type QuizQuestionPublic } from '@/lib/gameApi';
@@ -57,8 +64,10 @@ export function QuizCalcioPage() {
         if (!celebrated.current) {
           celebrated.current = true;
           if (r.correct >= 9) jackpotCelebration();
-          else if (r.correct >= 6) { sideCannons(); coinRain(1200); }
-          else if (r.correct >= 3) coinRain(900);
+          else if (r.correct >= 6) {
+            sideCannons();
+            coinRain(1200);
+          } else if (r.correct >= 3) coinRain(900);
         }
       } catch (e) {
         setError(callableErrorMessage(e));
@@ -75,11 +84,8 @@ export function QuizCalcioPage() {
       setPicked(choice);
       setLocked(true);
       const q = questions[idx];
-      // Il server non invia più la risposta esatta insieme alle domande (per
-      // evitare che un client possa leggerla prima di rispondere), quindi qui
-      // si può solo confermare la scelta: correttezza e revisione arrivano
-      // dal risultato di submitQuiz, mostrato nella schermata finale.
-      vibrate([30, 20, 40]);
+      // Il server non manda la risposta esatta insieme alle domande: qui si
+      // conferma solo la scelta, il verdetto arriva con submitQuiz.
       const updated = { ...answers, [q.id]: choice };
       setAnswers(updated);
       setTimeout(() => {
@@ -91,7 +97,7 @@ export function QuizCalcioPage() {
           setIdx(i => i + 1);
           setTimer(TIMER);
         }
-      }, 900);
+      }, 700);
     },
     [phase, questions, idx, answers, finish, locked]
   );
@@ -107,82 +113,76 @@ export function QuizCalcioPage() {
   }, [phase, timer, commit, locked]);
 
   const q = questions[idx];
-  const pct = ((TIMER - timer) / TIMER) * 100;
 
   if (phase === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 size={40} className="text-primary-700 animate-spin" />
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3">
+        <Loader2 size={36} className="text-primary-700 animate-spin" />
+        <p className="text-sm text-slate-500 font-bold">Un attimo…</p>
       </div>
     );
   }
 
   if (phase === 'done' && result) {
     const { correct, total, reward } = result;
-    const grade = correct >= 9 ? 'LEGGENDA!' : correct >= 7 ? 'CAMPIONE!' : correct >= 5 ? 'Niente male!' : 'Ci riprovi domani?';
+    const grade = correct >= 9 ? 'Leggenda!' : correct >= 7 ? 'Campione!' : correct >= 5 ? 'Niente male!' : 'Ci riprovi domani?';
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="glass-card p-8 max-w-md w-full text-center space-y-5 animate-pop-in">
-          <div className="text-7xl animate-heartbeat">{correct >= 9 ? '👑' : correct >= 7 ? '🏆' : correct >= 5 ? '⭐' : '😅'}</div>
-          <h2 className="font-display font-black text-3xl text-slate-900 uppercase">{grade}</h2>
-
-          {/* Barra risposte */}
-          <div className="flex gap-1.5 justify-center">
-            {Array.from({ length: total }).map((_, i) => (
-              <div
-                key={i}
-                className={cn('w-4 h-4 rounded-full animate-pop-in', i < correct ? 'bg-primary-400' : 'bg-slate-100')}
-                style={{ animationDelay: `${i * 70}ms` }}
-              />
-            ))}
-          </div>
-          <p className="text-slate-500 font-bold">{correct}/{total} risposte corrette</p>
-
-          <div className="bg-gradient-to-r from-yellow-500/15 via-yellow-500/25 to-yellow-500/15 border border-yellow-500/30 rounded-2xl p-5">
-            <p className="text-yellow-800/80 text-xs uppercase tracking-widest mb-1">Bottino</p>
-            <p className="font-black text-5xl text-yellow-700 animate-coin-pop">
-              +<CountUp to={reward} durationMs={1400} /> 🪙
+      <div className="min-h-screen">
+        <FasciaScura>
+          <Testata titolo="Quiz Calcio" sotto="Risultato di oggi" chiara={false} />
+          <div className="paper-card p-5 text-center space-y-3 animate-pop-in">
+            <div className="text-6xl animate-heartbeat">{correct >= 9 ? '👑' : correct >= 7 ? '🏆' : correct >= 5 ? '⭐' : '😅'}</div>
+            <h2 className="font-display font-black text-3xl text-slate-900 uppercase">{grade}</h2>
+            <div className="flex gap-1.5 justify-center">
+              {Array.from({ length: total }).map((_, i) => (
+                <div
+                  key={i}
+                  className={cn('w-4 h-4 rounded-full animate-pop-in', i < correct ? 'bg-primary-500' : 'bg-slate-200')}
+                  style={{ animationDelay: `${i * 70}ms` }}
+                />
+              ))}
+            </div>
+            <p className="text-slate-500 font-bold text-sm">
+              {correct}/{total} risposte corrette
             </p>
+            <div className="bg-gradient-to-r from-yellow-500/15 via-yellow-500/25 to-yellow-500/15 border border-yellow-500/30 rounded-2xl p-4">
+              <p className="text-yellow-800/80 text-[10px] uppercase tracking-widest mb-1 font-bold">Bottino</p>
+              <p className="font-black text-5xl text-yellow-700 animate-coin-pop">
+                +<CountUp to={reward} durationMs={1400} /> 🪙
+              </p>
+            </div>
           </div>
+        </FasciaScura>
 
-          {/* Revisione risposte */}
-          <div className="text-left space-y-2 max-h-56 overflow-y-auto pr-1">
-            <p className="text-xs font-black text-slate-600 uppercase tracking-widest mb-1">📋 Revisione risposte</p>
-            {questions.map((rq, i) => {
-              const userAnswer = answers[rq.id];
-              const correctAnswer = result.corrections[rq.id];
-              const wasCorrect = userAnswer === correctAnswer;
-              return (
-                <div key={rq.id} className="bg-slate-100 rounded-lg p-2.5 text-xs">
-                  <p className="text-slate-500 font-medium mb-1">{i + 1}. {rq.question}</p>
-                  <p className={wasCorrect ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
-                    {wasCorrect ? '✓' : '✗'} {rq.options[userAnswer] ?? 'Nessuna risposta'}
-                  </p>
-                  {!wasCorrect && (
-                    <p className="text-green-700/90 mt-0.5">Corretta: {rq.options[correctAnswer]}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Come usare i gettoni */}
-          <div className="bg-slate-100 rounded-xl p-4 text-left space-y-2">
-            <p className="text-xs font-black text-slate-600 uppercase tracking-widest mb-1">💡 Come usare i gettoni</p>
-            <Link to="/schedina" className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900 transition-colors">
-              <span className="text-primary-700">▸</span> Vai alla schedina e compra power-up
-            </Link>
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <span className="text-primary-700">▸</span> 🃏 Jolly (200🪙) · 🛡️ Scudo (150🪙) · ⭐ Assicurazione (120🪙)
+        <div className="max-w-md mx-auto px-4 py-4 space-y-3">
+          <div className="paper-card p-4 space-y-2">
+            <p className="section-title-ink">📋 Revisione risposte</p>
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {questions.map((rq, i) => {
+                const userAnswer = answers[rq.id];
+                const correctAnswer = result.corrections[rq.id];
+                const wasCorrect = userAnswer === correctAnswer;
+                return (
+                  <div key={rq.id} className={cn('rounded-xl p-3 text-xs border', wasCorrect ? 'bg-primary-500/10 border-primary-500/30' : 'bg-red-50 border-red-200')}>
+                    <p className="text-slate-700 font-semibold mb-1">
+                      {i + 1}. {rq.question}
+                    </p>
+                    <p className={wasCorrect ? 'text-green-700 font-bold' : 'text-red-700 font-bold'}>
+                      {wasCorrect ? '✓' : '✗'} {rq.options[userAnswer] ?? 'Nessuna risposta'}
+                    </p>
+                    {!wasCorrect && <p className="text-green-800 mt-0.5">Corretta: {rq.options[correctAnswer]}</p>}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          <p className="text-xs text-slate-500">Puoi giocare una volta al giorno. Torna domani!</p>
+          <p className="text-xs text-slate-500 text-center">Una partita al giorno: torna domani con dieci domande nuove.</p>
           <div className="flex gap-2">
-            <Link to="/schedina" className="flex-1 btn-green text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
-              🎫 USA I GETTONI
+            <Link to="/negozio" className="flex-1 btn-green text-xs font-black flex items-center justify-center gap-1.5 py-3">
+              🛍️ SPENDI I GETTONI
             </Link>
-            <Link to="/minigiochi" className="flex items-center justify-center gap-2 btn-secondary text-xs">
+            <Link to="/minigiochi" className="flex items-center justify-center gap-2 flex-1 btn-secondary text-xs">
               <ArrowLeft size={14} /> Sala giochi
             </Link>
           </div>
@@ -193,35 +193,39 @@ export function QuizCalcioPage() {
 
   if (phase === 'intro') {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="glass-card p-8 max-w-md w-full text-center space-y-5 animate-pop-in">
-          <div className="text-7xl animate-float">🧠</div>
-          <h1 className="font-display font-black text-3xl text-slate-900 uppercase">Quiz Calcio</h1>
-          <p className="text-slate-500 text-sm">
-            {COINS.quizMaxQuestions} domande · {TIMER} secondi ciascuna
-            <br />
-            Guadagna fino a{' '}
-            <span className="text-yellow-700 font-bold">
-              {COINS.quizMaxQuestions * COINS.quizPerCorrect} gettoni 🪙
-            </span>
-          </p>
-          <div className="bg-slate-100 rounded-xl p-4 text-left space-y-2">
-            {[
-              `${COINS.quizMaxQuestions} domande sul calcio`,
-              `${TIMER} secondi per rispondere`,
-              `+${COINS.quizPerCorrect} gettoni per risposta corretta`,
-              '1 partita al giorno',
-            ].map(r => (
-              <div key={r} className="flex items-center gap-2 text-sm text-slate-500">
-                <CheckCircle2 size={14} className="text-primary-700 flex-shrink-0" /> {r}
-              </div>
-            ))}
+      <div className="min-h-screen">
+        <FasciaScura>
+          <Testata titolo="Quiz Calcio" sotto={`${COINS.quizMaxQuestions} domande · ${TIMER} secondi ciascuna`} chiara={false} />
+          <div className="paper-card p-6 text-center space-y-4 animate-pop-in">
+            <div className="mx-auto w-20 h-20 rounded-full bg-gradient-to-br from-primary-300 to-primary-600 flex items-center justify-center text-4xl shadow-lg shadow-primary-500/30">
+              🧠
+            </div>
+            <p className="text-slate-600 text-sm">
+              Sei un vero intenditore? Guadagna fino a{' '}
+              <span className="text-yellow-700 font-black">{COINS.quizMaxQuestions * COINS.quizPerCorrect} gettoni 🪙</span>
+            </p>
+            <div className="grid grid-cols-2 gap-2 text-left">
+              {[
+                `${COINS.quizMaxQuestions} domande sul calcio`,
+                `${TIMER} secondi a domanda`,
+                `+${COINS.quizPerCorrect} gettoni a risposta esatta`,
+                'Una partita al giorno',
+              ].map(r => (
+                <div key={r} className="flex items-center gap-2 text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                  <CheckCircle2 size={14} className="text-primary-700 flex-shrink-0" /> {r}
+                </div>
+              ))}
+            </div>
+            {error && <p className="text-sm text-red-600 animate-shake">{error}</p>}
+            <button onClick={begin} className="btn-green w-full text-sm font-black py-3.5 animate-pulse-glow active:scale-95 transition-transform">
+              ⚡ INIZIA IL QUIZ
+            </button>
           </div>
-          {error && <p className="text-sm text-red-600 animate-shake">{error}</p>}
-          <button onClick={begin} className="btn-green w-full text-sm font-black animate-pulse-glow active:scale-95 transition-transform">
-            ⚡ INIZIA IL QUIZ
-          </button>
-          <Link to="/minigiochi" className="block text-xs text-slate-600 hover:text-slate-500 transition-colors">← Torna ai minigiochi</Link>
+        </FasciaScura>
+        <div className="max-w-md mx-auto px-4 py-4">
+          <Link to="/minigiochi" className="block text-xs text-slate-500 hover:text-slate-900 text-center">
+            ← Torna ai minigiochi
+          </Link>
         </div>
       </div>
     );
@@ -229,89 +233,122 @@ export function QuizCalcioPage() {
 
   if (!q) return null;
 
+  const urgente = timer <= 5;
+
   return (
-    <div className="min-h-screen px-4 py-6">
-      <div className="max-w-lg mx-auto space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <Link to="/minigiochi" className="p-2 text-slate-500 hover:text-slate-900 transition-colors">
-            <ArrowLeft size={20} />
+    <div className="min-h-screen">
+      <FasciaScura>
+        <header className="flex items-center justify-between">
+          <Link to="/minigiochi" className="p-2 -ml-2 text-white/70 hover:text-white transition-colors" aria-label="Torna ai minigiochi">
+            <ArrowLeft size={22} />
           </Link>
-          <div className="flex gap-1">
-            {questions.map((_, i) => (
-              <div key={i} className={cn('w-2 h-2 rounded-full transition-all',
-                i < idx ? 'bg-primary-500' : i === idx ? 'bg-white' : 'bg-slate-200')} />
-            ))}
-          </div>
-          <div className={cn('flex items-center gap-1.5 text-sm font-bold px-2.5 py-1 rounded-lg transition-colors', timer <= 5 && 'bg-red-500/20 animate-heartbeat')}>
-            <Clock size={14} className={timer <= 5 ? 'text-red-600' : 'text-slate-500'} />
-            <span className={timer <= 5 ? 'text-red-600 font-black' : 'text-slate-500'}>{timer}s</span>
-          </div>
-        </div>
-
-        {/* Timer bar */}
-        <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
-          <div
-            className={cn('h-full rounded-full transition-all duration-1000', timer > 5 ? 'bg-primary-500' : 'bg-red-500')}
-            style={{ width: `${100 - pct}%` }}
-          />
-        </div>
-
-        {/* Question */}
-        <div key={q.id} className="glass-card p-5 animate-slide-up">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] text-primary-700 uppercase tracking-widest font-bold">
-              Domanda {idx + 1} / {questions.length}
+          <div className="text-center">
+            <p className="font-display font-black text-sm text-white tracking-[0.2em]">
+              DOMANDA {idx + 1} / {questions.length}
             </p>
+            <div className="flex gap-1 justify-center mt-1">
+              {questions.map((_, i) => (
+                <div
+                  key={i}
+                  className={cn('h-1.5 rounded-full transition-all', i < idx ? 'w-3 bg-primary-500' : i === idx ? 'w-5 bg-white' : 'w-3 bg-white/20')}
+                />
+              ))}
+            </div>
           </div>
+          <div className="relative w-11 h-11 flex items-center justify-center" aria-live="polite">
+            <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="3" />
+              <circle
+                cx="18"
+                cy="18"
+                r="15.9"
+                fill="none"
+                stroke={urgente ? '#ef4444' : '#84d80c'}
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray={`${(timer / TIMER) * 100}, 100`}
+                style={{ transition: 'stroke-dasharray 1s linear' }}
+              />
+            </svg>
+            <span className={cn('text-sm font-black', urgente ? 'text-red-400 animate-pulse' : 'text-white')}>{timer}</span>
+          </div>
+        </header>
+
+        <div key={q.id} className="paper-card p-5 animate-slide-up">
+          <p className="text-[9px] font-black text-blue-700 uppercase tracking-[0.2em] mb-2 flex items-center gap-1">
+            <Timer size={10} /> {TIMER} secondi
+          </p>
           <p className="font-bold text-lg text-slate-900 leading-snug">{q.question}</p>
         </div>
+      </FasciaScura>
 
-        {/* Options: la scelta si blocca subito, il verdetto arriva solo a fine quiz */}
-        <div className="grid grid-cols-1 gap-2.5">
-          {q.options.map((opt, i) => {
-            const isPicked = picked === i;
-            const showFeedback = locked && picked !== null;
-            return (
-              <button
-                key={`${q.id}-${i}`}
-                onClick={() => commit(i)}
-                disabled={locked}
+      <div className="max-w-md mx-auto px-4 py-4 space-y-2.5">
+        {q.options.map((opt, i) => {
+          const isPicked = picked === i;
+          return (
+            <button
+              key={`${q.id}-${i}`}
+              onClick={() => commit(i)}
+              disabled={locked}
+              className={cn(
+                'w-full flex items-center gap-3 p-3.5 rounded-2xl border text-left font-semibold text-sm transition-all animate-slide-up',
+                'bg-white border-slate-200 text-slate-800 shadow-[0_2px_10px_rgba(15,23,42,0.05)]',
+                !locked && 'hover:border-primary-500 hover:shadow-md active:scale-[0.98]',
+                locked && !isPicked && 'opacity-60',
+                isPicked && 'border-primary-500 bg-primary-500/10 scale-[1.01]'
+              )}
+              style={{ animationDelay: `${i * 60}ms` }}
+            >
+              <span
                 className={cn(
-                  'w-full flex items-center gap-3 p-4 rounded-xl border text-left font-medium text-sm transition-all animate-slide-up',
-                  !showFeedback && !locked && 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300 hover:scale-[1.01] active:scale-[0.98]',
-                  !showFeedback && locked && 'bg-slate-100 border-slate-200 text-slate-600',
-                  showFeedback && isPicked && 'bg-slate-200 border-slate-200 text-slate-900 scale-[1.01]',
-                  showFeedback && !isPicked && 'bg-slate-100 border-slate-200 text-slate-600'
+                  'w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black flex-shrink-0',
+                  isPicked ? 'bg-primary-500 text-night' : 'bg-slate-100 text-slate-600'
                 )}
-                style={{ animationDelay: `${i * 60}ms` }}
               >
-                <span className={cn(
-                  'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black flex-shrink-0',
-                  showFeedback && isPicked && 'bg-slate-300 text-slate-900',
-                  !showFeedback && 'bg-slate-100'
-                )}>
-                  {String.fromCharCode(65 + i)}
-                </span>
-                <span className="flex-1">{opt}</span>
-                {showFeedback && isPicked && <Lock size={16} className="text-slate-500 flex-shrink-0" />}
-              </button>
-            );
-          })}
-        </div>
+                {String.fromCharCode(65 + i)}
+              </span>
+              <span className="flex-1">{opt}</span>
+              {isPicked && <Lock size={16} className="text-primary-700 flex-shrink-0" />}
+            </button>
+          );
+        })}
 
-        {/* Feedback banner: conferma solo che la risposta è stata registrata */}
-        {locked && picked !== null && (
-          <div className="glass-card p-3 text-center animate-pop-in bg-slate-100 border-slate-300">
-            <p className="font-black text-sm uppercase text-slate-500">
-              {picked === -1 ? '⏱ Tempo scaduto' : '🔒 Risposta bloccata'}
-            </p>
-            <p className="text-[10px] text-slate-600 mt-0.5">
-              Scoprirai le risposte corrette alla fine del quiz
-            </p>
-          </div>
+        {locked && (
+          <p className="text-center text-xs text-slate-500 font-bold animate-pop-in pt-1">
+            {picked === -1 ? '⏱ Tempo scaduto' : '🔒 Risposta bloccata'} · le soluzioni a fine quiz
+          </p>
         )}
       </div>
     </div>
+  );
+}
+
+function FasciaScura({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative bg-night rounded-b-[28px] shadow-lg shadow-black/25">
+      <div
+        className="absolute inset-0 rounded-b-[28px] pointer-events-none"
+        style={{ backgroundImage: 'radial-gradient(ellipse 70% 90% at 50% -30%, rgba(132,216,12,0.14) 0%, transparent 70%)' }}
+      />
+      <div className="relative max-w-md mx-auto px-4 pt-3 pb-5 space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function Testata({ titolo, sotto, chiara }: { titolo: string; sotto: string; chiara: boolean }) {
+  return (
+    <header className="flex items-center gap-3">
+      <Link
+        to="/minigiochi"
+        className={cn('p-2 -ml-2 transition-colors', chiara ? 'text-slate-500 hover:text-slate-900' : 'text-white/70 hover:text-white')}
+        aria-label="Torna ai minigiochi"
+      >
+        <ArrowLeft size={20} />
+      </Link>
+      <div>
+        <h1 className={cn('font-display font-black text-xl uppercase tracking-wide', chiara ? 'text-slate-900' : 'text-white')}>{titolo}</h1>
+        <p className={cn('text-[11px]', chiara ? 'text-slate-500' : 'text-white/60')}>{sotto}</p>
+      </div>
+    </header>
   );
 }
