@@ -124,3 +124,115 @@ describe('estimateSkillFromProfile', () => {
     expect(bravo).toBeCloseTo(0.7, 5);
   });
 });
+
+// ---------- Rigori Duello: tiro (zona + potenza) contro tuffo (zona) ----------
+import {
+  resolveDuelShot,
+  duelMissChance,
+  duelSaveChance,
+  botDuelShot,
+  botDuelKeeper,
+  zoneFromLegacyTarget,
+} from '../../../functions/src/penalty';
+
+describe('resolveDuelShot', () => {
+  const rate = (zone: PenaltyZone, power: number, keeper: PenaltyZone, n = 4000) => {
+    let goals = 0;
+    for (let i = 0; i < n; i++) if (resolveDuelShot(zone, power, keeper).goal) goals++;
+    return goals / n;
+  };
+
+  it('restituisce sempre una struttura coerente e vincola la potenza', () => {
+    for (const zone of PENALTY_ZONES) {
+      for (const keeper of PENALTY_ZONES) {
+        const r = resolveDuelShot(zone, 999, keeper);
+        expect(r.shot).toBe(zone);
+        expect(r.keeper).toBe(keeper);
+        expect(r.power).toBe(100);
+        expect(['goal', 'saved', 'miss', 'post']).toContain(r.outcome);
+        expect(r.goal).toBe(r.outcome === 'goal');
+      }
+    }
+    expect(resolveDuelShot('TL', Number.NaN, 'BR').power).toBe(0);
+    expect(resolveDuelShot('TL', -5, 'BR').power).toBe(0);
+  });
+
+  it('il portiere che indovina la zona para quasi sempre, ma non sempre', () => {
+    const r = rate('BL', 100, 'BL');
+    expect(r).toBeLessThan(0.45);
+    expect(r).toBeGreaterThan(0.05);
+  });
+
+  it('il portiere dalla parte sbagliata prende gol quasi sempre, ma non sempre', () => {
+    const r = rate('BL', 100, 'BR');
+    expect(r).toBeGreaterThan(0.85);
+    expect(r).toBeLessThan(1);
+  });
+
+  it('stessa colonna ma altezza sbagliata: parata possibile ma meno probabile', () => {
+    expect(rate('TL', 80, 'BL')).toBeGreaterThan(rate('TL', 80, 'TL'));
+    expect(rate('TL', 80, 'BL')).toBeLessThan(rate('TL', 80, 'BR'));
+  });
+
+  it('un tiro tirato male sull\'angolo alto finisce spesso fuori, anche senza portiere', () => {
+    expect(rate('TL', 0, 'BR')).toBeLessThan(rate('TL', 100, 'BR') - 0.2);
+    expect(duelMissChance('TL', 0)).toBeGreaterThan(duelMissChance('BC', 0));
+    expect(duelMissChance('TL', 1)).toBeLessThan(0.05);
+  });
+
+  it('fuori e palo sono esiti senza gol', () => {
+    let fuori = 0;
+    let pali = 0;
+    for (let i = 0; i < 4000; i++) {
+      const r = resolveDuelShot('TL', 0, 'BR');
+      if (r.outcome === 'miss') fuori++;
+      if (r.outcome === 'post') pali++;
+      if (r.outcome === 'miss' || r.outcome === 'post') expect(r.goal).toBe(false);
+    }
+    expect(fuori).toBeGreaterThan(0);
+    expect(pali).toBeGreaterThan(0);
+  });
+
+  it('la potenza riduce la chance di parata, entro limiti sensati', () => {
+    expect(duelSaveChance('BL', 'BL', 1)).toBeLessThan(duelSaveChance('BL', 'BL', 0));
+    expect(duelSaveChance('BL', 'BL', 1)).toBeGreaterThan(0.5);
+    expect(duelSaveChance('BC', 'TC', 0.5)).toBeGreaterThan(duelSaveChance('BL', 'TL', 0.5));
+    expect(duelSaveChance('BL', 'TR', 1)).toBeLessThan(0.1);
+  });
+});
+
+describe('bot del duello', () => {
+  it('tira e para sempre in zone valide, con potenza in scala', () => {
+    for (let i = 0; i < 500; i++) {
+      const t = botDuelShot();
+      expect(PENALTY_ZONES).toContain(t.zone);
+      expect(t.power).toBeGreaterThanOrEqual(45);
+      expect(t.power).toBeLessThanOrEqual(95);
+      expect(PENALTY_ZONES).toContain(botDuelKeeper());
+    }
+  });
+
+  it('non tira solo al centro e non si tuffa sempre dalla stessa parte', () => {
+    const zoneTiro = new Set<PenaltyZone>();
+    const zonePara = new Set<PenaltyZone>();
+    for (let i = 0; i < 600; i++) {
+      zoneTiro.add(botDuelShot().zone);
+      zonePara.add(botDuelKeeper());
+    }
+    expect(zoneTiro.size).toBe(6);
+    expect(zonePara.size).toBe(6);
+  });
+});
+
+describe('zoneFromLegacyTarget', () => {
+  it('accetta le sei zone e le tre vecchie direzioni', () => {
+    for (const z of PENALTY_ZONES) expect(zoneFromLegacyTarget(z)).toBe(z);
+    expect(zoneFromLegacyTarget('left')).toBe('BL');
+    expect(zoneFromLegacyTarget('center')).toBe('BC');
+    expect(zoneFromLegacyTarget('right')).toBe('BR');
+  });
+
+  it('respinge tutto il resto', () => {
+    for (const v of ['up', '', null, undefined, 3, {}]) expect(zoneFromLegacyTarget(v)).toBeNull();
+  });
+});
