@@ -61,7 +61,19 @@ import { computeRankings, type RankableProfile } from './rankings';
 import { attackerForRound, canFinishAtRound, type DuelMode } from './duels';
 import { fetchRealMatchdayOdds } from './realOdds';
 import { fetchActiveMatchdayPool, fetchResults } from './espn';
-import { resolveShot, simulateOpponentShot, estimateSkillFromProfile, isValidZone } from './penalty';
+import {
+  resolveShot,
+  simulateOpponentShot,
+  estimateSkillFromProfile,
+  isValidZone,
+  resolveDuelShot,
+  botDuelShot,
+  botDuelKeeper,
+  zoneFromLegacyTarget,
+  PENALTY_ZONES,
+  type PenaltyZone,
+  type DuelOutcome,
+} from './penalty';
 
 initializeApp();
 const db = getFirestore();
@@ -3074,7 +3086,13 @@ export const adminToggleBan = onCall(callableOpts, async request => {
 
 // ---------- 6. RIGORI DUELLO REALTIME 1v1 / BOT ----------
 
-type PenaltyTarget = 'left' | 'center' | 'right';
+/** Tempo per tirare o tuffarsi in ogni round: mira + barra di potenza. */
+const DUEL_ROUND_MS = 8000;
+/** Potenza di un tiro affrettato (tempo scaduto senza scelta). */
+const DUEL_TIMEOUT_POWER = 35;
+/** Potenza quando il client non la manda (client vecchi): tiro medio. */
+const DUEL_DEFAULT_POWER = 60;
+
 interface PenaltyDuelDoc {
   code: string;
   p1: { uid: string; username: string; score: number };
@@ -3082,8 +3100,12 @@ interface PenaltyDuelDoc {
   mode: DuelMode;
   round: number;
   attacker: 1 | 2;
-  p1Choice: PenaltyTarget | null;
-  p2Choice: PenaltyTarget | null;
+  /** Zona scelta: dove tira l'attaccante, dove si tuffa il portiere. */
+  p1Choice: PenaltyZone | null;
+  p2Choice: PenaltyZone | null;
+  /** Potenza del tiro (0-100) di chi attacca; null per chi para. */
+  p1Power?: number | null;
+  p2Power?: number | null;
   phase: 'waiting' | 'playing' | 'finished';
   startedAt: number;
   deadlineAt: number;
@@ -3094,8 +3116,12 @@ interface PenaltyDuelDoc {
   lastRound: {
     round: number;
     attacker: 1 | 2;
-    p1Choice: PenaltyTarget;
-    p2Choice: PenaltyTarget;
+    p1Choice: PenaltyZone;
+    p2Choice: PenaltyZone;
+    shot: PenaltyZone;
+    keeper: PenaltyZone;
+    power: number;
+    outcome: DuelOutcome;
     goal: boolean;
     p1Score: number;
     p2Score: number;
@@ -3108,15 +3134,9 @@ function duelCode(): string {
   ).join('');
 }
 
-function randomTarget(): PenaltyTarget {
-  const targets: PenaltyTarget[] = ['left', 'center', 'right'];
-  return securePick(targets);
-}
-
-function botTarget(): PenaltyTarget {
-  // Slight preference for center (realistic keeper dives)
-  const weights: PenaltyTarget[] = ['left', 'center', 'right', 'center', 'left', 'right'];
-  return securePick(weights);
+/** Mossa a caso per chi non ha scelto in tempo: tiro affrettato o tuffo cieco. */
+function mossaCasuale(attacca: boolean): { zone: PenaltyZone; power: number } {
+  return { zone: securePick(PENALTY_ZONES), power: attacca ? DUEL_TIMEOUT_POWER : 0 };
 }
 
 export const managePenaltyDuel = onCall(callableOpts, async request => {
@@ -3184,7 +3204,7 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
         'p2.username': username,
         phase: 'playing',
         startedAt: now,
-        deadlineAt: now + 5000,
+        deadlineAt: now + DUEL_ROUND_MS,
       });
       return { duelId: doc.id };
     });
@@ -3211,7 +3231,7 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
       p2Choice: null,
       phase: 'playing',
       startedAt: now,
-      deadlineAt: now + 5000,
+      deadlineAt: now + DUEL_ROUND_MS,
       winner: null,
       reward: 0,
       lastRound: null,
@@ -3222,14 +3242,21 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
   // --- MAKE MOVE ---
   if (action === 'move') {
     const duelId = request.data?.duelId as string;
-    const rawTarget = request.data?.target as string;
     const timeout = request.data?.timeout === true;
     if (!duelId) throw new HttpsError('invalid-argument', 'duelId richiesto');
 
-    const target = (rawTarget as PenaltyTarget | null) ?? null;
-    if (target && !['left', 'center', 'right'].includes(target)) {
-      throw new HttpsError('invalid-argument', 'Target non valido');
+    // Zona: le sei della porta; le tre direzioni del vecchio client si
+    // accettano ancora (finiscono sulle zone basse).
+    const rawTarget = request.data?.target;
+    const target = rawTarget == null ? null : zoneFromLegacyTarget(rawTarget);
+    if (rawTarget != null && !target) {
+      throw new HttpsError('invalid-argument', 'Zona non valida');
     }
+    const rawPower = request.data?.power;
+    const power =
+      typeof rawPower === 'number' && Number.isFinite(rawPower)
+        ? Math.max(0, Math.min(100, Math.round(rawPower)))
+        : null;
 
     return db.runTransaction(async tx => {
       const duelRef = duelsRef.doc(duelId);
@@ -3244,54 +3271,62 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
 
       const isP1 = duel.p1.uid === uid;
       const isBotGame = duel.p2.isBot === true;
+      const iAmAttacker = duel.attacker === (isP1 ? 1 : 2);
 
-      // Both players submit simultaneously each round (attacker's shot, keeper's dive) —
-      // no per-round turn restriction beyond already being one of the two participants.
-
+      // Entrambi scelgono nello stesso round (l'attaccante dove tirare, il
+      // portiere dove tuffarsi); l'esito si calcola quando ci sono tutte e due.
       const now = Date.now();
       const deadlinePassed = now >= duel.deadlineAt;
 
-      // Assign random if timed out and no choice yet
-      const existingChoice = isP1 ? duel.p1Choice : duel.p2Choice;
-      const finalChoice = existingChoice ?? (timeout || deadlinePassed ? randomTarget() : (target ?? randomTarget()));
-      if (!finalChoice) throw new HttpsError('invalid-argument', 'Scelta non valida');
-
-      // Update choice field
-      const updateChoice: Record<string, unknown> = isP1 ? { p1Choice: finalChoice } : { p2Choice: finalChoice };
-
-      let p1Choice = isP1 ? finalChoice : duel.p1Choice;
-      let p2Choice = isP1 ? duel.p2Choice : finalChoice;
-
-      // If bot game, make bot move immediately
-      if (isBotGame) {
-        if (duel.attacker === 2 && p2Choice === null) {
-          p2Choice = botTarget();
-        } else if (duel.attacker === 1 && p1Choice === null) {
-          p1Choice = botTarget();
+      // La scelta di chi chiama: quella già registrata vince; altrimenti la
+      // sua; senza nulla (o a tempo scaduto) una a caso.
+      let myChoice = isP1 ? duel.p1Choice : duel.p2Choice;
+      let myPower = (isP1 ? duel.p1Power : duel.p2Power) ?? null;
+      if (!myChoice) {
+        if (target && !timeout) {
+          myChoice = target;
+          myPower = iAmAttacker ? (power ?? DUEL_DEFAULT_POWER) : 0;
+        } else {
+          const m = mossaCasuale(iAmAttacker);
+          myChoice = m.zone;
+          myPower = m.power;
         }
-        if (duel.attacker === 1 && p2Choice === null) {
-          p2Choice = botTarget();
-        } else if (duel.attacker === 2 && p1Choice === null) {
-          p1Choice = botTarget();
+      }
+
+      let p1Choice = isP1 ? myChoice : duel.p1Choice;
+      let p2Choice = isP1 ? duel.p2Choice : myChoice;
+      const p1Power = isP1 ? myPower : (duel.p1Power ?? null);
+      let p2Power = isP1 ? (duel.p2Power ?? null) : myPower;
+
+      // Il bot (sempre p2) risponde subito.
+      if (isBotGame && p2Choice === null) {
+        if (duel.attacker === 2) {
+          const tiro = botDuelShot();
+          p2Choice = tiro.zone;
+          p2Power = tiro.power;
+        } else {
+          p2Choice = botDuelKeeper();
+          p2Power = 0;
         }
       }
 
       const bothChosen = p1Choice !== null && p2Choice !== null;
-      const canResolve = bothChosen || (deadlinePassed && (p1Choice === null || p2Choice === null));
+      const canResolve = bothChosen || deadlinePassed;
 
       if (!canResolve) {
-        // Just store the player's choice and wait for opponent
-        tx.update(duelRef, {
-          ...updateChoice,
-          ...(isBotGame ? { p1Choice, p2Choice } : {}),
-        });
+        tx.update(duelRef, { p1Choice, p2Choice, p1Power, p2Power });
         return { ok: true, resolved: false };
       }
 
-      // Resolve the round
-      const shooter = duel.attacker === 1 ? (p1Choice ?? randomTarget()) : (p2Choice ?? randomTarget());
-      const keeper = duel.attacker === 1 ? (p2Choice ?? randomTarget()) : (p1Choice ?? randomTarget());
-      const goal = shooter !== keeper;
+      // Chi non ha scelto entro il tempo tira affrettato o si tuffa a caso.
+      const attackerIs1 = duel.attacker === 1;
+      const shotZone = (attackerIs1 ? p1Choice : p2Choice) ?? mossaCasuale(true).zone;
+      const shotPower = (attackerIs1 ? p1Power : p2Power) ?? DUEL_TIMEOUT_POWER;
+      const keeperZone = (attackerIs1 ? p2Choice : p1Choice) ?? mossaCasuale(false).zone;
+      const esito = resolveDuelShot(shotZone, shotPower, keeperZone);
+      const goal = esito.goal;
+      p1Choice = attackerIs1 ? shotZone : keeperZone;
+      p2Choice = attackerIs1 ? keeperZone : shotZone;
 
       let p1Score = duel.p1.score;
       let p2Score = duel.p2.score;
@@ -3302,8 +3337,12 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
       const lastRound = {
         round: duel.round,
         attacker: duel.attacker,
-        p1Choice: p1Choice ?? randomTarget(),
-        p2Choice: p2Choice ?? randomTarget(),
+        p1Choice,
+        p2Choice,
+        shot: shotZone,
+        keeper: keeperZone,
+        power: esito.power,
+        outcome: esito.outcome,
         goal,
         p1Score,
         p2Score,
@@ -3409,7 +3448,7 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
       const nextRound = duel.round + 1;
       const nextAttacker = attackerForRound(nextRound, duel.mode);
       const nextStart = now;
-      const nextDeadline = now + 5000;
+      const nextDeadline = now + DUEL_ROUND_MS;
 
       tx.update(duelRef, {
         p1: { ...duel.p1, score: p1Score },
@@ -3418,6 +3457,8 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
         attacker: nextAttacker,
         p1Choice: null,
         p2Choice: null,
+        p1Power: null,
+        p2Power: null,
         phase: 'playing',
         startedAt: nextStart,
         deadlineAt: nextDeadline,

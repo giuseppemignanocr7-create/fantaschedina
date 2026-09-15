@@ -77,3 +77,106 @@ export function estimateSkillFromProfile(correctPredictions: number, matchdaysPl
   const accuracy = correctPredictions / (matchdaysPlayed * 10);
   return Math.max(0, Math.min(1, accuracy));
 }
+
+// ============================================
+// RIGORI DUELLO (1v1 in tempo reale): il portiere e' un giocatore vero (o il
+// bot) che sceglie una delle sei zone. L'esito non e' piu' "gol se non
+// indovina": conta dove si tuffa rispetto al tiro e quanto bene e' stato
+// calibrato il tiro (potenza dalla barra di timing). Un tiro tirato male
+// puo' finire fuori o sul palo anche con il portiere dall'altra parte.
+// ============================================
+
+export type DuelOutcome = 'goal' | 'saved' | 'miss' | 'post';
+
+export interface DuelShotResult {
+  shot: PenaltyZone;
+  keeper: PenaltyZone;
+  power: number;
+  goal: boolean;
+  outcome: DuelOutcome;
+}
+
+export type ZoneColumn = 'L' | 'C' | 'R';
+export type ZoneRow = 'T' | 'B';
+
+export function zoneColumn(z: PenaltyZone): ZoneColumn {
+  return z[1] as ZoneColumn;
+}
+
+export function zoneRow(z: PenaltyZone): ZoneRow {
+  return z[0] as ZoneRow;
+}
+
+/**
+ * Probabilita' che il tiro non prenda la porta (fuori o palo), per zona e
+ * precisione: gli angoli alti sono i piu' difficili da centrare, il centro
+ * basso non si sbaglia quasi mai.
+ */
+export function duelMissChance(zone: PenaltyZone, precision: number): number {
+  const p = Math.max(0, Math.min(1, precision));
+  const row = zoneRow(zone);
+  const col = zoneColumn(zone);
+  if (col === 'C') return row === 'T' ? 0.01 + 0.12 * (1 - p) : 0.02;
+  return row === 'T' ? 0.03 + 0.30 * (1 - p) : 0.02 + 0.18 * (1 - p);
+}
+
+/**
+ * Probabilita' di parata quando la palla e' in porta: dipende da quanto il
+ * tuffo si avvicina alla zona del tiro. Stessa zona = quasi sempre parata,
+ * stessa colonna ma altezza sbagliata = a volte, colonna sbagliata = solo un
+ * miracolo. Un tiro potente riduce ogni chance del portiere.
+ */
+export function duelSaveChance(shot: PenaltyZone, keeper: PenaltyZone, precision: number): number {
+  const p = Math.max(0, Math.min(1, precision));
+  if (shot === keeper) return 0.85 - 0.20 * p;
+  if (zoneColumn(shot) === zoneColumn(keeper)) {
+    // Al centro il portiere copre bene entrambe le altezze restando in piedi.
+    return zoneColumn(shot) === 'C' ? 0.55 - 0.25 * p : 0.45 - 0.25 * p;
+  }
+  return 0.04;
+}
+
+/**
+ * Risolve un rigore del duello: tiro (zona + potenza) contro tuffo (zona).
+ * `precision` = potenza/100: la barra di timing del client premia chi ferma
+ * il cursore nel verde. Il server non si fida del valore e lo vincola.
+ */
+export function resolveDuelShot(zone: PenaltyZone, power: number, keeper: PenaltyZone): DuelShotResult {
+  const clampedPower = Math.max(0, Math.min(100, Math.round(Number.isFinite(power) ? power : 0)));
+  const precision = clampedPower / 100;
+
+  if (secureChance(duelMissChance(zone, precision))) {
+    const outcome: DuelOutcome = secureChance(0.4) ? 'post' : 'miss';
+    return { shot: zone, keeper, power: clampedPower, goal: false, outcome };
+  }
+  if (secureChance(duelSaveChance(zone, keeper, precision))) {
+    return { shot: zone, keeper, power: clampedPower, goal: false, outcome: 'saved' };
+  }
+  return { shot: zone, keeper, power: clampedPower, goal: true, outcome: 'goal' };
+}
+
+/** Il bot al tiro: cerca gli angoli ma non e' infallibile con la potenza. */
+export function botDuelShot(): ShotInput {
+  const pool: PenaltyZone[] = ['TL', 'TR', 'BL', 'BR', 'BL', 'BR', 'TC', 'BC'];
+  const zone = securePick(pool);
+  const power = Math.round(45 + secureUnit() * 50);
+  return { zone, power };
+}
+
+/** Il bot in porta: si tuffa piu' spesso ai lati e piu' spesso in basso. */
+export function botDuelKeeper(): PenaltyZone {
+  const pool: PenaltyZone[] = ['BL', 'BR', 'BL', 'BR', 'TL', 'TR', 'BC', 'TC', 'BC'];
+  return securePick(pool);
+}
+
+/**
+ * Le vecchie tre direzioni del duello (client precedenti al 15/09/2026 o
+ * partite ancora in corso al momento del deploy) si mappano sulle zone basse.
+ */
+export function zoneFromLegacyTarget(t: unknown): PenaltyZone | null {
+  if (isValidZone(t)) return t;
+  if (t === 'left') return 'BL';
+  if (t === 'center') return 'BC';
+  if (t === 'right') return 'BR';
+  return null;
+}
