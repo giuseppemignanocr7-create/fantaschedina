@@ -183,21 +183,13 @@
    Le pose (--kx/--ky/--kr, --arm) e i punti d'arrivo (--bx/--by) arrivano
    da src/lib/penalty.ts via variabili CSS; qui solo i tempi e le curve.
    Sequenza: tuffo e volo 0-600 ms, impatto a 600, esito a 640. */
-.pa-keeper-idle,
-.pa-keeper-dive {
+.pa-sprite-idle { animation: pa-sprite-idle 2.2s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 100%; }
+.pa-sprite-out { animation: pa-sprite-out 160ms ease-out forwards; }
+.pa-sprite-dive {
   transform-box: fill-box;
-  transform-origin: 50% 58%;
+  transform-origin: center;
+  animation: pa-sprite-dive 520ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
 }
-.pa-keeper-idle { animation: pa-keeper-idle 1.6s ease-in-out infinite; }
-.pa-keeper-dive { animation: pa-keeper-dive 560ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
-.pa-keeper-shadow-dive { animation: pa-keeper-shadow 560ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
-.pa-arm-idle,
-.pa-arm-dive {
-  transform-box: fill-box;
-  transform-origin: 50% 0%;
-}
-.pa-arm-idle { animation: pa-arm-idle 1.6s ease-in-out infinite; }
-.pa-arm-dive { animation: pa-arm-dive 420ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
 .pa-ball-idle { animation: pa-ball-idle 1.6s ease-in-out infinite; }
 .pa-ball-fly { animation: pa-ball-fly 600ms cubic-bezier(0.3, 0.7, 0.4, 1) forwards; }
 .pa-ball-shadow-fly { animation: pa-ball-shadow 600ms cubic-bezier(0.3, 0.7, 0.4, 1) forwards; }
@@ -209,11 +201,6 @@
 .pa-ball-deflect { animation: pa-ball-deflect 520ms 600ms cubic-bezier(0.2, 0.7, 0.5, 1) forwards; }
 .pa-ball-post { animation: pa-ball-post 520ms 600ms cubic-bezier(0.2, 0.7, 0.5, 1) forwards; }
 .pa-ball-miss { animation: pa-ball-miss 520ms 600ms ease-out forwards; }
-.pa-net-bulge {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: pa-net-bulge 480ms 580ms ease-out;
-}
 .pa-trail {
   stroke-dasharray: 100;
   stroke-dashoffset: 100;
@@ -235,26 +222,18 @@
   animation: pa-fan-flash 4.2s linear infinite;
 }
 
-@keyframes pa-keeper-idle {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-3px) rotate(-1.5deg); }
+@keyframes pa-sprite-idle {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.01, 0.99); }
 }
-@keyframes pa-keeper-dive {
-  0% { transform: translate(0, 0) rotate(0deg); }
-  18% { transform: translate(0, 4px) rotate(0deg); }
-  100% { transform: translate(var(--kx, 0), var(--ky, 0)) rotate(var(--kr, 0deg)); }
+@keyframes pa-sprite-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
-@keyframes pa-keeper-shadow {
-  0% { transform: translateX(0) scale(1); opacity: 0.4; }
-  100% { transform: translateX(var(--kx, 0)) scale(0.7); opacity: 0.18; }
-}
-@keyframes pa-arm-idle {
-  0%, 100% { transform: rotate(var(--arm0, 0deg)); }
-  50% { transform: rotate(calc(var(--arm0, 0deg) * 0.8)); }
-}
-@keyframes pa-arm-dive {
-  from { transform: rotate(var(--arm0, 0deg)); }
-  to { transform: rotate(var(--arm, 0deg)); }
+@keyframes pa-sprite-dive {
+  0% { opacity: 0; transform: translate(var(--from-x, 0), var(--from-y, 0)) scale(0.85); }
+  12% { opacity: 1; }
+  100% { opacity: 1; transform: translate(0, 0) scale(1); }
 }
 @keyframes pa-ball-idle {
   0%, 100% { transform: scale(1); }
@@ -284,12 +263,6 @@
 @keyframes pa-ball-miss {
   from { transform: translate(0, 0); opacity: 1; }
   to { transform: translate(calc(var(--bounce-x, 0) * 1.6), -34px) scale(0.75); opacity: 0; }
-}
-@keyframes pa-net-bulge {
-  0% { transform: scale(1); }
-  35% { transform: scale(1.05, 1.04); }
-  70% { transform: scale(0.985, 0.99); }
-  100% { transform: scale(1); }
 }
 @keyframes pa-trail-draw {
   from { stroke-dashoffset: 100; }
