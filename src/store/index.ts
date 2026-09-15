@@ -250,6 +250,9 @@ export const useAppStore = create<AppStore>()((set, get) => ({
     if (!currentSchedina?.isLocked) return;
     set({
       currentSchedina: { ...currentSchedina, isLocked: false },
+      // Si riparte dai power-up gia' allegati: il server rimborsa i vecchi e
+      // addebita i nuovi, quindi lasciarli com'erano non costa nulla.
+      selectedPowerups: currentSchedina.powerups ?? {},
       error: null,
     });
   },
