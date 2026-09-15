@@ -131,8 +131,9 @@ export function PenaltyArena({
             <stop offset="0" stopColor="#ffffff" />
             <stop offset="1" stopColor="#8d96a6" />
           </linearGradient>
-          <pattern id="pa-net" width="7" height="7" patternUnits="userSpaceOnUse">
-            <path d="M0 3.5 H7 M3.5 0 V7" stroke="#e5e9f2" strokeWidth="0.7" strokeOpacity="0.5" />
+          <pattern id="pa-net" width="6" height="6" patternUnits="userSpaceOnUse">
+            <path d="M0 3 H6 M3 0 V6" stroke="#e5e9f2" strokeWidth="0.6" strokeOpacity="0.55" />
+            <path d="M0 0 L6 6 M6 0 L0 6" stroke="#e5e9f2" strokeWidth="0.3" strokeOpacity="0.18" />
           </pattern>
           <pattern id="pa-crowd" width="23" height="9" patternUnits="userSpaceOnUse">
             {CROWD.map((c, i) => (
@@ -178,6 +179,28 @@ export function PenaltyArena({
             <stop offset="0.4" stopColor="#c7f56b" stopOpacity="0.5" />
             <stop offset="1" stopColor="#c7f56b" stopOpacity="0" />
           </radialGradient>
+          <linearGradient id="pa-leg" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#2a3a63" />
+            <stop offset="0.5" stopColor="#1a2545" />
+            <stop offset="1" stopColor="#0c1226" />
+          </linearGradient>
+          <linearGradient id="pa-sock" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#ffd45c" />
+            <stop offset="1" stopColor="#d7961a" />
+          </linearGradient>
+          <linearGradient id="pa-hair" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#4a3220" />
+            <stop offset="1" stopColor="#1e120a" />
+          </linearGradient>
+          <filter id="pa-soft" x="-30%" y="-80%" width="160%" height="260%">
+            <feGaussianBlur stdDeviation="1.8" />
+          </filter>
+          <filter id="pa-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" />
+          </filter>
+          <pattern id="pa-mow" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(-20)">
+            <rect width="9" height="18" fill="#fff" fillOpacity="0.035" />
+          </pattern>
           <clipPath id="pa-ball-clip">
             <circle cx="0" cy="0" r="12" />
           </clipPath>
@@ -194,6 +217,8 @@ export function PenaltyArena({
           <rect x="368" y="0" width="24" height="7" rx="2" fill="#1b2744" />
         </g>
         <g fill="#fff3c4" opacity="0.9">
+          <ellipse cx="20" cy="4" rx="16" ry="6" opacity="0.5" filter="url(#pa-glow)" />
+          <ellipse cx="380" cy="4" rx="16" ry="6" opacity="0.5" filter="url(#pa-glow)" />
           <rect x="10" y="2" width="20" height="3" rx="1" className="pa-lamp" />
           <rect x="370" y="2" width="20" height="3" rx="1" className="pa-lamp" />
         </g>
@@ -237,6 +262,8 @@ export function PenaltyArena({
             />
           );
         })}
+        <polygon points="0,170 400,170 400,300 0,300" fill="url(#pa-mow)" />
+        <ellipse cx="200" cy="205" rx="190" ry="34" fill="#fff7d6" opacity="0.10" filter="url(#pa-glow)" />
         {/* Linee: fondo, area piccola, dischetto, lunetta */}
         <g stroke="#f4f7ff" strokeOpacity="0.85" fill="none" strokeWidth="2" strokeLinejoin="round">
           <line x1="0" y1={GOAL.bottom} x2="400" y2={GOAL.bottom} />
@@ -279,62 +306,92 @@ export function PenaltyArena({
           </g>
         )}
 
-        {/* Portiere: in scala con la porta (circa 70% della traversa) */}
+        {/* Portiere: in scala con la porta (circa 75% della traversa), corpo
+            a segmenti affusolati con ombreggiatura, guanti con le dita */}
         <g transform={`translate(${SPOT.x} ${GOAL.bottom})`}>
           <ellipse
             key={reveal ? `sh-${revealKey}` : 'sh-idle'}
             cx="0"
             cy="1"
-            rx="18"
-            ry="4"
+            rx="20"
+            ry="4.5"
             fill="#000"
-            opacity="0.4"
+            opacity="0.45"
+            filter="url(#pa-soft)"
             className={reveal ? 'pa-keeper-shadow-dive' : undefined}
             style={keeperStyle}
           />
-          <g transform="scale(0.95)">
+          <g transform="scale(0.92)">
             <g
               key={reveal ? `k-${revealKey}` : 'k-idle'}
               className={reveal ? 'pa-keeper-dive' : 'pa-keeper-idle'}
               style={keeperStyle}
+              stroke="#0b1220"
+              strokeOpacity="0.28"
+              strokeWidth="0.7"
+              strokeLinejoin="round"
             >
-              {/* gambe, calzettoni e scarpini */}
-              <path d="M-11 -40 L-13 -6 L-3 -6 L-3 -40 Z" fill="url(#pa-shorts)" />
-              <path d="M3 -40 L3 -6 L13 -6 L11 -40 Z" fill="url(#pa-shorts)" />
-              <rect x="-13" y="-18" width="10" height="12" rx="2" fill="#f4b731" />
-              <rect x="3" y="-18" width="10" height="12" rx="2" fill="#f4b731" />
-              <path d="M-15 -6 h13 v4 a2 2 0 0 1 -2 2 h-9 a2 2 0 0 1 -2 -2 z" fill="#111827" />
-              <path d="M2 -6 h13 v4 a2 2 0 0 1 -2 2 h-9 a2 2 0 0 1 -2 -2 z" fill="#111827" />
+              {/* gambe affusolate, ginocchio, calzettoni e scarpini */}
+              <path d="M-13 -46 C-15 -34 -14 -22 -12.5 -6 L-3 -6 C-2.5 -22 -3 -34 -3 -46 Z" fill="url(#pa-leg)" />
+              <path d="M3 -46 C3 -34 2.5 -22 3 -6 L12.5 -6 C14 -22 15 -34 13 -46 Z" fill="url(#pa-leg)" />
+              <ellipse cx="-7.5" cy="-27" rx="3.5" ry="2" fill="#fff" opacity="0.1" stroke="none" />
+              <ellipse cx="7.5" cy="-27" rx="3.5" ry="2" fill="#fff" opacity="0.1" stroke="none" />
+              <path d="M-13 -21 L-3 -21 L-3 -6 L-12.5 -6 Z" fill="url(#pa-sock)" />
+              <path d="M3 -21 L13 -21 L12.5 -6 L3 -6 Z" fill="url(#pa-sock)" />
+              <rect x="-13" y="-21" width="10" height="2.5" fill="#1f2c4f" stroke="none" />
+              <rect x="3" y="-21" width="10" height="2.5" fill="#1f2c4f" stroke="none" />
+              <path d="M-15 -6 h13 v3.5 a2.5 2.5 0 0 1 -2.5 2.5 h-9 a2.5 2.5 0 0 1 -2.5 -2.5 z" fill="#111827" />
+              <path d="M2 -6 h13 v3.5 a2.5 2.5 0 0 1 -2.5 2.5 h-9 a2.5 2.5 0 0 1 -2.5 -2.5 z" fill="#111827" />
+              <path d="M-13 -3 h9" stroke="#84d80c" strokeOpacity="0.9" strokeWidth="1" />
+              <path d="M4 -3 h9" stroke="#84d80c" strokeOpacity="0.9" strokeWidth="1" />
               {/* pantaloncini */}
-              <path d="M-15 -46 h30 l1 14 h-13 l-3 -6 l-3 6 h-13 z" fill="url(#pa-shorts)" />
-              {/* busto con spalle */}
-              <path d="M-19 -74 Q-19 -80 -12 -80 L12 -80 Q19 -80 19 -74 L16 -44 L-16 -44 Z" fill="url(#pa-kit)" />
-              <path d="M-19 -74 L-16 -44 L-8 -44 L-9 -76 Z" fill="#000" opacity="0.12" />
-              <path d="M-6 -80 Q0 -74 6 -80 Z" fill="#1f2c4f" />
-              <text x="0" y="-52" textAnchor="middle" fontSize="14" fontWeight="900" fill="#1f2c4f" fontFamily="Montserrat, system-ui, sans-serif">1</text>
+              <path d="M-16 -48 h32 l1.5 12 c0 2 -1 3 -3 3 h-10 l-4.5 -6 l-4.5 6 h-10 c-2 0 -3 -1 -3 -3 z" fill="url(#pa-shorts)" />
+              <path d="M-16 -48 h32" stroke="#fff" strokeOpacity="0.2" strokeWidth="1" />
+              {/* busto: spalle larghe, vita stretta */}
+              <path d="M-21 -78 C-21 -84 -15 -87 -8 -87 L8 -87 C15 -87 21 -84 21 -78 L18 -62 C18 -52 17 -48 16 -46 L-16 -46 C-17 -48 -18 -52 -18 -62 Z" fill="url(#pa-kit)" />
+              <path d="M6 -87 L8 -46 L16 -46 C17 -48 18 -52 18 -62 L21 -78 C21 -84 15 -87 8 -87 Z" fill="#000" opacity="0.14" stroke="none" />
+              <path d="M-14 -84 C-10 -80 -4 -78 0 -78 C4 -78 10 -80 14 -84" fill="none" stroke="#fff" strokeOpacity="0.18" strokeWidth="1.5" />
+              <path d="M-6 -87 Q0 -80 6 -87 Z" fill="#1f2c4f" />
+              <path d="M-18 -62 L-16 -46" stroke="#fff" strokeOpacity="0.5" strokeWidth="1.2" />
+              <text x="0" y="-56" textAnchor="middle" fontSize="15" fontWeight="900" fill="#1f2c4f" stroke="none" fontFamily="Montserrat, system-ui, sans-serif">1</text>
               {/* braccia con guanti: la traslazione sta sul gruppo esterno perche' l'animazione CSS sostituisce l'attributo transform */}
-              <g transform="translate(-17 -74)">
+              <g transform="translate(-19 -80)">
                 <g className={reveal ? 'pa-arm-dive' : 'pa-arm-idle'} style={armLStyle}>
-                  <rect x="-4.5" y="0" width="9" height="30" rx="4.5" fill="url(#pa-kit-arm)" />
-                  <circle cx="0" cy="34" r="8" fill="url(#pa-glove)" stroke="#2f5300" strokeWidth="0.8" />
-                  <circle cx="-6" cy="30" r="3" fill="url(#pa-glove)" stroke="#2f5300" strokeWidth="0.6" />
-                  <path d="M-3 38 L3 38" stroke="#2f5300" strokeWidth="0.8" />
+                  <path d="M-5.5 0 C-6 10 -5 20 -4 30 L4 30 C5 20 6 10 5.5 0 Z" fill="url(#pa-kit-arm)" />
+                  <rect x="-4.5" y="27" width="9" height="4" rx="1" fill="#f8fafc" stroke="none" />
+                  <ellipse cx="-7" cy="35" rx="2.4" ry="3.6" transform="rotate(35 -7 35)" fill="url(#pa-glove)" />
+                  <ellipse cx="0" cy="36" rx="7.5" ry="7" fill="url(#pa-glove)" />
+                  <ellipse cx="-4.8" cy="43" rx="2" ry="3.6" fill="url(#pa-glove)" />
+                  <ellipse cx="-1.6" cy="44.5" rx="2" ry="3.8" fill="url(#pa-glove)" />
+                  <ellipse cx="1.6" cy="44.5" rx="2" ry="3.8" fill="url(#pa-glove)" />
+                  <ellipse cx="4.8" cy="43" rx="2" ry="3.6" fill="url(#pa-glove)" />
                 </g>
               </g>
-              <g transform="translate(17 -74)">
+              <g transform="translate(19 -80)">
                 <g className={reveal ? 'pa-arm-dive' : 'pa-arm-idle'} style={armRStyle}>
-                  <rect x="-4.5" y="0" width="9" height="30" rx="4.5" fill="url(#pa-kit-arm)" />
-                  <circle cx="0" cy="34" r="8" fill="url(#pa-glove)" stroke="#2f5300" strokeWidth="0.8" />
-                  <circle cx="6" cy="30" r="3" fill="url(#pa-glove)" stroke="#2f5300" strokeWidth="0.6" />
-                  <path d="M-3 38 L3 38" stroke="#2f5300" strokeWidth="0.8" />
+                  <path d="M-5.5 0 C-6 10 -5 20 -4 30 L4 30 C5 20 6 10 5.5 0 Z" fill="url(#pa-kit-arm)" />
+                  <rect x="-4.5" y="27" width="9" height="4" rx="1" fill="#f8fafc" stroke="none" />
+                  <ellipse cx="7" cy="35" rx="2.4" ry="3.6" transform="rotate(-35 7 35)" fill="url(#pa-glove)" />
+                  <ellipse cx="0" cy="36" rx="7.5" ry="7" fill="url(#pa-glove)" />
+                  <ellipse cx="-4.8" cy="43" rx="2" ry="3.6" fill="url(#pa-glove)" />
+                  <ellipse cx="-1.6" cy="44.5" rx="2" ry="3.8" fill="url(#pa-glove)" />
+                  <ellipse cx="1.6" cy="44.5" rx="2" ry="3.8" fill="url(#pa-glove)" />
+                  <ellipse cx="4.8" cy="43" rx="2" ry="3.6" fill="url(#pa-glove)" />
                 </g>
               </g>
-              {/* collo e testa */}
-              <rect x="-4" y="-86" width="8" height="8" fill="#c98d5f" />
-              <circle cx="0" cy="-92" r="10.5" fill="url(#pa-skin)" />
-              <path d="M-10.5 -94 Q-8 -106 0 -105 Q8 -106 10.5 -94 Q6 -99 0 -98 Q-6 -99 -10.5 -94 Z" fill="#2b1d12" />
-              <circle cx="-3.5" cy="-92" r="1" fill="#1b1b1b" />
-              <circle cx="3.5" cy="-92" r="1" fill="#1b1b1b" />
+              {/* collo, testa, orecchie, capelli, viso */}
+              <path d="M-4.5 -94 h9 v9 h-9 z" fill="#c98d5f" />
+              <circle cx="-10" cy="-99" r="2.6" fill="#d9a074" />
+              <circle cx="10" cy="-99" r="2.6" fill="#d9a074" />
+              <ellipse cx="0" cy="-100" rx="10.5" ry="12" fill="url(#pa-skin)" />
+              <path d="M-11 -101 C-11 -112 -6 -116 0 -116 C6 -116 11 -112 11 -101 C8 -106 5 -108 0 -108 C-5 -108 -8 -106 -11 -101 Z" fill="url(#pa-hair)" />
+              <path d="M-11 -101 C-10 -97 -9 -95 -9 -92 L-9 -101 Z" fill="url(#pa-hair)" />
+              <path d="M11 -101 C10 -97 9 -95 9 -92 L9 -101 Z" fill="url(#pa-hair)" />
+              <path d="M-6.5 -103 C-5 -104.5 -2.5 -104.5 -1.5 -103" fill="none" stroke="#2b1d12" strokeOpacity="0.8" strokeWidth="1" />
+              <path d="M1.5 -103 C2.5 -104.5 5 -104.5 6.5 -103" fill="none" stroke="#2b1d12" strokeOpacity="0.8" strokeWidth="1" />
+              <circle cx="-4" cy="-100" r="1.2" fill="#1b1b1b" stroke="none" />
+              <circle cx="4" cy="-100" r="1.2" fill="#1b1b1b" stroke="none" />
+              <path d="M-2.5 -93.5 C-1 -92.5 1 -92.5 2.5 -93.5" fill="none" stroke="#8a5a3a" strokeWidth="0.9" />
             </g>
           </g>
         </g>
