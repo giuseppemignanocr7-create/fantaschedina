@@ -2,8 +2,8 @@
 // FANTA SCHEDINA - PENALTY ARENA
 // Stadio notturno in SVG (nessuna dipendenza, nessuna immagine): prato a
 // strisce in prospettiva, tribune, tabellone, porta con rete in profondita',
-// portiere articolato che si tuffa verso la zona scelta, pallone che vola con
-// scia e finisce in rete, sul palo, fuori o tra i guanti. Le pose e i punti
+// portiere che si tuffa verso la zona scelta, pallone che vola con scia e
+// finisce in rete, sul palo, fuori o tra i guanti. Le pose e i punti
 // d'arrivo stanno in src/lib/penalty.ts; qui c'e' solo il disegno.
 //
 // Usata da Rigori Duello e Sfide 1v1: la scena riceve l'esito da animare e,
@@ -17,6 +17,7 @@ import {
   GOAL,
   KEEPER_DIVE,
   KEEPER_IDLE,
+  keeperZoneFor,
   OUTCOME_LABEL,
   SPOT,
   ZONE_LAYOUT,
@@ -49,6 +50,9 @@ interface PenaltyArenaProps {
 const VB_W = 400;
 const VB_H = 300;
 
+/** Rientro della rete di fondo rispetto ai pali (profondita' della porta). */
+const NET = { left: 92, right: 308, top: 82, bottom: 178 } as const;
+
 /** Colori maglie della folla: pochi, ripetuti, come una curva vera. */
 const CROWD = ['#3b4a6b', '#6b7a99', '#c9a227', '#8a2f2f', '#2e6b3f', '#d8dce6'];
 
@@ -62,7 +66,8 @@ export function PenaltyArena({
   children,
   className,
 }: PenaltyArenaProps) {
-  const pose = reveal ? KEEPER_DIVE[reveal.keeper] : KEEPER_IDLE;
+  const keeperZone = reveal ? keeperZoneFor(reveal.shot, reveal.keeper, reveal.outcome) : null;
+  const pose = keeperZone ? KEEPER_DIVE[keeperZone] : KEEPER_IDLE;
   const target = reveal ? ballTarget(reveal.shot, reveal.outcome) : SPOT;
   const dx = target.x - SPOT.x;
   const dy = target.y - SPOT.y;
@@ -127,7 +132,7 @@ export function PenaltyArena({
             <stop offset="1" stopColor="#8d96a6" />
           </linearGradient>
           <pattern id="pa-net" width="7" height="7" patternUnits="userSpaceOnUse">
-            <path d="M0 3.5 H7 M3.5 0 V7" stroke="#e5e9f2" strokeWidth="0.7" strokeOpacity="0.55" />
+            <path d="M0 3.5 H7 M3.5 0 V7" stroke="#e5e9f2" strokeWidth="0.7" strokeOpacity="0.5" />
           </pattern>
           <pattern id="pa-crowd" width="23" height="9" patternUnits="userSpaceOnUse">
             {CROWD.map((c, i) => (
@@ -146,14 +151,28 @@ export function PenaltyArena({
             <stop offset="0.6" stopColor="#e6e9ef" />
             <stop offset="1" stopColor="#8b93a3" />
           </radialGradient>
-          <linearGradient id="pa-kit" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#ffb02e" />
-            <stop offset="1" stopColor="#e2770b" />
+          <linearGradient id="pa-kit" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#ffc247" />
+            <stop offset="0.55" stopColor="#f59e0b" />
+            <stop offset="1" stopColor="#c2620a" />
           </linearGradient>
-          <linearGradient id="pa-glove" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#c7f56b" />
-            <stop offset="1" stopColor="#6db300" />
+          <linearGradient id="pa-kit-arm" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#f7a825" />
+            <stop offset="1" stopColor="#c76a0c" />
           </linearGradient>
+          <linearGradient id="pa-shorts" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#1f2c4f" />
+            <stop offset="1" stopColor="#0d1428" />
+          </linearGradient>
+          <radialGradient id="pa-glove" cx="0.35" cy="0.3" r="0.8">
+            <stop offset="0" stopColor="#d9ff8a" />
+            <stop offset="0.7" stopColor="#84d80c" />
+            <stop offset="1" stopColor="#4c8a00" />
+          </radialGradient>
+          <radialGradient id="pa-skin" cx="0.4" cy="0.35" r="0.7">
+            <stop offset="0" stopColor="#f2c9a3" />
+            <stop offset="1" stopColor="#c98d5f" />
+          </radialGradient>
           <radialGradient id="pa-flash" cx="0.5" cy="0.5" r="0.5">
             <stop offset="0" stopColor="#ffffff" stopOpacity="0.9" />
             <stop offset="0.4" stopColor="#c7f56b" stopOpacity="0.5" />
@@ -198,11 +217,8 @@ export function PenaltyArena({
         <rect x="0" y="150" width="400" height="20" fill="#0b1a12" />
         <rect x="0" y="150" width="400" height="20" fill="#84d80c" opacity="0.12" />
         <g fontFamily="Montserrat, system-ui, sans-serif" fontWeight="900" fontSize="9" fill="#9be32a" letterSpacing="2">
-          <text x="14" y="164">FANTASCHEDINA</text>
-          <text x="152" y="164" opacity="0.6">•</text>
-          <text x="170" y="164">FANTASCHEDINA</text>
-          <text x="308" y="164" opacity="0.6">•</text>
-          <text x="326" y="164">FANTA</text>
+          <text x="8" y="164">FANTA</text>
+          <text x="340" y="164">FANTA</text>
         </g>
 
         {/* Prato a strisce in prospettiva */}
@@ -223,77 +239,26 @@ export function PenaltyArena({
         })}
         {/* Linee: fondo, area piccola, dischetto, lunetta */}
         <g stroke="#f4f7ff" strokeOpacity="0.85" fill="none" strokeWidth="2" strokeLinejoin="round">
-          <line x1="0" y1="178" x2="400" y2="178" />
-          <polyline points="40,178 20,246 380,246 360,178" />
+          <line x1="0" y1={GOAL.bottom} x2="400" y2={GOAL.bottom} />
+          <polyline points={`30,${GOAL.bottom} 12,248 388,248 370,${GOAL.bottom}`} />
           <path d="M120 300 Q200 268 280 300" strokeOpacity="0.6" />
         </g>
         <circle cx={SPOT.x} cy={SPOT.y} r="3" fill="#f4f7ff" opacity="0.9" />
 
         {/* Porta: rete di fondo, fianchi, tetto, poi i pali davanti */}
         <g className={cn('pa-net', reveal && outcome === 'goal' && 'pa-net-bulge')}>
-          <polygon points="118,100 282,100 282,172 118,172" fill="#0a1020" opacity="0.55" />
-          <polygon points="118,100 282,100 282,172 118,172" fill="url(#pa-net)" />
-          <polygon points={`${GOAL.left},${GOAL.top} 118,100 118,172 ${GOAL.left},${GOAL.bottom}`} fill="url(#pa-net)" opacity="0.8" />
-          <polygon points={`${GOAL.right},${GOAL.top} 282,100 282,172 ${GOAL.right},${GOAL.bottom}`} fill="url(#pa-net)" opacity="0.8" />
-          <polygon points={`${GOAL.left},${GOAL.top} ${GOAL.right},${GOAL.top} 282,100 118,100`} fill="url(#pa-net)" opacity="0.7" />
+          <polygon points={`${NET.left},${NET.top} ${NET.right},${NET.top} ${NET.right},${NET.bottom} ${NET.left},${NET.bottom}`} fill="#0a1020" opacity="0.55" />
+          <polygon points={`${NET.left},${NET.top} ${NET.right},${NET.top} ${NET.right},${NET.bottom} ${NET.left},${NET.bottom}`} fill="url(#pa-net)" />
+          <polygon points={`${GOAL.left},${GOAL.top} ${NET.left},${NET.top} ${NET.left},${NET.bottom} ${GOAL.left},${GOAL.bottom}`} fill="url(#pa-net)" opacity="0.8" />
+          <polygon points={`${GOAL.right},${GOAL.top} ${NET.right},${NET.top} ${NET.right},${NET.bottom} ${GOAL.right},${GOAL.bottom}`} fill="url(#pa-net)" opacity="0.8" />
+          <polygon points={`${GOAL.left},${GOAL.top} ${GOAL.right},${GOAL.top} ${NET.right},${NET.top} ${NET.left},${NET.top}`} fill="url(#pa-net)" opacity="0.7" />
         </g>
         {/* ombra della porta sul prato */}
-        <polygon points={`${GOAL.left},${GOAL.bottom} ${GOAL.right},${GOAL.bottom} 318,196 82,196`} fill="#000" opacity="0.18" />
+        <polygon points={`${GOAL.left},${GOAL.bottom} ${GOAL.right},${GOAL.bottom} 352,206 48,206`} fill="#000" opacity="0.18" />
         <g>
           <rect x={GOAL.left - 4} y={GOAL.top - 4} width="8" height={GOAL.bottom - GOAL.top + 4} rx="3" fill="url(#pa-post)" />
           <rect x={GOAL.right - 4} y={GOAL.top - 4} width="8" height={GOAL.bottom - GOAL.top + 4} rx="3" fill="url(#pa-post)" />
           <rect x={GOAL.left - 4} y={GOAL.top - 4} width={GOAL.right - GOAL.left + 8} height="8" rx="3" fill="url(#pa-bar)" />
-        </g>
-
-        {/* Portiere */}
-        <g transform={`translate(${SPOT.x} ${GOAL.bottom})`}>
-          <ellipse
-            key={reveal ? `sh-${revealKey}` : 'sh-idle'}
-            cx="0"
-            cy="1"
-            rx="17"
-            ry="4"
-            fill="#000"
-            opacity="0.4"
-            className={reveal ? 'pa-keeper-shadow-dive' : undefined}
-            style={keeperStyle}
-          />
-          <g transform="scale(1.12)">
-          <g
-            key={reveal ? `k-${revealKey}` : 'k-idle'}
-            className={reveal ? 'pa-keeper-dive' : 'pa-keeper-idle'}
-            style={keeperStyle}
-          >
-            {/* gambe */}
-            <rect x="-10" y="-36" width="7" height="34" rx="3" fill="#1d2b4c" />
-            <rect x="3" y="-36" width="7" height="34" rx="3" fill="#1d2b4c" />
-            <rect x="-11" y="-6" width="9" height="6" rx="2" fill="#0d1428" />
-            <rect x="2" y="-6" width="9" height="6" rx="2" fill="#0d1428" />
-            {/* pantaloncini */}
-            <rect x="-13" y="-42" width="26" height="14" rx="4" fill="#111a33" />
-            {/* maglia */}
-            <path d="M-15 -70 Q0 -76 15 -70 L17 -40 L-17 -40 Z" fill="url(#pa-kit)" />
-            <text x="0" y="-50" textAnchor="middle" fontSize="12" fontWeight="900" fill="#111a33" fontFamily="Montserrat, system-ui, sans-serif">1</text>
-            {/* braccia con guanti */}
-            {/* L'attributo transform e l'animazione CSS non convivono sullo
-                stesso elemento: la traslazione sta sul gruppo esterno. */}
-            <g transform="translate(-14 -66)">
-              <g className={reveal ? 'pa-arm-dive' : 'pa-arm-idle'} style={armLStyle}>
-                <rect x="-3.5" y="0" width="7" height="30" rx="3.5" fill="#f0a11a" />
-                <circle cx="0" cy="32" r="6.5" fill="url(#pa-glove)" stroke="#2f5300" strokeWidth="0.8" />
-              </g>
-            </g>
-            <g transform="translate(14 -66)">
-              <g className={reveal ? 'pa-arm-dive' : 'pa-arm-idle'} style={armRStyle}>
-                <rect x="-3.5" y="0" width="7" height="30" rx="3.5" fill="#f0a11a" />
-                <circle cx="0" cy="32" r="6.5" fill="url(#pa-glove)" stroke="#2f5300" strokeWidth="0.8" />
-              </g>
-            </g>
-            {/* testa */}
-            <circle cx="0" cy="-80" r="9.5" fill="#e7b688" />
-            <path d="M-9.5 -82 Q0 -94 9.5 -82 Q4 -86 0 -86 Q-4 -86 -9.5 -82 Z" fill="#2b1d12" />
-          </g>
-          </g>
         </g>
 
         {/* Bersagli nella porta (solo quando si sceglie) */}
@@ -304,14 +269,75 @@ export function PenaltyArena({
               const on = picked === z.zone;
               return (
                 <g key={z.zone} className="pointer-events-none">
-                  <circle cx={p.x} cy={p.y} r="19" fill={on ? '#84d80c' : '#ffffff'} opacity={on ? 0.28 : 0.08} />
-                  <circle cx={p.x} cy={p.y} r="19" fill="none" stroke={on ? '#c7f56b' : '#ffffff'} strokeOpacity={on ? 1 : 0.5} strokeWidth={on ? 2.5 : 1.5} strokeDasharray={on ? undefined : '4 3'} />
-                  <circle cx={p.x} cy={p.y} r="4" fill={on ? '#c7f56b' : '#ffffff'} opacity={on ? 1 : 0.6} />
+                  <circle cx={p.x} cy={p.y} r="27" fill={on ? '#84d80c' : '#ffffff'} opacity={on ? 0.32 : 0.14} />
+                  <circle cx={p.x} cy={p.y} r="27" fill="none" stroke={on ? '#d9ff8a' : '#ffffff'} strokeOpacity={on ? 1 : 0.85} strokeWidth={on ? 3 : 2} />
+                  <circle cx={p.x} cy={p.y} r="14" fill="none" stroke={on ? '#d9ff8a' : '#ffffff'} strokeOpacity={on ? 1 : 0.6} strokeWidth="1.5" strokeDasharray="4 3" />
+                  <circle cx={p.x} cy={p.y} r="4.5" fill={on ? '#d9ff8a' : '#ffffff'} opacity={on ? 1 : 0.9} />
                 </g>
               );
             })}
           </g>
         )}
+
+        {/* Portiere: in scala con la porta (circa 70% della traversa) */}
+        <g transform={`translate(${SPOT.x} ${GOAL.bottom})`}>
+          <ellipse
+            key={reveal ? `sh-${revealKey}` : 'sh-idle'}
+            cx="0"
+            cy="1"
+            rx="18"
+            ry="4"
+            fill="#000"
+            opacity="0.4"
+            className={reveal ? 'pa-keeper-shadow-dive' : undefined}
+            style={keeperStyle}
+          />
+          <g transform="scale(0.95)">
+            <g
+              key={reveal ? `k-${revealKey}` : 'k-idle'}
+              className={reveal ? 'pa-keeper-dive' : 'pa-keeper-idle'}
+              style={keeperStyle}
+            >
+              {/* gambe, calzettoni e scarpini */}
+              <path d="M-11 -40 L-13 -6 L-3 -6 L-3 -40 Z" fill="url(#pa-shorts)" />
+              <path d="M3 -40 L3 -6 L13 -6 L11 -40 Z" fill="url(#pa-shorts)" />
+              <rect x="-13" y="-18" width="10" height="12" rx="2" fill="#f4b731" />
+              <rect x="3" y="-18" width="10" height="12" rx="2" fill="#f4b731" />
+              <path d="M-15 -6 h13 v4 a2 2 0 0 1 -2 2 h-9 a2 2 0 0 1 -2 -2 z" fill="#111827" />
+              <path d="M2 -6 h13 v4 a2 2 0 0 1 -2 2 h-9 a2 2 0 0 1 -2 -2 z" fill="#111827" />
+              {/* pantaloncini */}
+              <path d="M-15 -46 h30 l1 14 h-13 l-3 -6 l-3 6 h-13 z" fill="url(#pa-shorts)" />
+              {/* busto con spalle */}
+              <path d="M-19 -74 Q-19 -80 -12 -80 L12 -80 Q19 -80 19 -74 L16 -44 L-16 -44 Z" fill="url(#pa-kit)" />
+              <path d="M-19 -74 L-16 -44 L-8 -44 L-9 -76 Z" fill="#000" opacity="0.12" />
+              <path d="M-6 -80 Q0 -74 6 -80 Z" fill="#1f2c4f" />
+              <text x="0" y="-52" textAnchor="middle" fontSize="14" fontWeight="900" fill="#1f2c4f" fontFamily="Montserrat, system-ui, sans-serif">1</text>
+              {/* braccia con guanti: la traslazione sta sul gruppo esterno perche' l'animazione CSS sostituisce l'attributo transform */}
+              <g transform="translate(-17 -74)">
+                <g className={reveal ? 'pa-arm-dive' : 'pa-arm-idle'} style={armLStyle}>
+                  <rect x="-4.5" y="0" width="9" height="30" rx="4.5" fill="url(#pa-kit-arm)" />
+                  <circle cx="0" cy="34" r="8" fill="url(#pa-glove)" stroke="#2f5300" strokeWidth="0.8" />
+                  <circle cx="-6" cy="30" r="3" fill="url(#pa-glove)" stroke="#2f5300" strokeWidth="0.6" />
+                  <path d="M-3 38 L3 38" stroke="#2f5300" strokeWidth="0.8" />
+                </g>
+              </g>
+              <g transform="translate(17 -74)">
+                <g className={reveal ? 'pa-arm-dive' : 'pa-arm-idle'} style={armRStyle}>
+                  <rect x="-4.5" y="0" width="9" height="30" rx="4.5" fill="url(#pa-kit-arm)" />
+                  <circle cx="0" cy="34" r="8" fill="url(#pa-glove)" stroke="#2f5300" strokeWidth="0.8" />
+                  <circle cx="6" cy="30" r="3" fill="url(#pa-glove)" stroke="#2f5300" strokeWidth="0.6" />
+                  <path d="M-3 38 L3 38" stroke="#2f5300" strokeWidth="0.8" />
+                </g>
+              </g>
+              {/* collo e testa */}
+              <rect x="-4" y="-86" width="8" height="8" fill="#c98d5f" />
+              <circle cx="0" cy="-92" r="10.5" fill="url(#pa-skin)" />
+              <path d="M-10.5 -94 Q-8 -106 0 -105 Q8 -106 10.5 -94 Q6 -99 0 -98 Q-6 -99 -10.5 -94 Z" fill="#2b1d12" />
+              <circle cx="-3.5" cy="-92" r="1" fill="#1b1b1b" />
+              <circle cx="3.5" cy="-92" r="1" fill="#1b1b1b" />
+            </g>
+          </g>
+        </g>
 
         {/* Scia e pallone */}
         {reveal && (
@@ -379,7 +405,7 @@ export function PenaltyArena({
               aria-pressed={on}
               className={cn(
                 'absolute -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform',
-                'w-[16%] aspect-square',
+                'w-[17%] aspect-square',
                 !disabled && 'hover:scale-110 active:scale-95',
                 on && 'shadow-[0_0_28px_6px_rgba(132,216,12,0.45)]'
               )}

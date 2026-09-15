@@ -71,6 +71,15 @@ describe('resolveShot', () => {
   });
 });
 
+describe('resolveShot — parata coerente col tuffo', () => {
+  it('quando non è gol il portiere è sulla zona del tiro', () => {
+    for (let i = 0; i < 2000; i++) {
+      const r = resolveShot('TR', 50);
+      if (!r.goal) expect(r.keeper).toBe('TR');
+    }
+  });
+});
+
 describe('simulateOpponentShot', () => {
   it('produce sempre zona valida e power in scala', () => {
     for (const skill of [0, 0.25, 0.5, 0.75, 1]) {
@@ -163,10 +172,11 @@ describe('resolveDuelShot', () => {
     expect(r).toBeGreaterThan(0.05);
   });
 
-  it('il portiere dalla parte sbagliata prende gol quasi sempre, ma non sempre', () => {
-    const r = rate('BL', 100, 'BR');
-    expect(r).toBeGreaterThan(0.85);
-    expect(r).toBeLessThan(1);
+  it('il portiere dalla parte sbagliata non para mai: solo fuori o palo lo salvano', () => {
+    for (let i = 0; i < 3000; i++) {
+      expect(resolveDuelShot('BL', 60, 'BR').outcome).not.toBe('saved');
+    }
+    expect(rate('BC', 100, 'TR')).toBe(1);
   });
 
   it('stessa colonna ma altezza sbagliata: parata possibile ma meno probabile', () => {
@@ -197,7 +207,7 @@ describe('resolveDuelShot', () => {
     expect(duelSaveChance('BL', 'BL', 1)).toBeLessThan(duelSaveChance('BL', 'BL', 0));
     expect(duelSaveChance('BL', 'BL', 1)).toBeGreaterThan(0.5);
     expect(duelSaveChance('BC', 'TC', 0.5)).toBeGreaterThan(duelSaveChance('BL', 'TL', 0.5));
-    expect(duelSaveChance('BL', 'TR', 1)).toBeLessThan(0.1);
+    expect(duelSaveChance('BL', 'TR', 1)).toBe(0);
   });
 });
 
