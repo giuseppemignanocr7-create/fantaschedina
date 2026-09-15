@@ -1,5 +1,13 @@
+// ============================================
+// RUOTA GIORNALIERA
+// Un giro gratis al giorno. L'esito lo estrae il server (`wheel_spin`): qui la
+// ruota si limita a fermarsi sullo spicchio deciso. Disegno in SVG: spicchi a
+// prato con le linee bianche del campo, premi scritti dentro lo spicchio,
+// cerchione con la cucitura del pallone e pallone al centro come mozzo.
+// ============================================
+
 import { useState, useRef } from 'react';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { spinWheel, callableErrorMessage } from '@/lib/gameApi';
@@ -7,20 +15,10 @@ import { COINS } from '@/lib/economy';
 import { CountUp } from '@/components/ui/CountUp';
 import { jackpotCelebration, coinRain, burstConfetti, vibrate } from '@/lib/juice';
 import { useSilentProfileRefresh } from '@/hooks/useSilentProfileRefresh';
+import { Ruota, RUOTA_SEGMENTS as SEGMENTS, RUOTA_SEG_DEG as SEG_DEG, RUOTA_SPIN_MS } from '@/components/games/Ruota';
 
-const COLORS = ['#1a44cc', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#f97316', '#06b6d4', '#facc15'];
-const TEXTS = ['#fff', '#fff', '#000', '#fff', '#fff', '#000', '#000', '#000'];
-
-// Spicchi allineati a COINS.wheelPrizes (l'esito è deciso dal server)
-const SEGMENTS = COINS.wheelPrizes.map((pts, i) => ({
-  label: pts >= 150 ? `JACKPOT ${pts} 🏆` : `+${pts} 🪙`,
-  pts,
-  color: COLORS[i % COLORS.length],
-  text: TEXTS[i % TEXTS.length],
-}));
-
-const N = SEGMENTS.length;
-const SEG_DEG = 360 / N;
+const JACKPOT = Math.max(...COINS.wheelPrizes);
+const SPIN_MS = RUOTA_SPIN_MS;
 
 export function RuotaGiornalieraPage() {
   const refreshProfileSilently = useSilentProfileRefresh('RuotaGiornalieraPage');
@@ -45,6 +43,7 @@ export function RuotaGiornalieraPage() {
       setRotation(target);
       setSpinning(true);
       setResult(null);
+      vibrate(20);
       setTimeout(() => {
         setSpinning(false);
         setResult(segmentIndex);
@@ -52,10 +51,12 @@ export function RuotaGiornalieraPage() {
         refreshProfileSilently();
         const pts = SEGMENTS[segmentIndex].pts;
         vibrate([50, 30, 80]);
-        if (pts >= 150) jackpotCelebration();
-        else if (pts >= 50) { burstConfetti(); coinRain(1300); }
-        else coinRain(900);
-      }, 5000);
+        if (SEGMENTS[segmentIndex].jackpot) jackpotCelebration();
+        else if (pts >= 50) {
+          burstConfetti();
+          coinRain(1300);
+        } else coinRain(900);
+      }, SPIN_MS);
     } catch (e) {
       const msg = callableErrorMessage(e);
       setError(msg);
@@ -65,149 +66,72 @@ export function RuotaGiornalieraPage() {
 
   const prize = result !== null ? SEGMENTS[result] : null;
 
-  const conicGradient = SEGMENTS.map((s, i) => {
-    const start = i * SEG_DEG;
-    const end = start + SEG_DEG;
-    return `${s.color} ${start}deg ${end}deg`;
-  }).join(', ');
-
   return (
-    <div className="min-h-screen flex flex-col items-center justify-start py-6 px-4">
-      <div className="w-full max-w-sm space-y-5">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <Link to="/minigiochi" className="p-2 text-slate-500 hover:text-slate-900 transition-colors">
-            <ArrowLeft size={20} />
-          </Link>
-          <div>
-            <h1 className="font-display font-black text-xl text-slate-900 uppercase">Ruota Giornaliera</h1>
-            <p className="text-[10px] text-slate-500">1 giro gratuito ogni giorno</p>
-          </div>
-        </div>
-
-        {/* Wheel container */}
-        <div className="flex flex-col items-center gap-5">
-          {/* Pointer + LED frame */}
-          <div className="relative p-4">
-            {/* LED lights around the wheel */}
-            {Array.from({ length: 16 }).map((_, i) => {
-              const a = (i / 16) * 2 * Math.PI;
-              return (
-                <div
-                  key={i}
-                  className={cn('absolute w-2.5 h-2.5 rounded-full z-10', spinning ? 'animate-led-blink' : 'animate-pulse')}
-                  style={{
-                    left: `calc(50% + ${Math.cos(a) * 158}px - 5px)`,
-                    top: `calc(50% + ${Math.sin(a) * 158}px - 5px)`,
-                    backgroundColor: i % 2 === 0 ? '#fbbf24' : '#fde68a',
-                    boxShadow: `0 0 8px 2px ${i % 2 === 0 ? '#fbbf2488' : '#fde68a55'}`,
-                    animationDelay: `${(i % 4) * 200}ms`,
-                  }}
-                />
-              );
-            })}
-
-            {/* Arrow pointing down to wheel */}
-            <div className="absolute left-1/2 -translate-x-1/2 top-0 z-20 w-0 h-0 drop-shadow-lg"
-              style={{
-                borderLeft: '12px solid transparent',
-                borderRight: '12px solid transparent',
-                borderTop: '24px solid #fbbf24',
-              }} />
-
-            {/* Wheel */}
-            <div
-              className="relative w-72 h-72 rounded-full shadow-2xl shadow-black/60 ring-8 ring-yellow-900/60"
-              style={{
-                background: `conic-gradient(${conicGradient})`,
-                transition: spinning ? 'transform 5s cubic-bezier(0.17, 0.67, 0.12, 0.99)' : 'none',
-                transform: `rotate(${rotation}deg)`,
-                boxShadow: spinning
-                  ? '0 0 60px -10px #fbbf2477, 0 25px 50px -12px rgba(0,0,0,0.6)'
-                  : '0 0 30px -12px #fbbf2444, 0 25px 50px -12px rgba(0,0,0,0.6)',
-              }}
-            >
-              {/* Segment dividers + labels */}
-              {SEGMENTS.map((seg, i) => {
-                const angle = i * SEG_DEG + SEG_DEG / 2;
-                const rad = (angle - 90) * (Math.PI / 180);
-                const r = 85;
-                const x = 50 + r * Math.cos(rad);
-                const y = 50 + r * Math.sin(rad);
-                return (
-                  <div
-                    key={i}
-                    className="absolute font-black text-[9px] leading-tight text-center pointer-events-none select-none"
-                    style={{
-                      left: `${x}%`,
-                      top: `${y}%`,
-                      transform: `translate(-50%, -50%) rotate(${angle}deg)`,
-                      color: seg.text,
-                      width: '48px',
-                    }}
-                  >
-                    {seg.label}
-                  </div>
-                );
-              })}
-
-              {/* Center */}
-              <div className="absolute inset-[35%] rounded-full bg-night flex items-center justify-center shadow-lg ring-4 ring-yellow-500/30">
-                <RefreshCw size={22} className={cn('text-yellow-700', spinning && 'animate-spin')} />
-              </div>
+    <div className="min-h-screen">
+      {/* Fascia scura: la ruota sotto i riflettori, come la testata della home */}
+      <div className="relative bg-night rounded-b-[28px] shadow-lg shadow-black/25 overflow-hidden">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ backgroundImage: 'radial-gradient(ellipse 80% 70% at 50% 30%, rgba(132,216,12,0.16) 0%, transparent 70%)' }}
+        />
+        <div className="relative max-w-md mx-auto px-4 pt-3 pb-6 space-y-2">
+          <header className="flex items-center gap-3">
+            <Link to="/minigiochi" className="p-2 -ml-2 text-white/70 hover:text-white transition-colors" aria-label="Torna ai minigiochi">
+              <ArrowLeft size={20} />
+            </Link>
+            <div>
+              <h1 className="font-display font-black text-xl text-white uppercase tracking-wide">Ruota Giornaliera</h1>
+              <p className="text-[11px] text-white/60">Un giro gratis al giorno · fino a {JACKPOT} gettoni</p>
             </div>
-          </div>
+          </header>
 
-          {/* Spin button */}
+          <Ruota rotation={rotation} spinning={spinning} />
+
           <button
             onClick={spin}
             disabled={spinning || alreadySpun}
             className={cn(
               'w-full py-4 rounded-2xl font-black text-base uppercase tracking-wide transition-all',
-              spinning ? 'bg-slate-100 text-slate-500 cursor-not-allowed'
-              : alreadySpun ? 'bg-slate-100 text-slate-600 cursor-not-allowed border border-slate-200'
-              : 'bg-gradient-to-r from-yellow-600 via-yellow-500 to-orange-500 text-black shadow-lg shadow-yellow-500/40 hover:shadow-yellow-500/70 active:scale-[0.97] animate-pulse-glow'
+              spinning
+                ? 'bg-white/10 text-white/60 cursor-not-allowed'
+                : alreadySpun
+                  ? 'bg-white/10 text-white/60 cursor-not-allowed border border-white/10'
+                  : 'bg-primary-500 text-night shadow-lg shadow-primary-500/40 hover:bg-primary-400 active:scale-[0.97] animate-pulse-glow'
             )}
           >
-            {spinning ? '🌀 La ruota gira…' : alreadySpun ? '✓ Già girato oggi' : '🎡 GIRA LA RUOTA'}
+            {spinning ? '🌀 La ruota gira…' : alreadySpun ? '✓ Già girato oggi' : '⚽ GIRA LA RUOTA'}
           </button>
-
-          {error && <p className="text-xs text-red-600 text-center">{error}</p>}
-
-          {alreadySpun && !spinning && (
-            <p className="text-xs text-slate-600 text-center">Torna domani per un nuovo giro gratuito!</p>
+          {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+          {alreadySpun && !spinning && !prize && (
+            <p className="text-xs text-white/60 text-center">Torna domani per un nuovo giro gratuito.</p>
           )}
         </div>
+      </div>
 
-        {/* Result */}
+      <div className="max-w-md mx-auto px-4 py-4 space-y-3">
         {prize && !spinning && (
-          <div
-            className="glass-card p-6 text-center space-y-2 border animate-pop-in relative overflow-hidden"
-            style={{ borderColor: `${prize.color}70`, boxShadow: `0 0 40px -10px ${prize.color}66` }}
-          >
+          <div className="paper-card p-6 text-center space-y-2 animate-pop-in relative overflow-hidden">
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              <div className="absolute top-0 bottom-0 w-24 bg-white/50 animate-shine" />
+              <div className="absolute top-0 bottom-0 w-24 bg-primary-500/15 animate-shine" />
             </div>
-            <p className="text-6xl animate-heartbeat">{prize.pts >= 150 ? '🏆' : prize.pts >= 50 ? '🎉' : '🪙'}</p>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest">{prize.pts >= 150 ? 'JACKPOT!!!' : 'Hai vinto'}</p>
-            <p className="font-black text-5xl animate-coin-pop" style={{ color: prize.color }}>
+            <p className="text-6xl animate-heartbeat">{prize.jackpot ? '🏆' : prize.pts >= 50 ? '🎉' : '🪙'}</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">{prize.jackpot ? 'JACKPOT!!!' : 'Hai vinto'}</p>
+            <p className={cn('font-black text-5xl animate-coin-pop', prize.jackpot ? 'text-yellow-600' : 'text-primary-700')}>
               +<CountUp to={prize.pts} durationMs={1200} /> 🪙
             </p>
             <p className="text-sm text-slate-500">gettoni aggiunti al tuo portafoglio</p>
+            <Link to="/negozio" className="inline-block mt-2 text-xs font-black text-primary-700 hover:underline">
+              Spendili nel negozio →
+            </Link>
           </div>
         )}
 
-        {/* Prizes list */}
-        <div className="glass-card p-4">
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-3 font-bold">Premi disponibili</p>
-          <div className="grid grid-cols-2 gap-1.5">
-            {SEGMENTS.map((s, i) => (
-              <div key={i} className="flex items-center gap-2 p-2 rounded-xl bg-slate-50">
-                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                <span className="text-xs text-slate-500 font-medium">{s.label}</span>
-              </div>
-            ))}
-          </div>
+        <div className="paper-card p-4 space-y-1.5">
+          <p className="section-title-ink">Come funziona</p>
+          <p className="text-xs text-slate-600">
+            Un giro gratis al giorno, si rinnova a mezzanotte. I premi sono scritti sugli spicchi: da{' '}
+            <b>{Math.min(...COINS.wheelPrizes)}</b> a <b>{JACKPOT}</b> gettoni, e lo spicchio d'oro è il jackpot.
+          </p>
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@ import { httpsCallable } from 'firebase/functions';
 import { functions } from './firebase';
 import type { Prediction } from '@/types';
 import type { PowerUpSelection } from './economy';
-import type { PenaltyZone } from './penalty';
+import type { PenaltyOutcome, PenaltyZone } from './penalty';
 
 export interface SubmitSchedinaResponse {
   ok: boolean;
@@ -276,7 +276,6 @@ export async function manageLeagueFn(
 
 // --- RIGORI DUELLO REALTIME ---
 
-export type PenaltyTarget = 'left' | 'center' | 'right';
 export type DuelMode = 'human' | 'botAttacker' | 'botKeeper' | 'botAlternate';
 
 export interface PenaltyDuelState {
@@ -287,8 +286,11 @@ export interface PenaltyDuelState {
   mode: DuelMode;
   round: number;
   attacker: 1 | 2;
-  p1Choice: PenaltyTarget | null;
-  p2Choice: PenaltyTarget | null;
+  /** Zona scelta nel round: dove tira l'attaccante, dove si tuffa il portiere. */
+  p1Choice: PenaltyZone | null;
+  p2Choice: PenaltyZone | null;
+  p1Power?: number | null;
+  p2Power?: number | null;
   phase: 'waiting' | 'playing' | 'finished';
   startedAt: number;
   deadlineAt: number;
@@ -299,8 +301,12 @@ export interface PenaltyDuelState {
   lastRound: {
     round: number;
     attacker: 1 | 2;
-    p1Choice: PenaltyTarget;
-    p2Choice: PenaltyTarget;
+    p1Choice: PenaltyZone;
+    p2Choice: PenaltyZone;
+    shot: PenaltyZone;
+    keeper: PenaltyZone;
+    power: number;
+    outcome: PenaltyOutcome;
     goal: boolean;
     p1Score: number;
     p2Score: number;
@@ -334,9 +340,14 @@ export async function createPenaltyDuelBotFn(mode: Exclude<DuelMode, 'human'>): 
   return res.data;
 }
 
+/**
+ * Mossa del round: zona (tiro o tuffo) e, per chi tira, potenza dalla barra.
+ * `timeout` = tempo scaduto senza scelta: il server ne assegna una a caso.
+ */
 export async function penaltyDuelMoveFn(
   duelId: string,
-  target?: PenaltyTarget,
+  zone?: PenaltyZone,
+  power?: number,
   timeout = false
 ): Promise<{
   ok: boolean;
@@ -349,7 +360,7 @@ export async function penaltyDuelMoveFn(
   goal?: boolean;
 }> {
   const fn = httpsCallable<
-    { action: string; duelId: string; target?: PenaltyTarget; timeout?: boolean },
+    { action: string; duelId: string; target?: PenaltyZone; power?: number; timeout?: boolean },
     {
       ok: boolean;
       resolved: boolean;
@@ -361,7 +372,7 @@ export async function penaltyDuelMoveFn(
       goal?: boolean;
     }
   >(functions, 'managePenaltyDuel');
-  const res = await fn({ action: 'move', duelId, target, timeout });
+  const res = await fn({ action: 'move', duelId, target: zone, power, timeout });
   return res.data;
 }
 

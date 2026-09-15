@@ -179,35 +179,139 @@
   @apply bg-primary-500/60;
 }
 
-/* Penalty duel: scena pseudo-3D (portiere/pallone disegnati in CSS, non foto) */
-.animate-keeper3d-idle { animation: keeper3d-idle 2.4s ease-in-out infinite; }
-.animate-keeper3d-dive { animation: keeper3d-dive 650ms cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
-.animate-ball3d-idle { animation: ball3d-idle 2.4s ease-in-out infinite; }
-.animate-ball3d-fly { animation: ball3d-fly 700ms cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
-.animate-shadow3d-fly { animation: shadow3d-fly 700ms cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
-
-@keyframes keeper3d-idle {
-  0%, 100% { transform: translateX(-50%) translateY(0) rotate(0deg); }
-  50% { transform: translateX(-50%) translateY(-3px) rotate(-2deg); }
+/* ── Arena dei rigori (PenaltyArena.tsx) ─────────────────────────────
+   Le pose (--kx/--ky/--kr, --arm) e i punti d'arrivo (--bx/--by) arrivano
+   da src/lib/penalty.ts via variabili CSS; qui solo i tempi e le curve.
+   Sequenza: tuffo e volo 0-600 ms, impatto a 600, esito a 640. */
+.pa-keeper-idle,
+.pa-keeper-dive {
+  transform-box: fill-box;
+  transform-origin: 50% 58%;
+}
+.pa-keeper-idle { animation: pa-keeper-idle 1.6s ease-in-out infinite; }
+.pa-keeper-dive { animation: pa-keeper-dive 560ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
+.pa-keeper-shadow-dive { animation: pa-keeper-shadow 560ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
+.pa-arm-idle,
+.pa-arm-dive {
+  transform-box: fill-box;
+  transform-origin: 50% 0%;
+}
+.pa-arm-idle { animation: pa-arm-idle 1.6s ease-in-out infinite; }
+.pa-arm-dive { animation: pa-arm-dive 420ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards; }
+.pa-ball-idle { animation: pa-ball-idle 1.6s ease-in-out infinite; }
+.pa-ball-fly { animation: pa-ball-fly 600ms cubic-bezier(0.3, 0.7, 0.4, 1) forwards; }
+.pa-ball-shadow-fly { animation: pa-ball-shadow 600ms cubic-bezier(0.3, 0.7, 0.4, 1) forwards; }
+.pa-ball-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pa-ball-spin 900ms linear forwards;
+}
+.pa-ball-deflect { animation: pa-ball-deflect 520ms 600ms cubic-bezier(0.2, 0.7, 0.5, 1) forwards; }
+.pa-ball-post { animation: pa-ball-post 520ms 600ms cubic-bezier(0.2, 0.7, 0.5, 1) forwards; }
+.pa-ball-miss { animation: pa-ball-miss 520ms 600ms ease-out forwards; }
+.pa-net-bulge {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pa-net-bulge 480ms 580ms ease-out;
+}
+.pa-trail {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: pa-trail-draw 600ms ease-out forwards, pa-trail-fade 350ms 650ms ease-out forwards;
+}
+.pa-flash {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: pa-flash 600ms 560ms ease-out forwards;
+}
+.pa-slam {
+  opacity: 0;
+  animation: pa-slam 380ms 640ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.pa-lamp { animation: pa-lamp 3.2s ease-in-out infinite; }
+.pa-flashes circle {
+  opacity: 0;
+  animation: pa-fan-flash 4.2s linear infinite;
 }
 
-@keyframes keeper3d-dive {
-  from { transform: translateX(-50%) translateX(0) translateY(0) rotate(0deg) scale(1); }
-  to { transform: translateX(-50%) translateX(var(--dive-x)) translateY(6px) rotate(var(--dive-tilt)) scale(1.05); }
+@keyframes pa-keeper-idle {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-3px) rotate(-1.5deg); }
 }
-
-@keyframes ball3d-idle {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(0, -2px) scale(1.03); }
+@keyframes pa-keeper-dive {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  18% { transform: translate(0, 4px) rotate(0deg); }
+  100% { transform: translate(var(--kx, 0), var(--ky, 0)) rotate(var(--kr, 0deg)); }
 }
-
-@keyframes ball3d-fly {
-  0% { transform: translate(0, 0) scale(1) rotate(0deg); }
-  55% { transform: translate(calc(var(--fly-x) * 0.65), -95px) scale(0.75) rotate(360deg); }
-  100% { transform: translate(var(--fly-x), -78px) scale(0.55) rotate(620deg); }
-}
-
-@keyframes shadow3d-fly {
+@keyframes pa-keeper-shadow {
   0% { transform: translateX(0) scale(1); opacity: 0.4; }
-  100% { transform: translateX(var(--fly-x)) scale(0.5); opacity: 0.15; }
+  100% { transform: translateX(var(--kx, 0)) scale(0.7); opacity: 0.18; }
+}
+@keyframes pa-arm-idle {
+  0%, 100% { transform: rotate(var(--arm0, 0deg)); }
+  50% { transform: rotate(calc(var(--arm0, 0deg) * 0.8)); }
+}
+@keyframes pa-arm-dive {
+  from { transform: rotate(var(--arm0, 0deg)); }
+  to { transform: rotate(var(--arm, 0deg)); }
+}
+@keyframes pa-ball-idle {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03) translateY(-1px); }
+}
+@keyframes pa-ball-fly {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(calc(var(--bx, 0) * 0.5), calc(var(--by, 0) * 0.5 - 28px)) scale(0.8); }
+  100% { transform: translate(var(--bx, 0), var(--by, 0)) scale(0.55); }
+}
+@keyframes pa-ball-shadow {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.45; }
+  100% { transform: translate(var(--bx, 0), -84px) scale(0.5); opacity: 0.15; }
+}
+@keyframes pa-ball-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(720deg); }
+}
+@keyframes pa-ball-deflect {
+  from { transform: translate(0, 0); }
+  to { transform: translate(var(--bounce-x, 0), 38px) scale(0.95); }
+}
+@keyframes pa-ball-post {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(calc(var(--bounce-x, 0) * -2.4), 46px) rotate(-200deg); }
+}
+@keyframes pa-ball-miss {
+  from { transform: translate(0, 0); opacity: 1; }
+  to { transform: translate(calc(var(--bounce-x, 0) * 1.6), -34px) scale(0.75); opacity: 0; }
+}
+@keyframes pa-net-bulge {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.05, 1.04); }
+  70% { transform: scale(0.985, 0.99); }
+  100% { transform: scale(1); }
+}
+@keyframes pa-trail-draw {
+  from { stroke-dashoffset: 100; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes pa-trail-fade {
+  to { opacity: 0; }
+}
+@keyframes pa-flash {
+  0% { transform: scale(0.2); opacity: 1; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+@keyframes pa-slam {
+  0% { opacity: 0; transform: scale(2.4) rotate(-8deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-3deg); }
+}
+@keyframes pa-lamp {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0.7; }
+}
+@keyframes pa-fan-flash {
+  0%, 92%, 100% { opacity: 0; }
+  94% { opacity: 1; }
+  97% { opacity: 0.2; }
 }

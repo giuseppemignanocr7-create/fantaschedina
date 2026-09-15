@@ -1,8 +1,18 @@
+// ============================================
+// RIGORI DUELLO — 1v1 in tempo reale (o contro il bot)
+//
+// Ogni round l'attaccante sceglie una delle sei zone della porta e ferma la
+// barra di potenza; il portiere sceglie dove tuffarsi. L'esito lo decide il
+// server (functions/src/penalty.ts: parata, gol, palo, fuori) e arriva via
+// snapshot del documento `penalty_duels/{id}`; qui si anima nell'arena.
+// ============================================
+
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Users, Swords, Copy, Loader2, Sparkles, Zap } from 'lucide-react';
+import { ArrowLeft, Users, Copy, Loader2, Bot, Swords, Trophy } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useSilentProfileRefresh } from '@/hooks/useSilentProfileRefresh';
 import {
   createPenaltyDuelFn,
   joinPenaltyDuelFn,
@@ -10,27 +20,51 @@ import {
   penaltyDuelMoveFn,
   callableErrorMessage,
   type PenaltyDuelState,
-  type PenaltyTarget,
   type DuelMode,
 } from '@/lib/gameApi';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { vibrate, burstConfetti } from '@/lib/juice';
-import { Penalty3DScene } from '@/components/games/Penalty3DScene';
+import { PenaltyArena, type ArenaReveal } from '@/components/games/PenaltyArena';
+import { PenaltyPowerMeter } from '@/components/games/PenaltyAimer';
+import { OUTCOME_EMOJI, ZONE_META, type PenaltyOutcome, type PenaltyZone } from '@/lib/penalty';
+import { COINS } from '@/lib/economy';
 
 type GamePhase = 'menu' | 'create' | 'join' | 'game' | 'finished';
 
-const TARGETS: { value: PenaltyTarget; label: string; x: number; y: number }[] = [
-  { value: 'left', label: 'SINISTRA', x: 20, y: 50 },
-  { value: 'center', label: 'CENTRO', x: 50, y: 45 },
-  { value: 'right', label: 'DESTRA', x: 80, y: 50 },
-];
+/** Tempo di ogni round: speculare a DUEL_ROUND_MS lato server. */
+const ROUND_S = 8;
+/** Potenza di un tiro affrettato: mira scelta ma barra non fermata in tempo. */
+const TIMEOUT_POWER = 35;
+/** Durata della rivelazione: tuffo, volo, impatto, scritta. */
+const PENALTY_REVEAL_MS = 2300;
 
-/* Durata della rivelazione: deve combaciare con il timeout che resetta shotAnim (vedi useEffect lastRound) */
-const PENALTY_REVEAL_MS = 2200;
+type LastRound = NonNullable<PenaltyDuelState['lastRound']>;
+
+/** Partite iniziate prima del 15/09/2026 hanno ancora le tre direzioni. */
+function toZone(v: unknown): PenaltyZone {
+  if (v === 'left') return 'BL';
+  if (v === 'right') return 'BR';
+  if (v === 'center') return 'BC';
+  return (v as PenaltyZone) in ZONE_META ? (v as PenaltyZone) : 'BC';
+}
+
+function revealOf(r: LastRound): ArenaReveal {
+  const shot = toZone(r.shot ?? (r.attacker === 1 ? r.p1Choice : r.p2Choice));
+  const keeper = toZone(r.keeper ?? (r.attacker === 1 ? r.p2Choice : r.p1Choice));
+  const outcome: PenaltyOutcome = r.outcome ?? (r.goal ? 'goal' : 'saved');
+  return { shot, keeper, outcome };
+}
+
+interface Tiro {
+  round: number;
+  attacker: 1 | 2;
+  outcome: PenaltyOutcome;
+}
 
 export function RigoriDuelPage() {
   const { profile } = useAuthContext();
+  const refreshProfile = useSilentProfileRefresh('RigoriDuelPage');
   const [localPhase, setPhase] = useState<GamePhase>('menu');
   const [duelId, setDuelId] = useState<string | null>(null);
   const [code, setCode] = useState('');
@@ -38,26 +72,28 @@ export function RigoriDuelPage() {
   const [duel, setDuel] = useState<PenaltyDuelState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [myChoice, setMyChoice] = useState<PenaltyTarget | null>(null);
-  const [lastAnim, setLastAnim] = useState<PenaltyDuelState['lastRound'] | null>(null);
-  const [shotAnim, setShotAnim] = useState<'goal' | 'save' | null>(null);
-  const [shake, setShake] = useState(false);
-  const [timer, setTimer] = useState(5);
+  /** Zona toccata nella porta (non ancora inviata se attaccante: manca la potenza). */
+  const [zona, setZona] = useState<PenaltyZone | null>(null);
+  /** Mossa del round gia' inviata al server. */
+  const [inviata, setInviata] = useState(false);
+  const [lastAnim, setLastAnim] = useState<LastRound | null>(null);
+  const [revealing, setRevealing] = useState(false);
+  const [timer, setTimer] = useState(ROUND_S);
   const [copied, setCopied] = useState(false);
+  const [tiri, setTiri] = useState<Tiro[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
   const revealTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-  // Ultimo round già animato: evita di rigiocare l'animazione a ogni snapshot
-  // successivo dello stesso round (il documento cambia anche per altri campi).
+  // Ultimo round gia' animato: gli snapshot successivi dello stesso round
+  // (cambiano altri campi) non devono rigiocare l'animazione.
   const animatedRoundRef = useRef<number | null>(null);
+  const celebratedRef = useRef(false);
 
   const isP1 = duel?.p1.uid === profile?.id;
-  const playerNum = isP1 ? 1 : 2;
+  const playerNum: 1 | 2 = isP1 ? 1 : 2;
   const amAttacker = duel?.attacker === playerNum;
 
-  // La fine partita la decide il server. Deriviamola in render invece di
-  // sincronizzarla con un effetto: evita un render in più e non c'è modo di
-  // restare disallineati se lo snapshot arriva mentre il componente è occupato.
+  // La fine partita la decide il server: derivata in render, non sincronizzata.
   const phase: GamePhase = duel?.phase === 'finished' ? 'finished' : localPhase;
 
   const cleanup = useCallback(() => {
@@ -67,35 +103,25 @@ export function RigoriDuelPage() {
     revealTimersRef.current = [];
   }, []);
 
-  /**
-   * Riproduce la sequenza gol/parata quando il server pubblica un nuovo round.
-   * Vive nella callback dello snapshot, non in un effetto: è una reazione a un
-   * evento esterno, e tenerla qui evita render a cascata.
-   */
-  const playRoundReveal = useCallback((round: NonNullable<PenaltyDuelState['lastRound']>) => {
+  /** Anima l'esito quando il server pubblica un nuovo round. */
+  const playRoundReveal = useCallback((round: LastRound) => {
     if (animatedRoundRef.current === round.round) return;
     animatedRoundRef.current = round.round;
 
+    const esito = revealOf(round).outcome;
     setLastAnim(round);
-    setShotAnim(round.goal ? 'goal' : 'save');
-    setShake(true);
-    setMyChoice(null);
-    vibrate(round.goal ? 80 : 40);
+    setRevealing(true);
+    setZona(null);
+    setInviata(false);
+    setTiri(t => [...t, { round: round.round, attacker: round.attacker, outcome: esito }]);
+    vibrate(esito === 'goal' ? [40, 30, 90] : esito === 'saved' ? 50 : 30);
 
     revealTimersRef.current.forEach(clearTimeout);
     revealTimersRef.current = [];
-
-    if (round.goal) {
-      revealTimersRef.current.push(
-        setTimeout(() => burstConfetti(), Math.round(PENALTY_REVEAL_MS * 0.3))
-      );
+    if (esito === 'goal') {
+      revealTimersRef.current.push(setTimeout(() => burstConfetti({ x: 0.5, y: 0.35 }), 640));
     }
-    revealTimersRef.current.push(
-      setTimeout(() => {
-        setShotAnim(null);
-        setShake(false);
-      }, PENALTY_REVEAL_MS)
-    );
+    revealTimersRef.current.push(setTimeout(() => setRevealing(false), PENALTY_REVEAL_MS));
   }, []);
 
   useEffect(() => cleanup, [cleanup]);
@@ -109,18 +135,34 @@ export function RigoriDuelPage() {
       const next = { id: snap.id, ...data } as PenaltyDuelState;
       setDuel(next);
       if (next.lastRound) playRoundReveal(next.lastRound);
+      if (next.phase === 'finished' && !celebratedRef.current) {
+        celebratedRef.current = true;
+        refreshProfile();
+      }
     });
-  }, [duelId, playRoundReveal]);
+  }, [duelId, playRoundReveal, refreshProfile]);
 
-  const handleTimeout = useCallback(async () => {
-    if (!duelId || myChoice !== null) return;
-    setMyChoice(randomTarget());
-    try {
-      await penaltyDuelMoveFn(duelId, undefined, true);
-    } catch (e) {
-      setError(callableErrorMessage(e));
-    }
-  }, [duelId, myChoice]);
+  const invia = useCallback(
+    async (z: PenaltyZone | undefined, power: number | undefined, timeout = false) => {
+      if (!duelId) return;
+      setInviata(true);
+      try {
+        await penaltyDuelMoveFn(duelId, z, power, timeout);
+      } catch (e) {
+        setError(callableErrorMessage(e));
+        setInviata(false);
+      }
+    },
+    [duelId]
+  );
+
+  const handleTimeout = useCallback(() => {
+    if (inviata) return;
+    // Mira scelta ma barra non fermata: parte un tiro affrettato su quella
+    // zona. Nessuna scelta: il server ne assegna una a caso.
+    if (zona) void invia(zona, amAttacker ? TIMEOUT_POWER : 0);
+    else void invia(undefined, undefined, true);
+  }, [inviata, zona, amAttacker, invia]);
 
   useEffect(() => {
     if (duel?.phase !== 'playing' || !duel.deadlineAt) return;
@@ -128,26 +170,28 @@ export function RigoriDuelPage() {
 
     const update = () => {
       const remaining = Math.max(0, Math.ceil((duel.deadlineAt - Date.now()) / 1000));
-      setTimer(remaining);
-      if (remaining <= 0 && myChoice === null) {
-        handleTimeout();
-      }
+      setTimer(Math.min(ROUND_S, remaining));
+      if (remaining <= 0 && !inviata) handleTimeout();
     };
     update();
     timerRef.current = setInterval(update, 100);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [duel?.round, duel?.phase, duel?.deadlineAt, myChoice, handleTimeout]);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [duel?.round, duel?.phase, duel?.deadlineAt, inviata, handleTimeout]);
 
-  const handleChoice = async (target: PenaltyTarget) => {
-    if (!duelId || myChoice !== null || shotAnim || duel?.phase !== 'playing') return;
-    setMyChoice(target);
-    vibrate(20);
-    try {
-      await penaltyDuelMoveFn(duelId, target);
-    } catch (e) {
-      setError(callableErrorMessage(e));
-      setMyChoice(null);
-    }
+  const scegliZona = (z: PenaltyZone) => {
+    if (inviata || revealing || duel?.phase !== 'playing') return;
+    vibrate(15);
+    setZona(z);
+    // Il portiere non ha potenza: il tuffo parte subito.
+    if (!amAttacker) void invia(z, 0);
+  };
+
+  const tira = (power: number) => {
+    if (!zona || inviata) return;
+    vibrate(25);
+    void invia(zona, power);
   };
 
   const handleCreate = async () => {
@@ -194,6 +238,20 @@ export function RigoriDuelPage() {
     }
   };
 
+  const ricomincia = () => {
+    cleanup();
+    animatedRoundRef.current = null;
+    celebratedRef.current = false;
+    setLastAnim(null);
+    setRevealing(false);
+    setTiri([]);
+    setZona(null);
+    setInviata(false);
+    setPhase('menu');
+    setDuel(null);
+    setDuelId(null);
+  };
+
   const copyCode = () => {
     if (!code) return;
     navigator.clipboard.writeText(code);
@@ -201,209 +259,195 @@ export function RigoriDuelPage() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  if (phase === 'create') {
+  // Sala d'attesa: quando l'avversario entra, il documento passa a "playing".
+  if (phase === 'create' && duel?.phase !== 'playing') {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden bg-night">
-        <div className="absolute inset-0 bg-gradient-to-b from-primary-900/25 via-transparent to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-b from-night/80 via-night/90 to-night" />
-        <div className="night-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in relative z-10">
-          <div className="text-6xl animate-bounce">⚽</div>
-          <h1 className="font-display font-black text-2xl text-white uppercase">Sala d'attesa</h1>
-          <p className="text-white/50 text-sm">Condividi il codice con un amico per iniziare il duello</p>
-          <div className="bg-white/5 rounded-2xl p-5 space-y-3">
-            <p className="text-[10px] text-white/40 uppercase tracking-widest">Codice partita</p>
-            <div className="font-black text-4xl text-primary-400 tracking-[0.2em]">{code}</div>
-            <button onClick={copyCode} className="flex items-center justify-center gap-2 mx-auto text-xs text-white/60 hover:text-white transition-colors">
+      <div className="min-h-screen px-4 py-6 max-w-md mx-auto space-y-4">
+        <Intestazione titolo="Sala d'attesa" sotto="Rigori Duello · 1 vs 1" />
+        <PenaltyArena reveal={null} revealKey="lobby" />
+        <div className="paper-card p-6 text-center space-y-4 animate-pop-in">
+          <p className="text-slate-500 text-sm">Manda il codice a un amico: appena entra si tira.</p>
+          <div className="bg-night rounded-2xl p-5 space-y-2">
+            <p className="text-[10px] text-white/50 uppercase tracking-widest">Codice partita</p>
+            <div className="font-black text-4xl text-primary-400 tracking-[0.25em]">{code}</div>
+            <button
+              onClick={copyCode}
+              className="flex items-center justify-center gap-2 mx-auto text-xs text-white/60 hover:text-white transition-colors"
+            >
               <Copy size={14} /> {copied ? 'Copiato!' : 'Copia codice'}
             </button>
           </div>
-          {duel?.p2?.uid ? (
-            <p className="text-sm text-green-400 font-bold animate-pulse">Avversario connesso! Partita in corso…</p>
-          ) : (
-            <p className="text-sm text-white/40">In attesa dell'avversario…</p>
-          )}
-          {error && <p className="text-sm text-red-400">{error}</p>}
-          <Link to="/minigiochi" className="block text-xs text-white/30 hover:text-white/60">← Torna ai minigiochi</Link>
+          <p className="text-sm text-slate-500 flex items-center justify-center gap-2">
+            <Loader2 size={14} className="animate-spin" /> In attesa dell'avversario…
+          </p>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <button onClick={ricomincia} className="text-xs text-slate-500 hover:text-slate-900">
+            ← Annulla e torna ai minigiochi
+          </button>
         </div>
       </div>
     );
   }
 
   if (phase === 'finished' && duel) {
-    const iAmP1 = duel.p1.uid === profile?.id;
-    const myScore = iAmP1 ? duel.p1.score : duel.p2.score;
-    const oppScore = iAmP1 ? duel.p2.score : duel.p1.score;
+    const myScore = isP1 ? duel.p1.score : duel.p2.score;
+    const oppScore = isP1 ? duel.p2.score : duel.p1.score;
+    const oppName = duel.p2.isBot ? 'Bot' : isP1 ? duel.p2.username : duel.p1.username;
     const iWon = duel.winner === playerNum;
     const isDraw = duel.winner === 'draw';
-    // Partita chiusa dalla pulizia perché ferma da troppo: non è una sconfitta,
-    // e mostrarla come tale sarebbe una bugia verso chi era rimasto a giocare.
+    // Chiusa dalla pulizia perche' ferma da troppo: non e' una sconfitta.
     const isAbandoned = duel.abandoned === true;
+    const mieiTiri = tiri.filter(t => t.attacker === playerNum);
+    const suoiTiri = tiri.filter(t => t.attacker !== playerNum);
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden bg-night">
-        <div className="absolute inset-0 bg-gradient-to-b from-primary-900/25 via-transparent to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-b from-night/80 via-night/90 to-night" />
-        <div className="night-card p-8 max-w-sm w-full text-center space-y-5 animate-pop-in relative z-10">
-          <div className="text-7xl animate-heartbeat">
-            {isAbandoned ? '🕒' : iWon ? '🏆' : isDraw ? '🤝' : '😢'}
-          </div>
-          <h2 className="font-display font-black text-3xl text-white uppercase">
-            {isAbandoned ? 'PARTITA ABBANDONATA' : iWon ? 'HAI VINTO!' : isDraw ? 'PAREGGIO!' : 'HAI PERSO!'}
+      <div className="min-h-screen px-4 py-6 max-w-md mx-auto space-y-4">
+        <Intestazione titolo="Fine del duello" sotto={duel.mode.startsWith('bot') ? 'Contro il bot' : '1 vs 1'} />
+        <PenaltyArena reveal={lastAnim ? revealOf(lastAnim) : null} revealKey={`fine-${lastAnim?.round ?? 0}`} />
+        <div className="paper-card p-6 text-center space-y-5 animate-pop-in">
+          <div className="text-6xl">{isAbandoned ? '🕒' : iWon ? '🏆' : isDraw ? '🤝' : '😤'}</div>
+          <h2 className="font-display font-black text-3xl text-slate-900 uppercase">
+            {isAbandoned ? 'Partita abbandonata' : iWon ? 'Hai vinto!' : isDraw ? 'Pareggio!' : 'Hai perso!'}
           </h2>
           {isAbandoned && (
-            <p className="text-white/50 text-sm">
-              Nessuno ha più giocato: la sfida è stata chiusa senza premio.
-            </p>
+            <p className="text-slate-500 text-sm">Nessuno ha più giocato: la sfida è stata chiusa senza premio.</p>
           )}
-          <div className="flex items-center justify-center gap-6">
+          <div className="flex items-center justify-center gap-8">
             <div className="text-center">
-              <p className="text-xs text-white/40 uppercase">Tu</p>
-              <p className="font-black text-4xl text-primary-400">{myScore}</p>
+              <p className="text-[10px] text-slate-500 uppercase font-bold">Tu</p>
+              <p className="font-black text-5xl text-primary-700">{myScore}</p>
+              <PipsTiri tiri={mieiTiri} />
             </div>
-            <span className="text-2xl text-white/30 font-black">-</span>
+            <span className="text-2xl text-slate-300 font-black">–</span>
             <div className="text-center">
-              <p className="text-xs text-white/40 uppercase">{duel.p2.isBot ? 'Bot' : iAmP1 ? duel.p2.username : duel.p1.username}</p>
-              <p className="font-black text-4xl text-red-400">{oppScore}</p>
+              <p className="text-[10px] text-slate-500 uppercase font-bold truncate max-w-[100px]">{oppName}</p>
+              <p className="font-black text-5xl text-red-600">{oppScore}</p>
+              <PipsTiri tiri={suoiTiri} />
             </div>
           </div>
           {duel.reward > 0 && (iWon || isDraw) && (
-            <div className="bg-gradient-to-r from-yellow-500/15 via-yellow-500/25 to-yellow-500/15 border border-yellow-500/30 rounded-2xl p-5">
-              <p className="text-yellow-200/60 text-xs uppercase tracking-widest mb-1">Premio</p>
-              <p className="font-black text-4xl text-yellow-400">+{duel.reward} 🪙</p>
+            <div className="bg-gradient-to-r from-yellow-500/15 via-yellow-500/25 to-yellow-500/15 border border-yellow-500/30 rounded-2xl p-4">
+              <p className="text-yellow-800/80 text-xs uppercase tracking-widest mb-1">Premio</p>
+              <p className="font-black text-4xl text-yellow-700">+{duel.reward} 🪙</p>
             </div>
           )}
           <div className="flex gap-2">
-            <button
-              onClick={() => {
-                cleanup();
-                // Senza questo reset la partita successiva non animerebbe il
-                // round 1, avendolo già "visto" nella partita precedente.
-                animatedRoundRef.current = null;
-                setLastAnim(null);
-                setShotAnim(null);
-                setPhase('menu');
-                setDuel(null);
-                setDuelId(null);
-              }}
-              className="flex-1 btn-green text-sm font-black"
-            >
+            <button onClick={ricomincia} className="flex-1 btn-green text-sm font-black py-3">
               🔄 Gioca ancora
             </button>
-            <Link to="/minigiochi" className="flex items-center justify-center flex-1 btn-secondary-night text-sm">← Minigiochi</Link>
+            <Link to="/minigiochi" className="flex items-center justify-center flex-1 btn-secondary text-xs">
+              ← Minigiochi
+            </Link>
           </div>
         </div>
       </div>
     );
   }
 
-  if (phase === 'game' && duel) {
-    const iAmP1 = duel.p1.uid === profile?.id;
-    const myName = iAmP1 ? duel.p1.username : duel.p2.username;
-    const oppName = iAmP1 ? duel.p2.username : duel.p1.username;
-    const myScore = iAmP1 ? duel.p1.score : duel.p2.score;
-    const oppScore = iAmP1 ? duel.p2.score : duel.p1.score;
-    const showResult = shotAnim !== null;
+  if ((phase === 'game' || phase === 'create') && duel) {
+    const myName = isP1 ? duel.p1.username : duel.p2.username;
+    const oppName = duel.p2.isBot ? 'Bot' : isP1 ? duel.p2.username : duel.p1.username;
+    const myScore = isP1 ? duel.p1.score : duel.p2.score;
+    const oppScore = isP1 ? duel.p2.score : duel.p1.score;
+    const mieiTiri = tiri.filter(t => t.attacker === playerNum);
+    const suoiTiri = tiri.filter(t => t.attacker !== playerNum);
+    const picking = revealing ? null : amAttacker ? 'shoot' : 'keep';
 
     return (
-      <div className={cn('min-h-screen relative overflow-hidden bg-night', shake && 'animate-shake')}>
-        <div className="absolute inset-0 bg-gradient-to-b from-primary-900/20 via-transparent to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-night via-night/70 to-transparent" />
-
-        <div className="relative z-10 min-h-screen flex flex-col px-4 py-6">
-          <div className="max-w-md mx-auto w-full flex-1 flex flex-col">
-            <header className="flex items-center justify-between mb-6">
-              <Link to="/minigiochi" className="p-2 text-white/60 hover:text-white transition-colors -ml-2">
+      <div className="min-h-screen">
+        {/* Fascia scura: arena e tabellone, come la testata della home */}
+        <div className="relative bg-night rounded-b-[28px] shadow-lg shadow-black/25">
+          <div
+            className="absolute inset-0 rounded-b-[28px] pointer-events-none"
+            style={{ backgroundImage: 'radial-gradient(ellipse 70% 90% at 50% -30%, rgba(132,216,12,0.14) 0%, transparent 70%)' }}
+          />
+          <div className="relative max-w-md mx-auto px-4 pt-3 pb-4 space-y-3">
+            <header className="flex items-center justify-between">
+              <Link to="/minigiochi" className="p-2 -ml-2 text-white/70 hover:text-white transition-colors" aria-label="Torna ai minigiochi">
                 <ArrowLeft size={22} />
               </Link>
               <div className="text-center">
-                <p className="font-black text-sm text-white tracking-widest">TURNO {duel.round}</p>
-                <p className="text-[10px] text-primary-400 uppercase tracking-widest font-bold">{duel.mode.startsWith('bot') ? 'VS BOT' : '1 VS 1'}</p>
-              </div>
-              <div className="w-8" />
-            </header>
-
-            {/* Scoreboard */}
-            <div className="night-card p-3 flex items-center justify-between mb-4 shadow-2xl">
-              <div className="text-center flex-1">
-                <p className="text-[10px] font-black text-primary-400 truncate max-w-[80px] mx-auto">{myName}</p>
-                <p className="font-black text-4xl text-primary-400 drop-shadow-[0_0_12px_rgba(132,216,12,0.5)]">{myScore}</p>
-              </div>
-              <div className="px-3">
-                <Swords size={24} className="text-orange-400" />
-              </div>
-              <div className="text-center flex-1">
-                <p className="text-[10px] font-black text-red-400 truncate max-w-[80px] mx-auto">{oppName}</p>
-                <p className="font-black text-4xl text-red-400">{oppScore}</p>
-              </div>
-            </div>
-
-            {/* Role + Timer */}
-            <div className="text-center space-y-3 mb-6">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-black/40 border border-white/10">
-                {amAttacker ? <Zap size={16} className="text-primary-400" /> : <Sparkles size={16} className="text-yellow-400" />}
-                <p className={cn('font-black text-sm uppercase tracking-widest', amAttacker ? 'text-primary-400' : 'text-yellow-400')}>
-                  {amAttacker ? '⚽ TIRA TU!' : '🧤 PARA TU!'}
+                <p className="font-display font-black text-sm text-white tracking-[0.2em]">RIGORE {duel.round}</p>
+                <p className="text-[10px] text-primary-400 uppercase tracking-widest font-bold">
+                  {duel.mode.startsWith('bot') ? 'contro il bot' : '1 vs 1 in diretta'}
                 </p>
               </div>
+              <TimerAnello secondi={timer} />
+            </header>
 
-              <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
-                  <path className="text-white/10" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
-                  <path
-                    className={cn(timer <= 2 ? 'text-red-500' : 'text-primary-500')}
-                    strokeDasharray={`${(timer / 5) * 100}, 100`}
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    style={{ transition: 'stroke-dasharray 0.2s linear' }}
-                  />
-                </svg>
-                <span className={cn('text-2xl font-black', timer <= 2 ? 'text-red-400 animate-pulse' : 'text-white')}>{timer}</span>
+            {/* Tabellone */}
+            <div className="paper-card px-3 py-2 flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-black text-primary-700 truncate">{myName}</p>
+                <PipsTiri tiri={mieiTiri} align="left" />
+              </div>
+              <div className="flex items-center gap-2 px-2">
+                <span className="font-display font-black text-3xl text-slate-900">{myScore}</span>
+                <span className="text-slate-300 font-black">:</span>
+                <span className="font-display font-black text-3xl text-slate-900">{oppScore}</span>
+              </div>
+              <div className="flex-1 min-w-0 text-right">
+                <p className="text-[10px] font-black text-red-600 truncate">{oppName}</p>
+                <PipsTiri tiri={suoiTiri} align="right" />
               </div>
             </div>
 
-            {/* Scena rigore in pseudo-3D */}
-            <div className="relative flex-1 min-h-[360px] flex items-center">
-              <Penalty3DScene
-                revealShot={showResult && lastAnim ? {
-                  shot: (lastAnim.attacker === 1 ? lastAnim.p1Choice : lastAnim.p2Choice) ?? 'center',
-                  keeper: (lastAnim.attacker === 1 ? lastAnim.p2Choice : lastAnim.p1Choice) ?? 'center',
-                  goal: lastAnim.goal,
-                } : null}
-                revealKey={lastAnim?.round ?? 'idle'}
-              >
-                {/* Mirini di scelta (overlay dentro la porta) */}
-                {!showResult && TARGETS.map(t => {
-                  const disabled = myChoice !== null || duel.phase !== 'playing';
-                  const isSelected = myChoice === t.value;
-                  return (
-                    <button
-                      key={t.value}
-                      onClick={() => handleChoice(t.value)}
-                      disabled={disabled}
-                      aria-label={`Tira a ${t.label.toLowerCase()}`}
-                      className={cn(
-                        'absolute w-16 h-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 transition-all active:scale-90 z-20',
-                        isSelected
-                          ? 'bg-primary-500/40 border-primary-300 scale-110 shadow-[0_0_30px_rgba(132,216,12,0.6)]'
-                          : 'bg-transparent border-white/20 hover:bg-primary-500/20 hover:border-primary-300/70 hover:scale-105'
-                      )}
-                      style={{ left: `${t.x}%`, top: `${t.y}%` }}
-                    >
-                      <span className="sr-only">{t.label}</span>
-                    </button>
-                  );
-                })}
-              </Penalty3DScene>
-            </div>
-
-            {/* Instruction */}
-            <p className="text-center text-sm text-white/70 font-bold mt-5">
-              {amAttacker ? 'Scegli dove spiazzare il portiere' : 'Indovina dove tirerà l\'avversario'}
-            </p>
-
-            {error && <p className="text-sm text-red-400 text-center mt-3 animate-shake">{error}</p>}
+            <PenaltyArena
+              reveal={revealing && lastAnim ? revealOf(lastAnim) : null}
+              revealKey={lastAnim?.round ?? 'idle'}
+              picking={picking}
+              picked={zona}
+              disabled={inviata || duel.phase !== 'playing'}
+              onPick={scegliZona}
+            >
+              {!revealing && (
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 pointer-events-none">
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-widest backdrop-blur-sm',
+                      amAttacker ? 'bg-primary-500/90 text-night' : 'bg-yellow-400/90 text-night'
+                    )}
+                  >
+                    {amAttacker ? '⚽ Tiri tu' : '🧤 Pari tu'}
+                  </span>
+                </div>
+              )}
+            </PenaltyArena>
           </div>
+        </div>
+
+        {/* Comandi */}
+        <div className="max-w-md mx-auto px-4 py-4 space-y-3">
+          {revealing ? (
+            <p className="text-center text-sm text-slate-500 font-bold">
+              {tiri[tiri.length - 1]?.attacker === playerNum ? 'Il tuo rigore…' : 'Il suo rigore…'}
+            </p>
+          ) : inviata ? (
+            <div className="paper-card p-4 text-center space-y-1 animate-pop-in">
+              <p className="text-sm font-black text-slate-900">
+                {amAttacker ? '⚽ Tiro partito!' : `🧤 Ti tuffi ${zona ? ZONE_META[zona].label.toLowerCase() : ''}`}
+              </p>
+              <p className="text-xs text-slate-500 flex items-center justify-center gap-1.5">
+                <Loader2 size={12} className="animate-spin" />
+                {amAttacker ? 'Il portiere sta scegliendo…' : 'Aspetta il tiro…'}
+              </p>
+            </div>
+          ) : amAttacker ? (
+            zona ? (
+              <div className="paper-card p-4">
+                <PenaltyPowerMeter key={`${duel.round}-${zona}`} zone={zona} onConfirm={tira} onCancel={() => setZona(null)} />
+              </div>
+            ) : (
+              <p className="text-center text-sm text-slate-600 font-bold">
+                Tocca un bersaglio nella porta, poi ferma la barra di potenza.
+              </p>
+            )
+          ) : (
+            <p className="text-center text-sm text-slate-600 font-bold">
+              Dove tirerà? Tocca la zona in cui tuffarti.
+            </p>
+          )}
+
+          {error && <p className="text-sm text-red-600 text-center animate-shake">{error}</p>}
         </div>
       </div>
     );
@@ -411,37 +455,140 @@ export function RigoriDuelPage() {
 
   // Menu
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden bg-night">
-      <div className="absolute inset-0 bg-gradient-to-b from-primary-900/25 via-transparent to-transparent" />
-      <div className="absolute inset-0 bg-gradient-to-b from-night/80 via-night/95 to-night" />
-      <div className="night-card p-8 max-w-sm w-full space-y-5 animate-pop-in relative z-10">
-        <div className="text-center space-y-2">
-          <div className="text-6xl animate-bounce">⚽</div>
-          <h1 className="font-display font-black text-3xl text-white uppercase">Rigori Duello</h1>
-          <p className="text-white/50 text-sm">3 mirini. 5 secondi. 5 rigori. Vince il più freddo.</p>
+    <div className="min-h-screen px-4 py-6 max-w-md mx-auto space-y-4">
+      <Intestazione titolo="Rigori Duello" sotto="Sei zone, una barra di potenza, un portiere vero" />
+      <PenaltyArena reveal={null} revealKey="menu">
+        <div className="absolute bottom-3 left-0 right-0 text-center pointer-events-none">
+          <p className="text-[10px] font-black uppercase tracking-[0.25em] text-white/70">
+            5 rigori a testa · {ROUND_S} secondi a tiro
+          </p>
         </div>
-        {error && <p className="text-sm text-red-400 text-center animate-shake">{error}</p>}
-        <div className="space-y-3">
-          <button onClick={handleCreate} disabled={loading} className="w-full btn-green text-sm font-black flex items-center justify-center gap-2"><Users size={16} /> CREA PARTITA 1v1</button>
-          <div className="flex gap-2">
-            <input value={inputCode} onChange={e => setInputCode(e.target.value.toUpperCase())} placeholder="CODICE" aria-label="Codice partita da unire" maxLength={6} className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-center font-black text-white tracking-widest uppercase focus:outline-none focus:border-primary-500" />
-            <button onClick={handleJoin} disabled={loading || inputCode.length !== 6} className="btn-primary px-4 text-sm font-black">{loading ? <Loader2 size={16} className="animate-spin" /> : 'ENTRA'}</button>
-          </div>
-          <div className="h-px bg-white/10" />
-          <p className="text-[10px] text-white/40 uppercase tracking-widest text-center font-bold">Gioca contro il Bot</p>
-          <div className="grid grid-cols-3 gap-2">
-            <button onClick={() => handleBot('botAttacker')} className="btn-secondary-night text-xs font-black py-3">⚽ Attaccante</button>
-            <button onClick={() => handleBot('botKeeper')} className="btn-secondary-night text-xs font-black py-3">🧤 Portiere</button>
-            <button onClick={() => handleBot('botAlternate')} className="btn-secondary-night text-xs font-black py-3">🔄 Alterna</button>
-          </div>
+      </PenaltyArena>
+
+      {error && <p className="text-sm text-red-600 text-center animate-shake">{error}</p>}
+
+      <div className="paper-card p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Swords size={16} className="text-primary-700" />
+          <p className="font-black text-sm text-slate-900">Sfida un amico</p>
         </div>
-        <Link to="/minigiochi" className="block text-xs text-white/30 hover:text-white/60 text-center">← Torna ai minigiochi</Link>
+        <button
+          onClick={handleCreate}
+          disabled={loading}
+          className="w-full btn-green text-sm font-black py-3 flex items-center justify-center gap-2 disabled:opacity-60"
+        >
+          <Users size={16} /> CREA PARTITA 1v1
+        </button>
+        <div className="flex gap-2">
+          <input
+            value={inputCode}
+            onChange={e => setInputCode(e.target.value.toUpperCase())}
+            placeholder="CODICE"
+            aria-label="Codice partita da unire"
+            maxLength={6}
+            className="input-field text-center font-black tracking-[0.3em] uppercase"
+          />
+          <button
+            onClick={handleJoin}
+            disabled={loading || inputCode.length !== 6}
+            className="btn-primary px-4 text-sm font-black disabled:opacity-50"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : 'ENTRA'}
+          </button>
+        </div>
+      </div>
+
+      <div className="paper-card p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Bot size={16} className="text-primary-700" />
+          <p className="font-black text-sm text-slate-900">Allenati contro il bot</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <button onClick={() => handleBot('botAttacker')} disabled={loading} className="btn-secondary px-2 py-3 text-[11px] font-black normal-case tracking-normal">
+            ⚽ Tu tiri
+          </button>
+          <button onClick={() => handleBot('botKeeper')} disabled={loading} className="btn-secondary px-2 py-3 text-[11px] font-black normal-case tracking-normal">
+            🧤 Tu pari
+          </button>
+          <button onClick={() => handleBot('botAlternate')} disabled={loading} className="btn-secondary px-2 py-3 text-[11px] font-black normal-case tracking-normal">
+            🔄 Alternati
+          </button>
+        </div>
+        <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
+          <Trophy size={12} className="text-yellow-600" />
+          {COINS.duelWin} gettoni a vittoria, {COINS.duelDraw} a pareggio, massimo {COINS.duelDailyCap} al giorno.
+        </p>
+      </div>
+
+      <div className="paper-card p-4 space-y-2">
+        <p className="section-title-ink">Come si gioca</p>
+        <ul className="text-xs text-slate-600 space-y-1.5">
+          <li>🎯 <b>Chi tira</b> tocca una delle sei zone e ferma la barra: nel verde il tiro è preciso e potente.</li>
+          <li>🧤 <b>Chi para</b> sceglie dove tuffarsi. Stessa zona: quasi sempre parata. Stesso lato: a volte.</li>
+          <li>💨 Un angolo alto tirato male finisce <b>fuori</b> o sul <b>palo</b>. Il centro basso non si sbaglia, ma è il più facile da parare.</li>
+        </ul>
+      </div>
+
+      <Link to="/minigiochi" className="block text-xs text-slate-500 hover:text-slate-900 text-center">
+        ← Torna ai minigiochi
+      </Link>
+    </div>
+  );
+}
+
+function Intestazione({ titolo, sotto }: { titolo: string; sotto: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <Link to="/minigiochi" className="p-2 -ml-2 text-slate-500 hover:text-slate-900 transition-colors" aria-label="Torna ai minigiochi">
+        <ArrowLeft size={20} />
+      </Link>
+      <div>
+        <h1 className="page-title">{titolo}</h1>
+        <p className="text-[11px] text-slate-500">{sotto}</p>
       </div>
     </div>
   );
 }
 
-function randomTarget(): PenaltyTarget {
-  const t: PenaltyTarget[] = ['left', 'center', 'right'];
-  return t[Math.floor(Math.random() * t.length)];
+function TimerAnello({ secondi }: { secondi: number }) {
+  const urgente = secondi <= 3;
+  return (
+    <div className="relative w-11 h-11 flex items-center justify-center" aria-live="polite" aria-label={`${secondi} secondi`}>
+      <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
+        <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="3" />
+        <circle
+          cx="18"
+          cy="18"
+          r="15.9"
+          fill="none"
+          stroke={urgente ? '#ef4444' : '#84d80c'}
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray={`${(secondi / ROUND_S) * 100}, 100`}
+          style={{ transition: 'stroke-dasharray 0.2s linear' }}
+        />
+      </svg>
+      <span className={cn('text-sm font-black', urgente ? 'text-red-400 animate-pulse' : 'text-white')}>{secondi}</span>
+    </div>
+  );
+}
+
+function PipsTiri({ tiri, align = 'center' }: { tiri: Tiro[]; align?: 'left' | 'center' | 'right' }) {
+  return (
+    <div
+      className={cn(
+        'flex gap-0.5 mt-1 text-[11px] leading-none min-h-[12px]',
+        align === 'left' && 'justify-start',
+        align === 'center' && 'justify-center',
+        align === 'right' && 'justify-end'
+      )}
+      aria-label="Esiti dei rigori"
+    >
+      {tiri.map(t => (
+        <span key={t.round} title={t.outcome}>
+          {OUTCOME_EMOJI[t.outcome]}
+        </span>
+      ))}
+    </div>
+  );
 }

@@ -31,7 +31,9 @@ const BUDGETS = {
   // 13/09/2026: 'index-' da 38 a 39. L'header ascolta la casella notifiche
   // (badge non lette) e non puo' essere lazy: +0,4 KB misurati.
   'index-': 39,
-  'icons-vendor-': 6,
+  // 15/09/2026: 'icons-vendor-' da 6 a 7. I minigiochi rifatti (arena dei
+  // rigori, ruota) usano tre icone in piu' del set condiviso: 6,0 KB misurati.
+  'icons-vendor-': 7,
   'react-vendor-': 62,
   'firebase-firestore-vendor-': 152,
   'firebase-auth-vendor-': 28,
@@ -45,7 +47,9 @@ const BUDGETS = {
  * Misurato: 386 KB con Sentry attivo, 357 KB senza.
  * 09/09/2026: 363 KB senza Sentry dopo la pulizia; tetto da 405 a 385.
  */
-const TOTAL_JS_BUDGET = 385;
+// 15/09/2026: 388 KB dopo il rifacimento dei minigiochi (stadio in SVG,
+// portiere articolato, ruota con i premi negli spicchi); tetto da 385 a 395.
+const TOTAL_JS_BUDGET = 395;
 
 const KB = 1024;
 
