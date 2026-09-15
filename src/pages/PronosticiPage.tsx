@@ -11,10 +11,10 @@ import { useShallow } from 'zustand/react/shallow';
 import { sideCannons, vibrate } from '@/lib/juice';
 import type { BetType, BetOutcome, Prediction, Match } from '@/types';
 import type { MatchOdds } from '@/data/mockData';
-import { CountdownTimer, TeamLogo } from '@/components/ui';
+import { CountdownTimer, PowerUpSelector, TeamLogo } from '@/components/ui';
 import { useToast } from '@/contexts/ToastContext';
 import { useSchedinaEditWindow } from '@/hooks';
-import { MAX_PICKS_PER_SCHEDINA } from '@/lib/economy';
+import { MAX_PICKS_PER_SCHEDINA, type PowerUpSelection } from '@/lib/economy';
 import { calculateBetPoints, calculateSchedinaScore } from '@/lib/scoring';
 import { competitionName } from '@/lib/competitions';
 import { getUserLeagues, type LeagueDoc } from '@/lib/leagues';
@@ -80,6 +80,13 @@ type SlipPanelProps = {
   totalPotential: number;
   isSubmitting: boolean;
   isCancelling: boolean;
+  /** Saldo gettoni, per sapere quali power-up ci si puo' permettere. */
+  coins: number;
+  /** Power-up scelti per l'invio (o per il re-invio in modifica). */
+  powerups: PowerUpSelection;
+  onPowerupsChange: (p: PowerUpSelection) => void;
+  /** Power-up allegati alla schedina gia' inviata (riepilogo a schedina chiusa). */
+  savedPowerups: PowerUpSelection | undefined;
   onReset: () => void;
   onSubmit: () => void;
   onEdit: () => void;
@@ -98,6 +105,10 @@ const SlipPanel = memo(function SlipPanel({
   totalPotential,
   isSubmitting,
   isCancelling,
+  coins,
+  powerups,
+  onPowerupsChange,
+  savedPowerups,
   onReset,
   onSubmit,
   onEdit,
@@ -105,6 +116,7 @@ const SlipPanel = memo(function SlipPanel({
 }: SlipPanelProps) {
   const getPrediction = (matchId: string): Prediction | undefined =>
     predictions.find(p => p.matchId === matchId);
+  const attivi = (['jolly', 'shield', 'insurance'] as const).filter(id => !!savedPowerups?.[id]);
 
   return (
     <div className={cn('glass-card overflow-hidden border border-slate-200', compact && 'border-accent-500/20')}>
@@ -181,6 +193,18 @@ const SlipPanel = memo(function SlipPanel({
       {/* Actions */}
       {!isLocked ? (
         <div className="p-2.5 pt-0 space-y-2">
+          {/* Power-up: si allegano alla schedina, il server li addebita all'invio
+              (tornati il 15/09/2026: erano spariti con il rifacimento della pagina). */}
+          {completedCount > 0 && (
+            <PowerUpSelector
+              coins={coins}
+              selection={powerups}
+              onChange={onPowerupsChange}
+              matches={matches}
+              predictions={predictions}
+              disabled={isSubmitting}
+            />
+          )}
           <button
             onClick={onSubmit}
             disabled={!isComplete || isSubmitting}
@@ -201,6 +225,23 @@ const SlipPanel = memo(function SlipPanel({
         <div className="p-3 text-center space-y-2">
           <CheckCircle2 size={24} className="text-green-600 mx-auto mb-1.5" />
           <p className="font-bold text-green-600 text-sm">Inviata!</p>
+          {attivi.length > 0 ? (
+            <div className="flex flex-wrap gap-1 justify-center">
+              {attivi.map(id => (
+                <span key={id} className="text-[10px] font-bold bg-primary-500/15 text-primary-800 rounded-full px-2 py-0.5">
+                  {POWERUPS[id].emoji} {POWERUPS[id].name}
+                  {id === 'jolly' && savedPowerups?.jolly && (
+                    <span className="text-slate-500 font-medium">
+                      {' '}su {matches.find(m => m.id === savedPowerups.jolly)?.homeTeam.shortName ?? '?'}–
+                      {matches.find(m => m.id === savedPowerups.jolly)?.awayTeam.shortName ?? '?'}
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[10px] text-slate-500">Nessun power-up: con Modifica puoi aggiungerli.</p>
+          )}
           {canEdit ? (
             <>
               <div className="flex flex-wrap gap-1.5 justify-center pt-1">
@@ -356,6 +397,8 @@ export function PronosticiPage() {
     setCircuito,
     copiaDaGenerale,
     applyLastMinuteChange,
+    selectedPowerups,
+    setPowerups,
   } = useAppStore(useShallow(s => ({
       currentMatchday: s.currentMatchday,
       matchOdds: s.matchOdds,
@@ -370,10 +413,12 @@ export function PronosticiPage() {
       setCircuito: s.setCircuito,
       copiaDaGenerale: s.copiaDaGenerale,
       applyLastMinuteChange: s.applyLastMinuteChange,
+      selectedPowerups: s.selectedPowerups,
+      setPowerups: s.setPowerups,
     })));
 
   const toast = useToast();
-  const { user } = useAuthContext();
+  const { user, profile } = useAuthContext();
   const refreshProfile = useSilentProfileRefresh('PronosticiPage');
   const {
     canEdit, canUseLastMinute, lastMinuteUsed, isDeadlinePassed, isSubmitted,
@@ -583,6 +628,10 @@ export function PronosticiPage() {
     totalPotential,
     isSubmitting,
     isCancelling,
+    coins: profile?.coins ?? 0,
+    powerups: selectedPowerups,
+    onPowerupsChange: setPowerups,
+    savedPowerups: currentSchedina?.powerups,
     onReset: resetSchedina,
     onSubmit: handleSubmit,
     onEdit: handleEdit,
