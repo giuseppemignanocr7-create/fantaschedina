@@ -14,13 +14,21 @@ import {
   POWERUPS as CLIENT_POWERUPS,
   MISSIONS as CLIENT_MISSIONS,
   MAX_PICKS_PER_SCHEDINA as CLIENT_MAX_PICKS,
+  STREAK as CLIENT_STREAK,
 } from '../economy';
 import {
   COINS as SERVER_COINS,
   POWERUPS as SERVER_POWERUPS,
   MISSIONS as SERVER_MISSIONS,
   MAX_PICKS_PER_SCHEDINA as SERVER_MAX_PICKS,
+  STREAK as SERVER_STREAK,
 } from '../../../functions/src/config';
+
+describe('STREAK — la serie giornaliera vale uguale da entrambe le parti', () => {
+  it('stessi parametri e stessi valori', () => {
+    expect(CLIENT_STREAK).toEqual(SERVER_STREAK);
+  });
+});
 
 describe('COINS — il mirror client riflette il server', () => {
   const chiaviServer = Object.keys(SERVER_COINS) as (keyof typeof SERVER_COINS)[];

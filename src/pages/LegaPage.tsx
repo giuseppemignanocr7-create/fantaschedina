@@ -16,7 +16,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Award, Calendar, Check, Copy, Crown, Loader2, Medal,
   Target, Trophy, Users, X,
-  ChevronRight,
+  ChevronRight, Share2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -124,6 +124,28 @@ export function LegaPage() {
     setTimeout(() => setCodiceCopiato(false), 2000);
   };
 
+  /**
+   * Invito con un tocco: un link che apre l'app con il codice gia' dentro.
+   * Dettare sei lettere a voce e' il punto in cui si perdono gli amici.
+   */
+  const condividiInvito = async () => {
+    if (!lega) return;
+    const url = `${window.location.origin}/leghe?invito=${lega.inviteCode}`;
+    const testo = `Entra nella mia lega "${lega.name}" su Fantaschedina!`;
+    const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
+    if (nav.share) {
+      try {
+        await nav.share({ title: 'Fantaschedina', text: testo, url });
+        return;
+      } catch {
+        // Annullata: si ripiega sulla copia negli appunti.
+      }
+    }
+    await navigator.clipboard.writeText(`${testo} ${url}`);
+    setCodiceCopiato(true);
+    setTimeout(() => setCodiceCopiato(false), 2000);
+  };
+
   if (caricamento) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -217,6 +239,7 @@ export function LegaPage() {
             righe={classifica}
             codiceCopiato={codiceCopiato}
             onCopia={() => void copiaCodice()}
+            onCondividi={() => void condividiInvito()}
           />
         )}
       </div>
@@ -526,16 +549,18 @@ function SezioneMembri({
   righe,
   codiceCopiato,
   onCopia,
+  onCondividi,
 }: {
   lega: LeagueDoc;
   righe: RankingRow[];
   codiceCopiato: boolean;
   onCopia: () => void;
+  onCondividi: () => void;
 }) {
   return (
     <div className="space-y-3">
       <div className="glass-card p-3">
-        <p className="text-[10px] text-slate-500 mb-1">Codice invito</p>
+        <p className="text-[10px] text-slate-500 mb-1">Invita in questa lega</p>
         <div className="flex items-center gap-2">
           <code className="flex-1 font-mono font-black text-lg text-primary-700 tracking-widest">
             {lega.inviteCode}
@@ -552,6 +577,15 @@ function SezioneMembri({
             )}
           </button>
         </div>
+        <button
+          onClick={onCondividi}
+          className="mt-2 w-full btn-green text-xs font-black py-2.5 flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+        >
+          <Share2 size={14} /> MANDA IL LINK D'INVITO
+        </button>
+        <p className="text-[10px] text-slate-500 mt-1.5">
+          Chi tocca il link entra qui senza digitare il codice.
+        </p>
         {lega.description && (
           <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-200">
             {lega.description}

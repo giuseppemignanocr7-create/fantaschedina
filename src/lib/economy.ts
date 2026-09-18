@@ -33,6 +33,16 @@ export const COINS = {
   duelDailyCap: 50,
 } as const;
 
+/**
+ * Serie giornaliera (mirror di functions/src/config.ts): il bonus lo calcola
+ * e lo accredita il server, qui serve solo per dire all'utente quanto vale
+ * tornare domani.
+ */
+export const STREAK = {
+  bonusPerGiorno: 5,
+  bonusMassimo: 20,
+} as const;
+
 export type PowerUpId = 'jolly' | 'shield' | 'insurance' | 'lastminute';
 
 export interface PowerUpInfo {

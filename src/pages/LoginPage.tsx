@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Trophy, Users, Target, AlertCircle } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { burstConfetti, sideCannons } from '@/lib/juice';
@@ -9,6 +9,13 @@ type AuthMode = 'login' | 'register';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  // Pagina da cui si e' stati rimandati al login (ProtectedRoute): tipicamente
+  // un link d'invito a una lega. Si torna li', non sulla home.
+  const location = useLocation();
+  const destinazione = (() => {
+    const from = (location.state as { from?: unknown } | null)?.from;
+    return typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/';
+  })();
   const { signIn, signUp, signInWithGoogle, isAuthenticated } = useAuthContext();
   const [authError, setAuthError] = useState<string | null>(null);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -30,9 +37,9 @@ export function LoginPage() {
   // Redirect se già autenticato
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/');
+      navigate(destinazione, { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, destinazione]);
 
   // Pulisci errori auth quando cambia modalità
   useEffect(() => {
@@ -91,7 +98,7 @@ export function LoginPage() {
     setSuccessMessage('Accesso effettuato!');
     burstConfetti();
     setTimeout(() => {
-      navigate('/');
+      navigate(destinazione, { replace: true });
     }, 800);
   };
 
@@ -128,7 +135,7 @@ export function LoginPage() {
       if (mode === 'register') sideCannons();
       else burstConfetti();
       setTimeout(() => {
-        navigate('/');
+        navigate(destinazione, { replace: true });
       }, 1000);
     } catch {
       setAuthError('Errore di connessione. Riprova.');

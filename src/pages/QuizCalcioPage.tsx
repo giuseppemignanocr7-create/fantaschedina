@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { startQuiz, submitQuiz, callableErrorMessage, type QuizQuestionPublic } from '@/lib/gameApi';
 import { COINS } from '@/lib/economy';
 import { CountUp } from '@/components/ui/CountUp';
+import { SerieVinta } from '@/components/ui/SerieBadge';
 import { sideCannons, jackpotCelebration, coinRain, vibrate } from '@/lib/juice';
 import { useSilentProfileRefresh } from '@/hooks/useSilentProfileRefresh';
 
@@ -34,6 +35,7 @@ export function QuizCalcioPage() {
     total: number;
     reward: number;
     corrections: Record<string, number>;
+    serie?: { giorni: number; bonus: number };
   } | null>(null);
   const celebrated = useRef(false);
 
@@ -151,6 +153,7 @@ export function QuizCalcioPage() {
                 +<CountUp to={reward} durationMs={1400} /> 🪙
               </p>
             </div>
+            {result.serie && <SerieVinta giorni={result.serie.giorni} bonus={result.serie.bonus} />}
           </div>
         </FasciaScura>
 

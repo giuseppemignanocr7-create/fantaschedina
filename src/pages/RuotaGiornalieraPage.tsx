@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils';
 import { spinWheel, callableErrorMessage } from '@/lib/gameApi';
 import { COINS } from '@/lib/economy';
 import { CountUp } from '@/components/ui/CountUp';
+import { SerieVinta } from '@/components/ui/SerieBadge';
+import type { SerieInfo } from '@/lib/gameApi';
 import { jackpotCelebration, coinRain, burstConfetti, vibrate } from '@/lib/juice';
 import { useSilentProfileRefresh } from '@/hooks/useSilentProfileRefresh';
 import { Ruota, RUOTA_SEGMENTS as SEGMENTS, RUOTA_SEG_DEG as SEG_DEG, RUOTA_SPIN_MS } from '@/components/games/Ruota';
@@ -27,6 +29,7 @@ export function RuotaGiornalieraPage() {
   const [result, setResult] = useState<number | null>(null);
   const [alreadySpun, setAlreadySpun] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [serie, setSerie] = useState<SerieInfo | null>(null);
   const prevRotation = useRef(0);
 
   const spin = async () => {
@@ -34,7 +37,8 @@ export function RuotaGiornalieraPage() {
     setError(null);
     try {
       // L'esito è estratto server-side, il client anima soltanto
-      const { segmentIndex } = await spinWheel();
+      const { segmentIndex, serie: serieAggiornata } = await spinWheel();
+      setSerie(serieAggiornata ?? null);
       const extra = 360 * 7;
       const segOffset = segmentIndex * SEG_DEG + SEG_DEG / 2;
       const target =
@@ -120,6 +124,7 @@ export function RuotaGiornalieraPage() {
               +<CountUp to={prize.pts} durationMs={1200} /> 🪙
             </p>
             <p className="text-sm text-slate-500">gettoni aggiunti al tuo portafoglio</p>
+            {serie && <SerieVinta giorni={serie.giorni} bonus={serie.bonus} />}
             <Link to="/negozio" className="inline-block mt-2 text-xs font-black text-primary-700 hover:underline">
               Spendili nel negozio →
             </Link>

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, Plus, Users, Trophy, LogOut, Trash2, Loader2, KeyRound,
-  ChevronRight, Target,
+  ChevronRight, Target, Share2, Check,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { burstConfetti, vibrate } from '@/lib/juice';
@@ -40,6 +40,16 @@ export function LeghePage() {
   // Form join
   const [inviteCode, setInviteCode] = useState('');
 
+  // Invito arrivato da un link: si entra senza dover copiare niente.
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const invito = searchParams.get('invito');
+  const invitoGestito = useRef(false);
+  const [statoInvito, setStatoInvito] = useState<'attesa' | 'errore' | null>(null);
+
+  // Codice invito copiato o condiviso, per il riscontro visivo sulla card.
+  const [codiceCondiviso, setCodiceCondiviso] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     if (!uid) return;
     setLoading(true);
@@ -58,6 +68,62 @@ export function LeghePage() {
     const t = setTimeout(() => refresh(), 0);
     return () => clearTimeout(t);
   }, [refresh]);
+
+  /**
+   * Link d'invito: `/leghe?invito=CODICE`. Entrare e' cio' che chi tocca il
+   * link vuole fare, quindi si fa subito e si porta l'utente nella lega; se
+   * e' gia' dentro (o il codice non vale piu') resta il modulo manuale con
+   * il codice gia' scritto.
+   */
+  useEffect(() => {
+    if (!uid || !invito || invitoGestito.current) return;
+    invitoGestito.current = true;
+    const codice = invito.toUpperCase().trim();
+    setInviteCode(codice);
+    setStatoInvito('attesa');
+    setError(null);
+
+    void (async () => {
+      try {
+        await joinLeagueByCode(uid, codice);
+        vibrate([40, 30, 60]);
+        burstConfetti();
+        const mie = await getUserLeagues(uid);
+        setMyLeagues(mie);
+        const entrata = mie.find(l => l.inviteCode === codice);
+        setStatoInvito(null);
+        setSearchParams({}, { replace: true });
+        if (entrata) navigate(`/leghe/${entrata.id}`, { replace: true });
+      } catch (e) {
+        setStatoInvito('errore');
+        setError((e as Error).message);
+        setActiveTab(2);
+        setSearchParams({}, { replace: true });
+      }
+    })();
+  }, [uid, invito, navigate, setSearchParams]);
+
+  /** Condivide il link d'invito: foglio di sistema se c'e', altrimenti copia. */
+  const condividiLega = async (league: LeagueDoc) => {
+    const url = `${window.location.origin}/leghe?invito=${league.inviteCode}`;
+    const testo = `Entra nella mia lega "${league.name}" su Fantaschedina!`;
+    const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
+    if (nav.share) {
+      try {
+        await nav.share({ title: 'Fantaschedina', text: testo, url });
+        return;
+      } catch {
+        // Condivisione annullata dall'utente: si ripiega sulla copia.
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(`${testo} ${url}`);
+      setCodiceCondiviso(league.id);
+      setTimeout(() => setCodiceCondiviso(null), 2000);
+    } catch {
+      setError('Non riesco a copiare il link: usa il codice ' + league.inviteCode);
+    }
+  };
 
   const handleCreate = async () => {
     if (!nome.trim() || busy) return;
@@ -184,6 +250,16 @@ export function LeghePage() {
         )}
 
         {/* TAB 0: Le mie leghe */}
+        {statoInvito === 'attesa' && (
+          <div className="glass-card p-4 flex items-center gap-3">
+            <Loader2 size={18} className="animate-spin text-primary-700 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-slate-900">Ti stiamo facendo entrare…</p>
+              <p className="text-xs text-slate-500">Invito con codice {invito}</p>
+            </div>
+          </div>
+        )}
+
         {activeTab === 0 && (
           <div className="space-y-3">
             {loading ? (
@@ -258,6 +334,16 @@ export function LeghePage() {
                     </Link>
 
                     <div className="flex justify-end gap-2 px-4 pb-3 -mt-1">
+                      <button
+                        onClick={() => void condividiLega(league)}
+                        className="flex items-center gap-1 text-xs font-bold text-primary-700 hover:text-primary-800 px-2 py-1 rounded-lg hover:bg-primary-500/10 transition-all mr-auto"
+                      >
+                        {codiceCondiviso === league.id ? (
+                          <><Check size={12} /> Link copiato</>
+                        ) : (
+                          <><Share2 size={12} /> Invita amici</>
+                        )}
+                      </button>
                       {isOwner ? (
                         <button
                           onClick={() => handleDelete(league)}

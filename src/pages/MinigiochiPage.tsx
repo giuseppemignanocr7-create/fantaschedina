@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Gamepad2, Coins, Zap } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { COINS } from '@/lib/economy';
+import { SerieCard } from '@/components/ui/SerieBadge';
 
 interface Game {
   emoji: string;
@@ -96,6 +97,9 @@ export function MinigiochiPage() {
             <span className="font-black text-sm text-yellow-700">{profile?.coins ?? 0}</span>
           </div>
         </div>
+
+        {/* Serie giornaliera: il motivo per tornare domani */}
+        <SerieCard streakDate={profile?.streakDate} streakDays={profile?.streakDays} />
 
         {/* Banner premio */}
         <div className="relative overflow-hidden rounded-2xl p-4 border border-yellow-500/20 bg-gradient-to-r from-yellow-500/10 via-orange-500/10 to-yellow-500/10">

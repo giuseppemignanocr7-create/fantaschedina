@@ -72,6 +72,10 @@ export interface ProfileDoc {
   leaguesJoined: number;
   role?: 'admin' | 'user';
   lastPlayed?: Record<string, string>;
+  /** Giorni consecutivi di presenza (serie), scritti dal server. */
+  streakDays?: number;
+  /** Ultimo giorno contato nella serie, `YYYY-MM-DD` nel fuso di Roma. */
+  streakDate?: string;
   /** Categorie di notifica spente dall'utente (assente = tutte attive). */
   notifPrefs?: Record<string, boolean>;
   createdAt: Timestamp | null;

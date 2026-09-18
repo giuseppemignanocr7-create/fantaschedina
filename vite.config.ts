@@ -3,6 +3,13 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
+// Release per Sentry: se non e' stata impostata a mano, si usa il commit da
+// cui Vercel sta costruendo. Senza, ogni errore arriverebbe senza sapere quale
+// deploy lo ha introdotto, che e' meta' dell'informazione utile (18/09/2026).
+if (!process.env.VITE_APP_VERSION && process.env.VERCEL_GIT_COMMIT_SHA) {
+  process.env.VITE_APP_VERSION = process.env.VERCEL_GIT_COMMIT_SHA.slice(0, 7);
+}
+
 export default defineConfig({
   plugins: [
     react(),
