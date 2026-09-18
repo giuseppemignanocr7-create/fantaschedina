@@ -1594,7 +1594,7 @@ export const seedQuizQuestions = onCall(callableOpts, async request => {
   return { message: 'Domande aggiornate', count: ALL_QUIZ_QUESTIONS.length };
 });
 
-export const playMinigame = onCall(callableOpts, async request => {
+export const playMinigame = onCall(callableOpts, async (request): Promise<Record<string, unknown>> => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
 

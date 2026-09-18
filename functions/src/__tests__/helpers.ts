@@ -199,6 +199,11 @@ export async function seedProfile(uid: string, coins = 1000, extra: Record<strin
     coinsEarned: 0,
     claimedMissions: [],
     leaguesJoined: 0,
+    // Presenza di oggi gia' contata: cosi' il bonus della serie non si somma
+    // ai premi dei minigiochi nelle assertioni sul saldo. I test della serie
+    // la azzerano passando `streakDate: null` in `extra`.
+    streakDate: todayRome(),
+    streakDays: 1,
     ...extra,
   });
 }
