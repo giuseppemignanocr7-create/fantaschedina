@@ -86,6 +86,19 @@ export const COINS = {
   duelDailyCap: 50,
 } as const;
 
+/**
+ * Serie giornaliera: gettoni per essere tornati anche oggi.
+ *
+ * Il bonus cresce di `bonusPerGiorno` a ogni giorno consecutivo e si ferma a
+ * `bonusMassimo`; saltare un giorno riporta la serie a uno. Il tetto tiene la
+ * serie sotto al quiz (30/giorno): premia la costanza, non la sostituisce.
+ * Logica in functions/src/streak.ts, mirror in src/lib/economy.ts.
+ */
+export const STREAK = {
+  bonusPerGiorno: 5,
+  bonusMassimo: 20,
+} as const;
+
 // --- POWER-UP ---
 export interface PowerUpDef {
   id: 'jolly' | 'shield' | 'insurance' | 'lastminute';

@@ -76,25 +76,46 @@ export async function startQuiz(): Promise<{ questions: QuizQuestionPublic[] }> 
   return res.data;
 }
 
+/**
+ * Serie giornaliera aggiornata dopo la partita: la allega il server a ogni
+ * risposta di `playMinigame`. `bonus` a 0 = oggi era gia' stato contato.
+ * Assente sui client che parlano con una versione precedente del server.
+ */
+export interface SerieInfo {
+  giorni: number;
+  bonus: number;
+}
+
 export async function submitQuiz(answers: Record<string, number>): Promise<{
   correct: number;
   total: number;
   reward: number;
   corrections: Record<string, number>;
+  serie?: SerieInfo;
 }> {
   const fn = httpsCallable<
     { action: string; answers: Record<string, number> },
-    { correct: number; total: number; reward: number; corrections: Record<string, number> }
+    {
+      correct: number;
+      total: number;
+      reward: number;
+      corrections: Record<string, number>;
+      serie?: SerieInfo;
+    }
   >(functions, 'playMinigame');
   const res = await fn({ action: 'quiz_submit', answers });
   return res.data;
 }
 
-export async function spinWheel(): Promise<{ segmentIndex: number; reward: number }> {
-  const fn = httpsCallable<{ action: string }, { segmentIndex: number; reward: number }>(
-    functions,
-    'playMinigame'
-  );
+export async function spinWheel(): Promise<{
+  segmentIndex: number;
+  reward: number;
+  serie?: SerieInfo;
+}> {
+  const fn = httpsCallable<
+    { action: string },
+    { segmentIndex: number; reward: number; serie?: SerieInfo }
+  >(functions, 'playMinigame');
   const res = await fn({ action: 'wheel_spin' });
   return res.data;
 }
@@ -132,6 +153,7 @@ export interface MemoriaPlayResponse {
   reward: number;
   levelReward: number;
   timeBonus: number;
+  serie?: SerieInfo;
 }
 
 export async function playMemoria(levelsCompleted: number, timeRemaining: number): Promise<MemoriaPlayResponse> {
@@ -161,6 +183,7 @@ export interface SfidaPlayResponse {
   won: boolean;
   draw: boolean;
   reward: number;
+  serie?: SerieInfo;
 }
 
 export async function startSfida(opponentId: string): Promise<SfidaStartResponse> {

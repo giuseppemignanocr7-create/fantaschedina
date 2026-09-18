@@ -4,6 +4,7 @@ export { WinSimulator } from './WinSimulator';
 export { QuickBet } from './QuickBet';
 export { LiveTracker } from './LiveTracker';
 export { PowerUpSelector } from './PowerUpSelector';
+export { SerieBadge, SerieCard, SerieVinta } from './SerieBadge';
 export { SponsorTicker, type Sponsor } from './SponsorTicker';
 export { TeamLogo } from './TeamLogo';
 export { Skeleton, SkeletonRow, SkeletonCard, SkeletonList } from './Skeleton';

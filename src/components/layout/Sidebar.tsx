@@ -3,7 +3,7 @@ import {
   Home, Target, Trophy, BarChart2, Gamepad2, Flag, Gift, User,
   X, TrendingUp, Calendar, FileText, LogOut, Zap, ShoppingBag, ClipboardList,
   Radio, type LucideIcon,
-  Settings,
+  Settings, HelpCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
@@ -31,6 +31,7 @@ const navLinks = [
   { to: '/statistiche', label: 'Statistiche', icon: BarChart2 },
   { to: '/profilo', label: 'Profilo', icon: User },
   { to: '/account', label: 'Account e notifiche', icon: Settings },
+  { to: '/?guida=1', label: 'Come si gioca', icon: HelpCircle },
   { to: '/regolamento', label: 'Regolamento', icon: FileText },
 ];
 

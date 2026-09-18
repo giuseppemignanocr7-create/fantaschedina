@@ -12,6 +12,7 @@ export function etichettaCausale(reason: string): string {
   if (reason.startsWith('powerups')) return `Power-up${giornata}`;
   if (reason.startsWith('raffle')) return `Biglietti estrazione${giornata}`;
   if (reason.startsWith('mission')) return 'Missione completata';
+  if (reason.startsWith('serie')) return 'Serie giornaliera';
   if (reason.includes('quiz')) return 'Quiz calcio';
   if (reason.includes('ruota') || reason.includes('wheel')) return 'Ruota della fortuna';
   if (reason.includes('rigori') || reason.includes('penalty_shoot')) return 'Rigori';

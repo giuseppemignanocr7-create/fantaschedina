@@ -55,6 +55,7 @@ import {
 } from './scoring';
 import { generateMatchdayOdds, MatchOdds } from './odds';
 import { computePowerupCharge, isLastMinuteWindowOpen, powerupCost } from './powerups';
+import { calcolaSerie } from './streak';
 import { intInRange } from './input';
 import { pickWeeklyWinner, rankWeeklyCandidates } from './settlement';
 import { computeRankings, type RankableProfile } from './rankings';
@@ -1593,7 +1594,7 @@ export const seedQuizQuestions = onCall(callableOpts, async request => {
   return { message: 'Domande aggiornate', count: ALL_QUIZ_QUESTIONS.length };
 });
 
-export const playMinigame = onCall(callableOpts, async request => {
+export const playMinigame = onCall(callableOpts, async (request): Promise<Record<string, unknown>> => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
 
@@ -1681,6 +1682,47 @@ export const playMinigame = onCall(callableOpts, async request => {
     return awarded;
   }
 
+  /**
+   * Segna che l'utente ha giocato oggi e accredita il bonus della serie.
+   *
+   * Si chiama dopo ogni azione riuscita: quale minigioco sia non conta, conta
+   * essere tornato. Il documento del movimento ha per id il giorno, quindi due
+   * partite nello stesso giorno non possono accreditare due volte.
+   */
+  async function registraGiornoAttivo(): Promise<{ giorni: number; bonus: number }> {
+    return db.runTransaction(async tx => {
+      const snap = await tx.get(profileRef);
+      if (!snap.exists) return { giorni: 0, bonus: 0 };
+      const dati = snap.data() ?? {};
+      const serie = calcolaSerie(
+        dati.streakDate as string | undefined,
+        Number(dati.streakDays ?? 0),
+        today
+      );
+      if (!serie.nuovoGiorno) return { giorni: serie.giorni, bonus: 0 };
+
+      const updates: Record<string, unknown> = {
+        streakDate: today,
+        streakDays: serie.giorni,
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      if (serie.bonus > 0) {
+        updates.coins = FieldValue.increment(serie.bonus);
+        updates.coinsEarned = FieldValue.increment(serie.bonus);
+      }
+      tx.update(profileRef, updates);
+      if (serie.bonus > 0) {
+        tx.set(db.collection('wallet_transactions').doc(`${uid}_serie_${today}`), {
+          userId: uid,
+          amount: serie.bonus,
+          reason: 'serie_giornaliera',
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+      return { giorni: serie.giorni, bonus: serie.bonus };
+    });
+  }
+
   // Award rigori coins with daily cap (no once-per-day limit)
   async function awardRigoriCoins(
     reward: number,
@@ -1717,6 +1759,9 @@ export const playMinigame = onCall(callableOpts, async request => {
     });
   }
 
+  // L'azione vera e propria. Racchiusa qui dentro perche' dopo, qualunque
+  // sia il minigioco, si registra la presenza del giorno per la serie.
+  const esito = await (async (): Promise<Record<string, unknown>> => {
   switch (action) {
     // --- QUIZ ---
     case 'quiz_start': {
@@ -2026,6 +2071,10 @@ export const playMinigame = onCall(callableOpts, async request => {
     default:
       throw new HttpsError('invalid-argument', `Azione sconosciuta: ${action}`);
   }
+  })();
+
+  const serie = await registraGiornoAttivo();
+  return { ...esito, serie };
 });
 
 /**

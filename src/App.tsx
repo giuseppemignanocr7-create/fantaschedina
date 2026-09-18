@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useLocation, Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense, useEffect, type ReactElement } from 'react';
 import { useAppStore } from '@/store';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -45,8 +45,14 @@ function Spinner() {
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
   const { isAuthenticated, loading } = useAuthContext();
+  const location = useLocation();
   if (loading) return <Spinner />;
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+  if (isAuthenticated) return children;
+  // Un link d'invito porta a /leghe?invito=CODICE. Senza ricordare dove si
+  // stava andando, chi non e' ancora entrato finirebbe sulla home dopo
+  // l'accesso e il codice andrebbe perso: l'invito si romperebbe proprio
+  // per la persona nuova, che e' l'unica a cui serve (18/09/2026).
+  return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
 }
 
 function App() {

@@ -30,7 +30,10 @@ const BUDGETS = {
   // condivise nel chunk 'icons-vendor-' (35,9 KB misurati).
   // 13/09/2026: 'index-' da 38 a 39. L'header ascolta la casella notifiche
   // (badge non lette) e non puo' essere lazy: +0,4 KB misurati.
-  'index-': 39,
+  // 18/09/2026: 'index-' da 39 a 40. Il Layout decide se caricare la guida al
+  // primo accesso (che sta in un chunk suo) e ProtectedRoute ricorda la pagina
+  // richiesta per i link d'invito: +0,1 KB misurati.
+  'index-': 40,
   // 15/09/2026: 'icons-vendor-' da 6 a 7. I minigiochi rifatti (arena dei
   // rigori, ruota) usano tre icone in piu' del set condiviso: 6,0 KB misurati.
   'icons-vendor-': 7,
