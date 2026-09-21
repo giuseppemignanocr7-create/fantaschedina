@@ -1,6 +1,6 @@
-// ============================================
+﻿// ============================================
 // FANTASCHEDINA FUNCTIONS - ESPN CLIENT (server-side)
-// Fetch pool multi-campionato + risultati (incl. parziale 1° tempo dai linescores).
+// Fetch pool multi-campionato + risultati (incl. parziale 1Â° tempo dai linescores).
 // ============================================
 
 import { fetchJson } from './http';
@@ -16,11 +16,37 @@ const ESPN_TO_ID: Record<string, string> = {
   SAL: 'sal', PIS: 'pis',
 };
 
+/** ESPN scrive il punteggio di un tempo ora come numero ora come stringa. */
+export interface ESPNLinescore {
+  value?: number;
+  displayValue?: string;
+}
+
 interface ESPNCompetitor {
   homeAway: 'home' | 'away';
   score?: string;
-  linescores?: { value: number }[];
+  linescores?: ESPNLinescore[];
   team: { abbreviation: string; displayName: string; logo?: string };
+}
+
+interface ESPNSummary {
+  header?: {
+    competitions?: Array<{ competitors?: ESPNCompetitor[] }>;
+  };
+}
+
+/**
+ * Gol segnati nel primo tempo, da `linescores[0]`: sono i gol per tempo, non
+ * cumulativi (verificato il 21/09/2026: Bologna-Torino 1-1 arriva come
+ * [1,0] e [0,1]). Accetta sia `value` sia `displayValue` perche' ESPN usa
+ * l'uno o l'altro a seconda dell'endpoint.
+ */
+export function golPrimoTempo(linescores: ESPNLinescore[] | undefined): number | null {
+  const primo = linescores?.[0];
+  if (!primo) return null;
+  if (typeof primo.value === 'number' && Number.isFinite(primo.value)) return primo.value;
+  const n = Number.parseInt(primo.displayValue ?? '', 10);
+  return Number.isFinite(n) ? n : null;
 }
 
 interface ESPNEvent {
@@ -203,8 +229,8 @@ export async function fetchResults(
       const away = comp.competitors.find(c => c.homeAway === 'away');
       if (!home || !away) continue;
       const state = comp.status.type.state;
-      const htHome = home.linescores?.[0]?.value;
-      const htAway = away.linescores?.[0]?.value;
+      const htHome = golPrimoTempo(home.linescores);
+      const htAway = golPrimoTempo(away.linescores);
       out.set(internalId, {
         homeGoals: parseInt(home.score ?? '0', 10),
         awayGoals: parseInt(away.score ?? '0', 10),
@@ -220,5 +246,39 @@ export async function fetchResults(
       });
     }
   }
+  // Il parziale di primo tempo nello scoreboard non c'e' proprio (verificato il
+  // 21/09/2026: il campo linescores manca del tutto), mentre il summary della
+  // singola partita ce l'ha. Senza, i mercati di primo tempo non sono MAI
+  // valutabili: valgono zero punti e contano come indovinati, cioe' il bonus
+  // 10/10 garantito a chi li gioca. Si chiede solo per le partite finite che
+  // non hanno gia' il parziale: al massimo una chiamata per partita.
+  const senzaParziale = matches.filter(m => {
+    const r = out.get(m.id);
+    return r?.status === 'finished' && r.htHomeGoals == null;
+  });
+  await Promise.all(
+    senzaParziale.map(async m => {
+      const parziale = await fetchParziale(m.competition, m.id.replace(/^espn-/, ''));
+      const r = out.get(m.id);
+      if (!parziale || !r) return;
+      out.set(m.id, { ...r, htHomeGoals: parziale.home, htAwayGoals: parziale.away });
+    })
+  );
+
   return out;
+}
+
+/** Parziale di primo tempo di una singola partita, dal summary ESPN. */
+async function fetchParziale(
+  slug: string,
+  eventId: string
+): Promise<{ home: number; away: number } | null> {
+  const summary = await fetchJson<ESPNSummary>(
+    `${ESPN_BASE(slug)}/summary?event=${eventId}`,
+    { label: `espn:summary:${eventId}` }
+  );
+  const competitors = summary?.header?.competitions?.[0]?.competitors ?? [];
+  const home = golPrimoTempo(competitors.find(c => c.homeAway === 'home')?.linescores);
+  const away = golPrimoTempo(competitors.find(c => c.homeAway === 'away')?.linescores);
+  return home != null && away != null ? { home, away } : null;
 }
