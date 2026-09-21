@@ -12,6 +12,13 @@ const TEAM_STRENGTH: Record<string, number> = {
 };
 
 const HOME_ADV = 5;
+/**
+ * Margine del banco. Le quote si ottengono DIVIDENDO la quota equa per questo
+ * valore: moltiplicarla (com'era fino al 21/09/2026) regalava il 6,5% al
+ * giocatore invece di trattenerlo, e il libro sommava al 94% invece che al
+ * 106,5% — impossibile per un bookmaker vero. Le partite che finivano sulle
+ * quote calcolate pagavano cosi' circa il 13% in piu' delle altre.
+ */
 const MARGIN = 1.065;
 const LEAGUE_AVG_GOALS = 2.65;
 
@@ -105,16 +112,16 @@ export function generateMatchOdds(homeId: string, awayId: string): MatchOdds {
   const pO35 = sumWhere(m, (i, j) => i + j >= 4);
   const pU35 = 1 - pO35;
 
-  const h1 = r((1 / pH) * MARGIN);
-  const xD = r((1 / pD) * MARGIN);
-  const a2 = r((1 / pA) * MARGIN);
-  const ov = r((1 / pOver25) * MARGIN);
-  const un = r((1 / pUnder25) * MARGIN);
-  const gg = r((1 / pGG) * MARGIN);
-  const ng = r((1 / pNG) * MARGIN);
-  const dc1X = r((1 / (pH + pD)) * MARGIN);
-  const dc12 = r((1 / (pH + pA)) * MARGIN);
-  const dcX2 = r((1 / (pD + pA)) * MARGIN);
+  const h1 = r((1 / pH) / MARGIN);
+  const xD = r((1 / pD) / MARGIN);
+  const a2 = r((1 / pA) / MARGIN);
+  const ov = r((1 / pOver25) / MARGIN);
+  const un = r((1 / pUnder25) / MARGIN);
+  const gg = r((1 / pGG) / MARGIN);
+  const ng = r((1 / pNG) / MARGIN);
+  const dc1X = r((1 / (pH + pD)) / MARGIN);
+  const dc12 = r((1 / (pH + pA)) / MARGIN);
+  const dcX2 = r((1 / (pD + pA)) / MARGIN);
 
   // 1st half: roughly 45% of goals, higher draw probability
   const lh1 = xg.home * 0.44;
@@ -134,18 +141,18 @@ export function generateMatchOdds(homeId: string, awayId: string): MatchOdds {
     goal_nogoal: { GG: gg, NG: ng },
     doppia_chance: { '1X': dc1X, '12': dc12, X2: dcX2 },
     multigoal: {
-      'O0.5': r((1 / pO05) * MARGIN),
-      'U0.5': r((1 / pU05) * MARGIN),
-      'O1.5': r((1 / pO15) * MARGIN),
-      'U1.5': r((1 / pU15) * MARGIN),
+      'O0.5': r((1 / pO05) / MARGIN),
+      'U0.5': r((1 / pU05) / MARGIN),
+      'O1.5': r((1 / pO15) / MARGIN),
+      'U1.5': r((1 / pU15) / MARGIN),
       'O2.5': ov,
       'U2.5': un,
-      'O3.5': r((1 / pO35) * MARGIN),
-      'U3.5': r((1 / pU35) * MARGIN),
+      'O3.5': r((1 / pO35) / MARGIN),
+      'U3.5': r((1 / pU35) / MARGIN),
     },
-    esito_1t: { '1': r((1 / pH1) * MARGIN), X: r((1 / pD1) * MARGIN), '2': r((1 / pA1) * MARGIN) },
-    over_under_1t: { OVER: r((1 / pOv1) * MARGIN), UNDER: r((1 / pUn1) * MARGIN) },
-    goal_nogoal_1t: { GG: r((1 / pGG1) * MARGIN), NG: r((1 / pNG1) * MARGIN) },
+    esito_1t: { '1': r((1 / pH1) / MARGIN), X: r((1 / pD1) / MARGIN), '2': r((1 / pA1) / MARGIN) },
+    over_under_1t: { OVER: r((1 / pOv1) / MARGIN), UNDER: r((1 / pUn1) / MARGIN) },
+    goal_nogoal_1t: { GG: r((1 / pGG1) / MARGIN), NG: r((1 / pNG1) / MARGIN) },
   };
 }
 

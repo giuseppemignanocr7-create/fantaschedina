@@ -74,7 +74,10 @@ const TEAM_CANONICAL: Record<string, string> = {
   'juventus': 'juventus', 'juve': 'juventus', 'juventus turin': 'juventus',
   'napoli': 'napoli', 'ssc napoli': 'napoli', 'naples': 'napoli',
   'atalanta': 'atalanta', 'atalanta bc': 'atalanta',
-  'lazio': 'lazio', 'ss lazio': 'lazio',
+  // 21/09/2026: il fornitore la chiama "Lazio Rome". Senza questa riga nessuna
+  // partita della Lazio trovava il suo evento, e per cinque giornate di fila e'
+  // finita sulle quote calcolate mentre tutte le altre avevano quelle reali.
+  'lazio': 'lazio', 'ss lazio': 'lazio', 'lazio rome': 'lazio', 'lazio roma': 'lazio',
   'roma': 'roma', 'as roma': 'roma', 'rome': 'roma',
   'fiorentina': 'fiorentina', 'acf fiorentina': 'fiorentina',
   'bologna': 'bologna', 'bologna fc': 'bologna',
@@ -153,16 +156,46 @@ const TEAM_CANONICAL: Record<string, string> = {
   'vancouver whitecaps': 'vancouver-whitecaps', 'vancouver whitecaps fc': 'vancouver-whitecaps',
 };
 
-function canonicalName(name: string): string {
+/**
+ * Nomi esatti usati dal fornitore per la Serie A (verificati il 21/09/2026
+ * interrogando /events). Tenerli scritti evita di dipendere dalle regole
+ * generiche qui sotto per squadre che sappiamo come vengono chiamate.
+ */
+const FORNITORE_SERIE_A: Record<string, string> = {
+  'ac milan': 'milan',
+  'ac monza': 'monza',
+  'acf fiorentina': 'fiorentina',
+  'as roma': 'roma',
+  'atalanta bc': 'atalanta',
+  'bologna fc': 'bologna',
+  'cagliari calcio': 'cagliari',
+  'como 1907': 'como',
+  'frosinone calcio': 'frosinone',
+  'genoa cfc': 'genoa',
+  'inter milano': 'inter',
+  'juventus turin': 'juventus',
+  'lazio rome': 'lazio',
+  'parma calcio': 'parma',
+  'ssc napoli': 'napoli',
+  'sassuolo calcio': 'sassuolo',
+  'torino fc': 'torino',
+  'us lecce': 'lecce',
+  'udinese calcio': 'udinese',
+  'venezia fc': 'venezia',
+};
+
+export function canonicalName(name: string): string {
   const lower = name.toLowerCase().trim();
+  if (FORNITORE_SERIE_A[lower]) return FORNITORE_SERIE_A[lower];
   if (TEAM_CANONICAL[lower]) return TEAM_CANONICAL[lower];
   return lower
     .replace(/^(fc|ac|as|ssc|us|usv|hellas)\s+/g, '')
-    .replace(/\s+(fc|cf|bc|cfc|calcio|1907|turin)\s*$/g, '')
+    // Citta' appiccicata al nome dal fornitore ("Lazio Rome", "Inter Milano").
+    .replace(/\s+(fc|cf|bc|cfc|calcio|1907|turin|rome|roma|milano|milan)\s*$/g, '')
     .trim();
 }
 
-function teamsMatch(a: string, b: string): boolean {
+export function teamsMatch(a: string, b: string): boolean {
   return canonicalName(a) === canonicalName(b);
 }
 
