@@ -15,10 +15,8 @@ import type {
   SchedinaResult,
   Prediction,
 } from '@/types';
-import { MOCK_MATCHES, getNextMatchdayDeadline } from '@/data/mockData';
 import type { MatchOdds } from '@/data/mockData';
-import { generateMatchdayOdds } from '@/lib/oddsEngine';
-import { fetchNextMatchday, fetchMatchResults, type LiveScore } from '@/services/footballApi';
+import { fetchMatchResults, type LiveScore } from '@/services/footballApi';
 import {
   getMatchday,
   getMatchdayOdds,
@@ -516,46 +514,10 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       console.warn('[Store] loadMatchday Firestore error:', err);
     }
 
-    // 2. Fallback display-only: ESPN diretto (quote locali NON ufficiali;
-    //    l'invio le sostituisce comunque con quelle server-side)
-    try {
-      const apiData = await fetchNextMatchday();
-      if (apiData && apiData.matches.length >= 5) {
-        set({
-          currentMatchday: {
-            number: apiData.number,
-            season: apiData.season,
-            matches: apiData.matches,
-            deadline: apiData.deadline,
-            status: 'open',
-          },
-          matchOdds: generateMatchdayOdds(apiData.matches),
-          isLoadingOdds: false,
-          lastOddsUpdate: new Date(),
-        });
-        await get().loadUserSchedina();
-        return;
-      }
-    } catch (err) {
-      console.warn('[Store] loadMatchday API error:', err);
-    }
-
-    // 3. Fallback finale: mock (solo sviluppo)
-    if (import.meta.env.DEV) {
-      set({
-        currentMatchday: {
-          number: 1,
-          season: '2025-2026',
-          matches: MOCK_MATCHES,
-          deadline: getNextMatchdayDeadline(),
-          status: 'open',
-        },
-        matchOdds: generateMatchdayOdds(MOCK_MATCHES),
-        isLoadingOdds: false,
-        lastOddsUpdate: new Date(),
-      });
-      return;
-    }
+    // Nessun ripiego che fabbrica quote: prima, se Firestore non rispondeva,
+    // si pescavano le partite da ESPN e si generavano quote con un motore di
+    // calcolo. Erano numeri inventati, mostrati come se fossero del bookmaker.
+    // Meglio nessuna giornata che una giornata finta (23/09/2026).
     set({ currentMatchday: null, matchOdds: {}, isLoadingOdds: false });
   },
 

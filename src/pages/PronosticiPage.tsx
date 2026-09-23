@@ -334,6 +334,11 @@ const MatchCard = memo(function MatchCard({
           </div>
         )}
       </div>
+      {!odds?.[betType] && (
+        <p className="text-[11px] text-slate-500 py-2 text-center">
+          {betDef.label}: quota non disponibile per questa partita
+        </p>
+      )}
       <div className={cn(
         'grid gap-1.5',
         betDef.cols === 2 && 'grid-cols-2',
@@ -342,7 +347,10 @@ const MatchCard = memo(function MatchCard({
       )}>
         {betDef.options.map((opt) => {
           const typeOdds = odds?.[betType] as Record<string, number> | undefined;
-          const odd = typeOdds?.[opt.value] ?? 2.00;
+          const odd = typeOdds?.[opt.value];
+          // Senza quota del bookmaker non si offre la giocata: prima al suo
+          // posto compariva un 2.00 fisso, cioe' un numero inventato.
+          if (odd == null) return null;
           const isSelected = pred?.outcome === opt.value && pred?.betType === betType;
           return (
             <button
@@ -539,7 +547,23 @@ export function PronosticiPage() {
     return calculateSchedinaScore(previewResults).finalPoints;
   }, [predictions]);
 
-  const currentBetDef = BET_TYPES.find(b => b.key === selectedBetType)!;
+  // Mercati davvero quotati in questa giornata, per questo circuito: gli
+  // altri non compaiono nemmeno come linguetta.
+  const mercatiDisponibili = useMemo(() => {
+    const presenti = new Set<string>();
+    for (const m of currentMatchday?.matches ?? []) {
+      const quote = matchOdds[m.id] as Record<string, unknown> | undefined;
+      if (!quote) continue;
+      for (const [mercato, valori] of Object.entries(quote)) {
+        if (valori) presenti.add(mercato);
+      }
+    }
+    const disponibili = BET_TYPES.filter(b => presenti.has(b.key));
+    return disponibili.length > 0 ? disponibili : BET_TYPES.slice(0, 1);
+  }, [currentMatchday, matchOdds]);
+
+  const currentBetDef =
+    mercatiDisponibili.find(b => b.key === selectedBetType) ?? mercatiDisponibili[0];
 
   const availableCompetitions = useMemo(() => {
     // m.competition può mancare per partite sincronizzate prima che il campo fosse
@@ -567,7 +591,9 @@ export function PronosticiPage() {
     if (lastMinuteMode && isMatchOpen(matchId) && predictions.some(p => p.matchId === matchId)) {
       const mOdds = matchOdds[matchId];
       const typeOdds = mOdds?.[betType] as Record<string, number> | undefined;
-      setPendingChange({ matchId, betType, outcome, odds: typeOdds?.[outcome] || 2.0 });
+      const quota = typeOdds?.[outcome];
+      if (quota == null) return;
+      setPendingChange({ matchId, betType, outcome, odds: quota });
       return;
     }
     if (currentSchedina?.isLocked) return;
@@ -578,7 +604,10 @@ export function PronosticiPage() {
     }
     const mOdds = matchOdds[matchId];
     const typeOdds = mOdds?.[betType] as Record<string, number> | undefined;
-    const odds = typeOdds?.[outcome] || 2.00;
+    const odds = typeOdds?.[outcome];
+    // Il server valida sulle sue quote: una giocata senza quota verrebbe
+    // comunque rifiutata, ed e' giusto non farla nemmeno scegliere.
+    if (odds == null) return;
     vibrate(15);
     updatePrediction(matchId, { matchId, betType, outcome, odds });
   };
@@ -856,7 +885,7 @@ export function PronosticiPage() {
             {/* Bet Type Selector */}
             <div className="glass-card p-1.5 overflow-x-auto scrollbar-hide">
               <div className="flex gap-1 min-w-max">
-                {BET_TYPES.map((bt) => (
+                {mercatiDisponibili.map((bt) => (
                   <button
                     key={bt.key}
                     onClick={() => setSelectedBetType(bt.key)}
