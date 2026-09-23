@@ -60,7 +60,7 @@ import { intInRange } from './input';
 import { pickWeeklyWinner, rankWeeklyCandidates } from './settlement';
 import { computeRankings, type RankableProfile } from './rankings';
 import { attackerForRound, canFinishAtRound, type DuelMode } from './duels';
-import { fetchRealMatchdayOdds } from './realOdds';
+import { fetchRealMatchdayOdds, bookmakerDisponibili, BOOKMAKER_PREDEFINITO } from './realOdds';
 import { fetchActiveMatchdayPool, fetchResults } from './espn';
 import {
   resolveShot,
@@ -148,6 +148,12 @@ interface MatchdayDoc {
   deadline: Timestamp;
   matches: StoredMatch[];
   odds: Record<string, MatchOdds>;
+  /**
+   * Quote per agenzia, per le leghe che ne hanno una propria:
+   * `oddsPerBookmaker['Eurobet IT'][matchId]`. `odds` resta quella
+   * dell'agenzia predefinita, che vale per il circuito generale.
+   */
+  oddsPerBookmaker?: Record<string, Record<string, MatchOdds>>;
   settled: boolean;
   /** Notifiche gia' inviate per questa giornata (una sola volta ciascuna). */
   reminderSentAt?: Timestamp;
@@ -192,6 +198,12 @@ async function requireCircuito(uid: string, leagueId: unknown): Promise<string |
   const membri = (snap.data()?.memberIds as string[] | undefined) ?? [];
   if (!membri.includes(uid)) {
     throw new HttpsError('permission-denied', 'Non fai parte di questa lega');
+  }
+  // Una lega che ha chiesto un'agenzia propria non parte finche' non gliela
+  // assegnano: senza il suo palinsesto giocherebbe su quote che non sono
+  // quelle promesse a chi l'ha creata.
+  if (snap.data()?.stato === 'in_attesa') {
+    throw new HttpsError('failed-precondition', 'Lega in attesa di attivazione');
   }
   return leagueId;
 }
@@ -346,22 +358,47 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
 
   // Le quote non si rigenerano mai una volta pubblicate (a meno di forceOdds),
   // ma le partite nuove aggiunte al pool hanno comunque bisogno delle loro quote.
+  const apiKey = ODDS_API_KEY.value();
+  // Agenzie da scaricare: la predefinita piu' quelle assegnate alle leghe
+  // attive. Vengono chieste in un'unica richiesta per partita, quindi due
+  // agenzie non costano il doppio.
+  const agenzie = await agenzieInUso(apiKey);
+
   let odds = (!forceOdds ? prev?.odds ?? null : null);
+  let oddsPerBookmaker = (!forceOdds ? prev?.oddsPerBookmaker ?? null : null);
   if (!odds) {
-    const apiKey = ODDS_API_KEY.value();
-    const realOdds = await fetchRealMatchdayOdds(api.matches, apiKey);
+    const realOdds = await fetchRealMatchdayOdds(api.matches, apiKey, agenzie);
     if (realOdds) {
-      logger.info('syncMatchday: using real odds from odds-api.io');
-      odds = realOdds;
+      logger.info('syncMatchday: quote reali da odds-api.io', { agenzie });
+      oddsPerBookmaker = realOdds;
+      odds = realOdds[BOOKMAKER_PREDEFINITO] ?? generateMatchdayOdds(api.matches);
     } else {
-      logger.info('syncMatchday: using algorithmic odds (real odds unavailable or no API key)');
+      logger.info('syncMatchday: quote calcolate (reali non disponibili o chiave mancante)');
       odds = generateMatchdayOdds(api.matches);
+      oddsPerBookmaker = { [BOOKMAKER_PREDEFINITO]: odds };
     }
   } else if (newMatches.length > 0) {
-    const apiKey = ODDS_API_KEY.value();
     const newApiMatches = api.matches.filter(m => !prevIds.has(m.id));
-    const realOdds = await fetchRealMatchdayOdds(newApiMatches, apiKey);
-    odds = { ...odds, ...(realOdds ?? generateMatchdayOdds(newApiMatches)) };
+    const realOdds = await fetchRealMatchdayOdds(newApiMatches, apiKey, agenzie);
+    const calcolate = generateMatchdayOdds(newApiMatches);
+    odds = { ...odds, ...(realOdds?.[BOOKMAKER_PREDEFINITO] ?? calcolate) };
+    const unione: Record<string, Record<string, MatchOdds>> = { ...(oddsPerBookmaker ?? {}) };
+    for (const agenzia of agenzie) {
+      unione[agenzia] = { ...(unione[agenzia] ?? {}), ...(realOdds?.[agenzia] ?? calcolate) };
+    }
+    oddsPerBookmaker = unione;
+  }
+
+  // Un'agenzia assegnata dopo la pubblicazione delle quote non avrebbe le
+  // sue: si scaricano adesso, senza toccare quelle gia' pubblicate.
+  const mancanti = agenzie.filter(a => !(oddsPerBookmaker ?? {})[a]);
+  if (mancanti.length > 0) {
+    const realOdds = await fetchRealMatchdayOdds(api.matches, apiKey, mancanti);
+    const base: Record<string, Record<string, MatchOdds>> = { ...(oddsPerBookmaker ?? {}) };
+    for (const agenzia of mancanti) {
+      base[agenzia] = realOdds?.[agenzia] ?? generateMatchdayOdds(api.matches);
+    }
+    oddsPerBookmaker = base;
   }
 
   const docData: MatchdayDoc = {
@@ -371,6 +408,7 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
     deadline: prev?.deadline ?? Timestamp.fromDate(api.deadline),
     matches: mergedMatches,
     odds,
+    ...(oddsPerBookmaker ? { oddsPerBookmaker } : {}),
     settled: prev?.settled ?? false,
   };
   await ref.set(
@@ -382,6 +420,26 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
     { merge: true }
   );
   return docData;
+}
+
+/**
+ * Agenzie di cui servono le quote: la predefinita piu' quelle assegnate alle
+ * leghe attive, tenute solo se il piano le consente davvero (il fornitore
+ * rifiuta la richiesta se si sfora, e si perderebbero tutte le quote).
+ */
+async function agenzieInUso(apiKey: string): Promise<string[]> {
+  const consentite = await bookmakerDisponibili(apiKey);
+  const leghe = await db.collection('leagues').where('bookmaker', '!=', null).get();
+  const richieste = leghe.docs
+    .map(d => d.data()?.bookmaker as string | undefined)
+    .filter((b): b is string => !!b);
+  const volute = [...new Set([BOOKMAKER_PREDEFINITO, ...richieste])];
+  const ammesse = volute.filter(b => consentite.includes(b));
+  const scartate = volute.filter(b => !consentite.includes(b));
+  if (scartate.length > 0) {
+    logger.warn('agenzie non disponibili sul piano, ignorate', { scartate, consentite });
+  }
+  return ammesse.length > 0 ? ammesse : [BOOKMAKER_PREDEFINITO];
 }
 
 // ---------- Notifiche push ----------
@@ -1302,6 +1360,21 @@ async function settleSchedine(
   return evaluations.length;
 }
 
+/**
+ * Quote valide per un circuito: quelle dell'agenzia della lega se ne ha una
+ * e se sono state scaricate, altrimenti quelle predefinite della giornata.
+ */
+async function quotePerCircuito(
+  md: MatchdayDoc,
+  leagueId: string | null
+): Promise<Record<string, MatchOdds>> {
+  if (!leagueId) return md.odds;
+  const lega = await db.collection('leagues').doc(leagueId).get();
+  const agenzia = lega.data()?.bookmaker as string | undefined;
+  if (!agenzia) return md.odds;
+  return md.oddsPerBookmaker?.[agenzia] ?? md.odds;
+}
+
 // ---------- 3. SUBMIT SCHEDINA (callable) ----------
 
 export const submitSchedina = onCall(callableOpts, async request => {
@@ -1335,13 +1408,18 @@ export const submitSchedina = onCall(callableOpts, async request => {
     );
   }
 
+  // Quote ufficiali del circuito: una lega con la sua agenzia gioca su quelle,
+  // il generale su quella predefinita. Cosi' i punti vengono dalle stesse
+  // quote che l'utente ha visto mentre compilava.
+  const quoteCircuito = await quotePerCircuito(md, leagueId);
+
   // Valida e sostituisce le quote con quelle ufficiali server-side
   const matchIds = new Set(md.matches.map(m => m.id));
   const validated: Prediction[] = predictions.map(p => {
     if (!matchIds.has(p.matchId)) {
       throw new HttpsError('invalid-argument', `Partita non valida: ${p.matchId}`);
     }
-    const marketOdds = (md!.odds[p.matchId] as unknown as Record<
+    const marketOdds = (quoteCircuito[p.matchId] as unknown as Record<
       string,
       Record<string, number>
     >)?.[p.betType];
@@ -2342,6 +2420,12 @@ export const manageLeague = onCall(callableOpts, async request => {
       typeof request.data?.description === 'string' ? request.data.description.trim() : '';
     const isPrivate = request.data?.isPrivate === true;
     const requestedMax = Number(request.data?.maxMembers);
+    // Agenzia per il palinsesto delle quote: la scrive a mano chi crea la
+    // lega, la assegna l'amministratore fra quelle attive sul piano.
+    const agenziaRichiesta =
+      typeof request.data?.agenziaRichiesta === 'string'
+        ? request.data.agenziaRichiesta.trim().slice(0, 40)
+        : '';
     if (!name || name.length > 40 || description.length > 80) {
       throw new HttpsError('invalid-argument', 'Nome o descrizione non validi');
     }
@@ -2377,10 +2461,31 @@ export const manageLeague = onCall(callableOpts, async request => {
       maxMembers: requestedMax,
       memberIds: [uid],
       memberCount: 1,
+      agenziaRichiesta: agenziaRichiesta || null,
+      bookmaker: null,
+      stato: agenziaRichiesta ? 'in_attesa' : 'attiva',
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    return { ok: true, leagueId: ref.id };
+
+    if (agenziaRichiesta) {
+      // L'amministratore deve sapere che c'e' una lega ferma ad aspettarlo,
+      // senza doverlo scoprire aprendo il pannello.
+      const admin = await db.collection('profiles').where('role', '==', 'admin').get();
+      const destinatari = admin.docs.map(d => d.id);
+      if (destinatari.length > 0) {
+        await notifica(
+          destinatari,
+          {
+            title: '🏆 Nuova lega da attivare',
+            body: `${profile.data()?.username ?? 'Un utente'} ha creato "${name}" e chiede il palinsesto ${agenziaRichiesta}.`,
+            path: '/admin',
+          },
+          'social'
+        ).catch(err => logger.warn('notifica lega in attesa non inviata', err));
+      }
+    }
+    return { ok: true, leagueId: ref.id, stato: agenziaRichiesta ? 'in_attesa' : 'attiva' };
   }
 
   if (action === 'joinByCode') {
@@ -2566,6 +2671,104 @@ export const getSchedineLega = onCall(callableOpts, async request => {
       .map(d => ({ userId: d.id, username: (d.data()?.username as string) ?? 'giocatore' })),
   };
 });
+
+// ---------- 5-ter. LEGHE IN ATTESA (callable, solo amministratore) ----------
+
+/**
+ * Pannello dell'amministratore per le leghe che hanno chiesto un'agenzia.
+ *
+ * `elenco` restituisce le leghe ferme e le agenzie davvero disponibili sul
+ * piano sottoscritto; `assegna` collega la lega a una di quelle e la fa
+ * partire; `rifiuta` la fa partire sull'agenzia predefinita.
+ */
+export const adminLeghe = onCall(
+  { ...callableOpts, secrets: [ODDS_API_KEY] },
+  async request => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+    await requireAdmin(uid);
+    const action = (request.data?.action as string) ?? 'elenco';
+
+    if (action === 'elenco') {
+      const snap = await db.collection('leagues').where('stato', '==', 'in_attesa').get();
+      return {
+        agenzieDisponibili: await bookmakerDisponibili(ODDS_API_KEY.value()),
+        leghe: snap.docs.map(d => ({
+          id: d.id,
+          name: (d.data()?.name as string) ?? '',
+          ownerName: (d.data()?.ownerName as string) ?? '',
+          agenziaRichiesta: (d.data()?.agenziaRichiesta as string) ?? '',
+          memberCount: Number(d.data()?.memberCount ?? 0),
+          createdAt: (d.data()?.createdAt as Timestamp | undefined)?.toMillis() ?? null,
+        })),
+      };
+    }
+
+    const leagueId = typeof request.data?.leagueId === 'string' ? request.data.leagueId : '';
+    if (!leagueId) throw new HttpsError('invalid-argument', 'Lega non valida');
+    const ref = db.collection('leagues').doc(leagueId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Lega non trovata');
+    const nomeLega = (snap.data()?.name as string) ?? 'la tua lega';
+    const proprietario = snap.data()?.ownerId as string | undefined;
+
+    if (action === 'assegna') {
+      const agenzia = typeof request.data?.bookmaker === 'string' ? request.data.bookmaker : '';
+      const disponibili = await bookmakerDisponibili(ODDS_API_KEY.value());
+      if (!disponibili.includes(agenzia)) {
+        throw new HttpsError(
+          'invalid-argument',
+          `Agenzia non disponibile sul piano. Disponibili: ${disponibili.join(', ')}`
+        );
+      }
+      await ref.update({
+        bookmaker: agenzia,
+        stato: 'attiva',
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      // Le quote dell'agenzia appena assegnata non ci sono ancora sulla
+      // giornata aperta: la sincronizzazione le aggiunge senza toccare quelle
+      // gia' pubblicate.
+      await syncMatchdayInternal().catch(err =>
+        logger.warn('quote della nuova agenzia non scaricate subito', err)
+      );
+      if (proprietario) {
+        await notifica(
+          [proprietario],
+          {
+            title: '✅ Lega attivata',
+            body: `"${nomeLega}" gioca sulle quote ${agenzia}. Potete cominciare.`,
+            path: `/leghe/${leagueId}`,
+          },
+          'social'
+        ).catch(() => undefined);
+      }
+      return { ok: true, bookmaker: agenzia };
+    }
+
+    if (action === 'rifiuta') {
+      await ref.update({
+        bookmaker: null,
+        stato: 'attiva',
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      if (proprietario) {
+        await notifica(
+          [proprietario],
+          {
+            title: '✅ Lega attivata',
+            body: `"${nomeLega}" gioca sulle quote standard: l'agenzia richiesta non è disponibile.`,
+            path: `/leghe/${leagueId}`,
+          },
+          'social'
+        ).catch(() => undefined);
+      }
+      return { ok: true, bookmaker: null };
+    }
+
+    throw new HttpsError('invalid-argument', `Azione sconosciuta: ${action}`);
+  }
+);
 
 // ---------- 6. LEGHE: contatore leaguesJoined (trigger) ----------
 

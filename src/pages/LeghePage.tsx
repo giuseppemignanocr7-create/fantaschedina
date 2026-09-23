@@ -36,6 +36,9 @@ export function LeghePage() {
   const [descrizione, setDescrizione] = useState('');
   const [isPrivate, setIsPrivate] = useState(true);
   const [maxMembers, setMaxMembers] = useState('20');
+  // Agenzia per il palinsesto delle quote: la scrive chi crea la lega, poi
+  // l'amministratore la assegna. Vuota = quote standard, lega subito attiva.
+  const [agenzia, setAgenzia] = useState('');
 
   // Form join
   const [inviteCode, setInviteCode] = useState('');
@@ -136,10 +139,12 @@ export function LeghePage() {
         nome,
         descrizione,
         isPrivate,
-        parseInt(maxMembers, 10) || 20
+        parseInt(maxMembers, 10) || 20,
+        agenzia.trim()
       );
       setNome('');
       setDescrizione('');
+      setAgenzia('');
       setActiveTab(0);
       vibrate([40, 30, 60]);
       burstConfetti();
@@ -330,6 +335,16 @@ export function LeghePage() {
                         <span className="flex items-center gap-1">
                           <KeyRound size={10} /> {league.inviteCode}
                         </span>
+                        {league.stato === 'in_attesa' && (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-800 normal-case tracking-normal">
+                            In attesa dell'agenzia {league.agenziaRichiesta}
+                          </span>
+                        )}
+                        {league.bookmaker && (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-primary-500/15 text-primary-800 normal-case tracking-normal">
+                            Quote {league.bookmaker}
+                          </span>
+                        )}
                       </div>
                     </Link>
 
@@ -429,6 +444,25 @@ export function LeghePage() {
                 </select>
               </div>
             </div>
+              <div className="space-y-1">
+                <label htmlFor="leagueAgenzia" className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block">
+                  Agenzia per le quote (facoltativa)
+                </label>
+                <input
+                  id="leagueAgenzia"
+                  value={agenzia}
+                  onChange={e => setAgenzia(e.target.value)}
+                  maxLength={40}
+                  placeholder="Es. Sisal, Snai, Eurobet…"
+                  className="input-field"
+                />
+                <p className="text-[10px] text-slate-500">
+                  Scrivi l'agenzia con cui vuoi confrontare le quote: la richiesta arriva
+                  all'amministratore, che collega il palinsesto. Finché non lo fa la lega resta
+                  in attesa. Lasciando vuoto si gioca subito sulle quote standard.
+                </p>
+              </div>
+
             <button
               onClick={handleCreate}
               disabled={!nome.trim() || busy}

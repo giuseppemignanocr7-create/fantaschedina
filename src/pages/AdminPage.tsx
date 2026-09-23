@@ -8,6 +8,8 @@ import {
   adminGetStatsFn, adminSyncMatchdayFn, adminForceSettleFn,
   adminManageSponsorFn, adminToggleBanFn, seedQuizQuestionsFn,
   adminManageCompetitionsFn, adminResetSeasonFn, adminManageWeeklyPrizesFn,
+  adminLegheInAttesaFn, adminAssegnaAgenziaFn, adminRifiutaAgenziaFn,
+  type LegheInAttesaResponse,
   type AdminStats, type SponsorData, type CompetitionStatus, type WeeklyPrizeItem,
 } from '@/lib/gameApi';
 import { callableErrorMessage } from '@/lib/gameApi';
@@ -17,7 +19,7 @@ import { COINS } from '@/lib/economy';
 
 const STARTING_COINS = COINS.starting;
 
-type Tab = 'stats' | 'matchday' | 'competitions' | 'sponsors' | 'users';
+type Tab = 'stats' | 'matchday' | 'leghe' | 'competitions' | 'sponsors' | 'users';
 
 export function AdminPage() {
   const { profile } = useAuthContext();
@@ -64,6 +66,7 @@ export function AdminPage() {
   const tabs: { id: Tab; label: string; icon: typeof BarChart3 }[] = [
     { id: 'stats', label: 'Statistiche', icon: BarChart3 },
     { id: 'matchday', label: 'Giornate', icon: Calendar },
+    { id: 'leghe', label: 'Leghe', icon: Trophy },
     { id: 'competitions', label: 'Campionati', icon: Globe },
     { id: 'sponsors', label: 'Sponsor', icon: Megaphone },
     { id: 'users', label: 'Utenti', icon: Users },
@@ -111,9 +114,150 @@ export function AdminPage() {
 
       {tab === 'stats' && <StatsTab stats={stats} loading={loading} onRefresh={loadStats} />}
       {tab === 'matchday' && <MatchdayTab onError={setError} onSuccess={setSuccess} />}
+      {tab === 'leghe' && <LegheTab onError={setError} onSuccess={setSuccess} />}
       {tab === 'competitions' && <CompetitionsTab onError={setError} onSuccess={setSuccess} />}
       {tab === 'sponsors' && <SponsorsTab onError={setError} onSuccess={setSuccess} />}
       {tab === 'users' && <UsersTab onError={setError} onSuccess={setSuccess} />}
+    </div>
+  );
+}
+
+// ============================================
+// LEGHE TAB — richieste di agenzia da attivare
+// ============================================
+//
+// Chi crea una lega puo' chiedere l'agenzia con cui confrontare le quote:
+// qui si collega il palinsesto e la lega parte. Le agenzie selezionabili
+// sono quelle attive sul piano sottoscritto presso il fornitore (oggi due),
+// non tutte quelle che esistono: l'elenco arriva dal fornitore stesso.
+
+function LegheTab({
+  onError,
+  onSuccess,
+}: {
+  onError: (m: string) => void;
+  onSuccess: (m: string) => void;
+}) {
+  const [dati, setDati] = useState<LegheInAttesaResponse | null>(null);
+  const [caricamento, setCaricamento] = useState(false);
+  const [scelte, setScelte] = useState<Record<string, string>>({});
+  const [inCorso, setInCorso] = useState<string | null>(null);
+
+  const carica = useCallback(async () => {
+    setCaricamento(true);
+    try {
+      setDati(await adminLegheInAttesaFn());
+    } catch (e) {
+      onError(callableErrorMessage(e));
+    } finally {
+      setCaricamento(false);
+    }
+  }, [onError]);
+
+  // Il primo caricamento non passa da `carica`: quella accende subito lo stato
+  // di attesa, e uno setState sincrono dentro un effetto fa render a cascata.
+  useEffect(() => {
+    let annullato = false;
+    adminLegheInAttesaFn()
+      .then(r => {
+        if (!annullato) setDati(r);
+      })
+      .catch(e => {
+        if (!annullato) onError(callableErrorMessage(e));
+      });
+    return () => {
+      annullato = true;
+    };
+  }, [onError]);
+
+  const assegna = async (leagueId: string) => {
+    const agenzia = scelte[leagueId] ?? dati?.agenzieDisponibili[0] ?? '';
+    if (!agenzia) return;
+    setInCorso(leagueId);
+    try {
+      await adminAssegnaAgenziaFn(leagueId, agenzia);
+      onSuccess(`Lega attivata sulle quote ${agenzia}`);
+      await carica();
+    } catch (e) {
+      onError(callableErrorMessage(e));
+    } finally {
+      setInCorso(null);
+    }
+  };
+
+  const rifiuta = async (leagueId: string) => {
+    setInCorso(leagueId);
+    try {
+      await adminRifiutaAgenziaFn(leagueId);
+      onSuccess('Lega attivata sulle quote standard');
+      await carica();
+    } catch (e) {
+      onError(callableErrorMessage(e));
+    } finally {
+      setInCorso(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="glass-card p-4 flex items-center justify-between">
+        <div>
+          <p className="font-bold text-slate-900">Leghe in attesa</p>
+          <p className="text-xs text-slate-500">
+            Agenzie disponibili sul piano: {dati?.agenzieDisponibili.join(', ') || '—'}
+          </p>
+        </div>
+        <button
+          onClick={() => void carica()}
+          disabled={caricamento}
+          className="flex items-center gap-1.5 text-xs font-bold text-primary-700 disabled:opacity-50"
+        >
+          <RefreshCw size={14} className={cn(caricamento && 'animate-spin')} /> Aggiorna
+        </button>
+      </div>
+
+      {dati && dati.leghe.length === 0 && (
+        <div className="glass-card p-6 text-center text-sm text-slate-500">
+          Nessuna lega in attesa.
+        </div>
+      )}
+
+      {dati?.leghe.map(l => (
+        <div key={l.id} className="glass-card p-4 space-y-3">
+          <div>
+            <p className="font-bold text-slate-900">{l.name}</p>
+            <p className="text-xs text-slate-500">
+              di {l.ownerName} · {l.memberCount} membri · chiede{' '}
+              <span className="font-bold text-slate-700">{l.agenziaRichiesta}</span>
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={scelte[l.id] ?? dati.agenzieDisponibili[0] ?? ''}
+              onChange={e => setScelte(p => ({ ...p, [l.id]: e.target.value }))}
+              className="input-field py-2 text-sm flex-1 min-w-[160px]"
+            >
+              {dati.agenzieDisponibili.map(a => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => void assegna(l.id)}
+              disabled={inCorso === l.id}
+              className="btn-green text-xs font-black py-2.5 px-4 disabled:opacity-50"
+            >
+              Attiva con questa agenzia
+            </button>
+            <button
+              onClick={() => void rifiuta(l.id)}
+              disabled={inCorso === l.id}
+              className="btn-secondary text-xs py-2.5 px-3 disabled:opacity-50"
+            >
+              Quote standard
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
