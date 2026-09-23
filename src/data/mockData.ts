@@ -148,117 +148,22 @@ export const MOCK_RANKINGS: RankingEntry[] = MOCK_PARTICIPANTS
   }));
 
 // Struttura quote complete per ogni partita
+/**
+ * Quote di una partita. Ogni mercato e' facoltativo perche' le quote arrivano
+ * solo dal bookmaker: quelli che non pubblica non esistono e non si giocano.
+ * Speculare a functions/src/odds.ts.
+ */
 export interface MatchOdds {
-  esito: { '1': number; 'X': number; '2': number };
-  over_under: { 'OVER': number; 'UNDER': number };
-  goal_nogoal: { 'GG': number; 'NG': number };
-  doppia_chance: { '1X': number; '12': number; 'X2': number };
-  multigoal: { 'O0.5': number; 'U0.5': number; 'O1.5': number; 'U1.5': number; 'O2.5': number; 'U2.5': number; 'O3.5': number; 'U3.5': number };
-  esito_1t: { '1': number; 'X': number; '2': number };
-  over_under_1t: { 'OVER': number; 'UNDER': number };
-  goal_nogoal_1t: { 'GG': number; 'NG': number };
+  esito?: { '1': number; 'X': number; '2': number };
+  over_under?: { 'OVER': number; 'UNDER': number };
+  goal_nogoal?: { 'GG': number; 'NG': number };
+  doppia_chance?: { '1X': number; '12': number; 'X2': number };
+  multigoal?: Record<string, number>;
+  esito_1t?: { '1': number; 'X': number; '2': number };
+  over_under_1t?: { 'OVER': number; 'UNDER': number };
+  /** Nessuna agenzia lo pubblica: resta per le schedine gia' giocate. */
+  goal_nogoal_1t?: { 'GG': number; 'NG': number };
 }
 
 // Quote di esempio per le partite (10 partite con tutti i mercati incluso 1° tempo)
-export const MOCK_ODDS: Record<string, MatchOdds> = {
-  'm1': { // Napoli - Juventus
-    esito: { '1': 2.45, 'X': 3.20, '2': 2.90 },
-    over_under: { 'OVER': 1.85, 'UNDER': 1.95 },
-    goal_nogoal: { 'GG': 1.75, 'NG': 2.05 },
-    doppia_chance: { '1X': 1.40, '12': 1.35, 'X2': 1.52 },
-    multigoal: { 'O0.5': 1.10, 'U0.5': 6.50, 'O1.5': 1.35, 'U1.5': 3.10, 'O2.5': 1.85, 'U2.5': 1.95, 'O3.5': 2.60, 'U3.5': 1.48 },
-    esito_1t: { '1': 3.20, 'X': 1.90, '2': 4.10 },
-    over_under_1t: { 'OVER': 2.45, 'UNDER': 1.55 },
-    goal_nogoal_1t: { 'GG': 2.90, 'NG': 1.40 },
-  },
-  'm2': { // Inter - Milan
-    esito: { '1': 1.85, 'X': 3.60, '2': 4.20 },
-    over_under: { 'OVER': 1.70, 'UNDER': 2.10 },
-    goal_nogoal: { 'GG': 1.65, 'NG': 2.20 },
-    doppia_chance: { '1X': 1.25, '12': 1.40, 'X2': 1.90 },
-    multigoal: { 'O0.5': 1.08, 'U0.5': 7.00, 'O1.5': 1.28, 'U1.5': 3.50, 'O2.5': 1.70, 'U2.5': 2.10, 'O3.5': 2.40, 'U3.5': 1.55 },
-    esito_1t: { '1': 2.60, 'X': 1.92, '2': 5.50 },
-    over_under_1t: { 'OVER': 2.20, 'UNDER': 1.65 },
-    goal_nogoal_1t: { 'GG': 2.75, 'NG': 1.45 },
-  },
-  'm3': { // Atalanta - Lazio
-    esito: { '1': 1.75, 'X': 3.80, '2': 4.50 },
-    over_under: { 'OVER': 1.60, 'UNDER': 2.25 },
-    goal_nogoal: { 'GG': 1.55, 'NG': 2.40 },
-    doppia_chance: { '1X': 1.22, '12': 1.38, 'X2': 2.00 },
-    multigoal: { 'O0.5': 1.05, 'U0.5': 8.00, 'O1.5': 1.22, 'U1.5': 4.00, 'O2.5': 1.60, 'U2.5': 2.25, 'O3.5': 2.20, 'U3.5': 1.65 },
-    esito_1t: { '1': 2.40, 'X': 1.88, '2': 6.00 },
-    over_under_1t: { 'OVER': 2.05, 'UNDER': 1.75 },
-    goal_nogoal_1t: { 'GG': 2.60, 'NG': 1.50 },
-  },
-  'm4': { // Roma - Fiorentina
-    esito: { '1': 2.10, 'X': 3.40, '2': 3.50 },
-    over_under: { 'OVER': 1.80, 'UNDER': 2.00 },
-    goal_nogoal: { 'GG': 1.70, 'NG': 2.10 },
-    doppia_chance: { '1X': 1.32, '12': 1.38, 'X2': 1.72 },
-    multigoal: { 'O0.5': 1.08, 'U0.5': 7.00, 'O1.5': 1.30, 'U1.5': 3.30, 'O2.5': 1.80, 'U2.5': 2.00, 'O3.5': 2.50, 'U3.5': 1.52 },
-    esito_1t: { '1': 2.90, 'X': 1.95, '2': 4.50 },
-    over_under_1t: { 'OVER': 2.35, 'UNDER': 1.58 },
-    goal_nogoal_1t: { 'GG': 2.80, 'NG': 1.42 },
-  },
-  'm5': { // Bologna - Torino
-    esito: { '1': 2.30, 'X': 3.30, '2': 3.10 },
-    over_under: { 'OVER': 1.90, 'UNDER': 1.90 },
-    goal_nogoal: { 'GG': 1.80, 'NG': 2.00 },
-    doppia_chance: { '1X': 1.38, '12': 1.35, 'X2': 1.58 },
-    multigoal: { 'O0.5': 1.10, 'U0.5': 6.50, 'O1.5': 1.35, 'U1.5': 3.10, 'O2.5': 1.90, 'U2.5': 1.90, 'O3.5': 2.70, 'U3.5': 1.45 },
-    esito_1t: { '1': 3.10, 'X': 1.92, '2': 4.20 },
-    over_under_1t: { 'OVER': 2.50, 'UNDER': 1.52 },
-    goal_nogoal_1t: { 'GG': 3.00, 'NG': 1.38 },
-  },
-  'm6': { // Udinese - Empoli
-    esito: { '1': 2.00, 'X': 3.40, '2': 3.80 },
-    over_under: { 'OVER': 2.00, 'UNDER': 1.80 },
-    goal_nogoal: { 'GG': 1.95, 'NG': 1.85 },
-    doppia_chance: { '1X': 1.30, '12': 1.42, 'X2': 1.78 },
-    multigoal: { 'O0.5': 1.12, 'U0.5': 6.00, 'O1.5': 1.40, 'U1.5': 2.90, 'O2.5': 2.00, 'U2.5': 1.80, 'O3.5': 2.90, 'U3.5': 1.40 },
-    esito_1t: { '1': 2.70, 'X': 1.95, '2': 5.00 },
-    over_under_1t: { 'OVER': 2.60, 'UNDER': 1.48 },
-    goal_nogoal_1t: { 'GG': 3.10, 'NG': 1.36 },
-  },
-  'm7': { // Genoa - Cagliari
-    esito: { '1': 2.20, 'X': 3.30, '2': 3.30 },
-    over_under: { 'OVER': 1.95, 'UNDER': 1.85 },
-    goal_nogoal: { 'GG': 1.85, 'NG': 1.95 },
-    doppia_chance: { '1X': 1.35, '12': 1.38, 'X2': 1.65 },
-    multigoal: { 'O0.5': 1.10, 'U0.5': 6.50, 'O1.5': 1.38, 'U1.5': 3.00, 'O2.5': 1.95, 'U2.5': 1.85, 'O3.5': 2.80, 'U3.5': 1.42 },
-    esito_1t: { '1': 3.00, 'X': 1.92, '2': 4.40 },
-    over_under_1t: { 'OVER': 2.55, 'UNDER': 1.50 },
-    goal_nogoal_1t: { 'GG': 3.05, 'NG': 1.37 },
-  },
-  'm8': { // Verona - Lecce
-    esito: { '1': 2.50, 'X': 3.20, '2': 2.85 },
-    over_under: { 'OVER': 1.88, 'UNDER': 1.92 },
-    goal_nogoal: { 'GG': 1.78, 'NG': 2.02 },
-    doppia_chance: { '1X': 1.42, '12': 1.35, 'X2': 1.52 },
-    multigoal: { 'O0.5': 1.10, 'U0.5': 6.50, 'O1.5': 1.35, 'U1.5': 3.10, 'O2.5': 1.88, 'U2.5': 1.92, 'O3.5': 2.65, 'U3.5': 1.48 },
-    esito_1t: { '1': 3.30, 'X': 1.88, '2': 4.00 },
-    over_under_1t: { 'OVER': 2.45, 'UNDER': 1.55 },
-    goal_nogoal_1t: { 'GG': 2.95, 'NG': 1.40 },
-  },
-  'm9': { // Parma - Como
-    esito: { '1': 2.15, 'X': 3.40, '2': 3.40 },
-    over_under: { 'OVER': 1.82, 'UNDER': 1.98 },
-    goal_nogoal: { 'GG': 1.72, 'NG': 2.08 },
-    doppia_chance: { '1X': 1.33, '12': 1.40, 'X2': 1.70 },
-    multigoal: { 'O0.5': 1.08, 'U0.5': 7.00, 'O1.5': 1.32, 'U1.5': 3.25, 'O2.5': 1.82, 'U2.5': 1.98, 'O3.5': 2.55, 'U3.5': 1.50 },
-    esito_1t: { '1': 2.95, 'X': 1.90, '2': 4.60 },
-    over_under_1t: { 'OVER': 2.40, 'UNDER': 1.56 },
-    goal_nogoal_1t: { 'GG': 2.85, 'NG': 1.42 },
-  },
-  'm10': { // Monza - Venezia
-    esito: { '1': 2.40, 'X': 3.25, '2': 2.95 },
-    over_under: { 'OVER': 1.92, 'UNDER': 1.88 },
-    goal_nogoal: { 'GG': 1.82, 'NG': 1.98 },
-    doppia_chance: { '1X': 1.40, '12': 1.35, 'X2': 1.55 },
-    multigoal: { 'O0.5': 1.10, 'U0.5': 6.50, 'O1.5': 1.36, 'U1.5': 3.05, 'O2.5': 1.92, 'U2.5': 1.88, 'O3.5': 2.72, 'U3.5': 1.45 },
-    esito_1t: { '1': 3.15, 'X': 1.90, '2': 4.25 },
-    over_under_1t: { 'OVER': 2.50, 'UNDER': 1.52 },
-    goal_nogoal_1t: { 'GG': 2.98, 'NG': 1.38 },
-  },
-};
+

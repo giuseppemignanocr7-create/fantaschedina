@@ -25,30 +25,27 @@ export function QuickBet({ matches, odds, onApply, disabled, className }: QuickB
   ];
 
   const generatePredictions = (strategy: QuickBetStrategy): Prediction[] => {
-    return matches.map((match) => {
+    // Le partite senza 1X2 del bookmaker restano fuori: non si riempiono con
+    // una quota di comodo.
+    return matches.flatMap((match): Prediction[] => {
       const matchOdds = odds[match.id];
-      if (!matchOdds) {
-        return {
-          matchId: match.id,
-          betType: 'esito' as BetType,
-          outcome: '1' as BetOutcome,
-          odds: 2.00,
-        };
-      }
+      // Senza l'1X2 del bookmaker non c'e' nulla da proporre: prima si
+      // ripiegava su una quota fissa 2.00, cioe' un numero inventato.
+      if (!matchOdds?.esito) return [];
+      const esito = matchOdds.esito;
 
       switch (strategy) {
         case 'favorites': {
           // Trova la quota più bassa in esito
-          const esitoOdds = matchOdds.esito;
-          const minKey = Object.entries(esitoOdds).reduce((a, b) => 
+          const minKey = Object.entries(esito).reduce((a, b) => 
             b[1] < a[1] ? b : a
           );
-          return {
+          return [{
             matchId: match.id,
             betType: 'esito' as BetType,
             outcome: minKey[0] as BetOutcome,
             odds: minKey[1],
-          };
+          }];
         }
 
         case 'random': {
@@ -58,12 +55,12 @@ export function QuickBet({ matches, odds, onApply, disabled, className }: QuickB
           const typeOdds = matchOdds[randomBetType] as Record<string, number>;
           const keys = Object.keys(typeOdds);
           const randomKey = keys[Math.floor(Math.random() * keys.length)];
-          return {
+          return [{
             matchId: match.id,
             betType: randomBetType,
             outcome: randomKey as BetOutcome,
             odds: typeOdds[randomKey],
-          };
+          }];
         }
 
         case 'value': {
@@ -80,21 +77,21 @@ export function QuickBet({ matches, odds, onApply, disabled, className }: QuickB
 
           if (allOdds.length > 0) {
             const selected = allOdds[Math.floor(Math.random() * allOdds.length)];
-            return {
+            return [{
               matchId: match.id,
               betType: selected.betType,
               outcome: selected.outcome as BetOutcome,
               odds: selected.odds,
-            };
+            }];
           }
           
           // Fallback a esito X
-          return {
+          return [{
             matchId: match.id,
             betType: 'esito' as BetType,
             outcome: 'X' as BetOutcome,
-            odds: matchOdds.esito['X'],
-          };
+            odds: matchOdds.esito?.['X'] ?? 0,
+          }];
         }
 
         case 'balanced': {
@@ -105,21 +102,21 @@ export function QuickBet({ matches, odds, onApply, disabled, className }: QuickB
           const typeOdds = matchOdds[betType] as Record<string, number>;
           const keys = Object.keys(typeOdds);
           // Prendi la prima opzione
-          return {
+          return [{
             matchId: match.id,
             betType,
             outcome: keys[0] as BetOutcome,
             odds: typeOdds[keys[0]],
-          };
+          }];
         }
 
         default:
-          return {
+          return [{
             matchId: match.id,
             betType: 'esito' as BetType,
             outcome: '1' as BetOutcome,
-            odds: matchOdds.esito['1'],
-          };
+            odds: esito['1'],
+          }];
       }
     });
   };

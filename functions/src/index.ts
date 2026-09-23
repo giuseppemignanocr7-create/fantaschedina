@@ -53,14 +53,18 @@ import {
   MatchResult,
   Prediction,
 } from './scoring';
-import { generateMatchdayOdds, MatchOdds } from './odds';
+import type { MatchOdds } from './odds';
 import { computePowerupCharge, isLastMinuteWindowOpen, powerupCost } from './powerups';
 import { calcolaSerie } from './streak';
 import { intInRange } from './input';
 import { pickWeeklyWinner, rankWeeklyCandidates } from './settlement';
 import { computeRankings, type RankableProfile } from './rankings';
 import { attackerForRound, canFinishAtRound, type DuelMode } from './duels';
-import { fetchRealMatchdayOdds, bookmakerDisponibili, BOOKMAKER_PREDEFINITO } from './realOdds';
+import {
+  fetchRealMatchdayOdds,
+  bookmakerDisponibili,
+  BOOKMAKER_PREDEFINITO,
+} from './realOdds';
 import { fetchActiveMatchdayPool, fetchResults } from './espn';
 import {
   resolveShot,
@@ -364,41 +368,63 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
   // agenzie non costano il doppio.
   const agenzie = await agenzieInUso(apiKey);
 
+  // Le quote arrivano solo dal fornitore. Dove non ci sono, non ci sono: una
+  // partita senza quote non entra in giornata e un mercato non quotato non si
+  // gioca. Prima un motore di calcolo riempiva i buchi, e chi giocava quelle
+  // partite lo faceva su numeri inventati (23/09/2026).
   let odds = (!forceOdds ? prev?.odds ?? null : null);
   let oddsPerBookmaker = (!forceOdds ? prev?.oddsPerBookmaker ?? null : null);
-  if (!odds) {
-    const realOdds = await fetchRealMatchdayOdds(api.matches, apiKey, agenzie);
-    if (realOdds) {
-      logger.info('syncMatchday: quote reali da odds-api.io', { agenzie });
-      oddsPerBookmaker = realOdds;
-      odds = realOdds[BOOKMAKER_PREDEFINITO] ?? generateMatchdayOdds(api.matches);
+
+  const daQuotare = odds
+    ? api.matches.filter(m => !prevIds.has(m.id))
+    : api.matches;
+
+  if (daQuotare.length > 0) {
+    const reali = await fetchRealMatchdayOdds(daQuotare, apiKey, agenzie);
+    if (!reali) {
+      logger.error('syncMatchday: nessuna quota dal fornitore, giornata non aggiornata', {
+        partite: daQuotare.length,
+        agenzie,
+      });
+      // Meglio una giornata ferma che una giornata con quote inventate: si
+      // tiene quello che c'era e si riprova al giro successivo.
+      if (!odds) return prev ?? null;
     } else {
-      logger.info('syncMatchday: quote calcolate (reali non disponibili o chiave mancante)');
-      odds = generateMatchdayOdds(api.matches);
-      oddsPerBookmaker = { [BOOKMAKER_PREDEFINITO]: odds };
+      const predefinite = reali[BOOKMAKER_PREDEFINITO] ?? {};
+      odds = { ...(odds ?? {}), ...predefinite };
+      const unione: Record<string, Record<string, MatchOdds>> = { ...(oddsPerBookmaker ?? {}) };
+      for (const agenzia of agenzie) {
+        unione[agenzia] = { ...(unione[agenzia] ?? {}), ...(reali[agenzia] ?? {}) };
+      }
+      oddsPerBookmaker = unione;
     }
-  } else if (newMatches.length > 0) {
-    const newApiMatches = api.matches.filter(m => !prevIds.has(m.id));
-    const realOdds = await fetchRealMatchdayOdds(newApiMatches, apiKey, agenzie);
-    const calcolate = generateMatchdayOdds(newApiMatches);
-    odds = { ...odds, ...(realOdds?.[BOOKMAKER_PREDEFINITO] ?? calcolate) };
-    const unione: Record<string, Record<string, MatchOdds>> = { ...(oddsPerBookmaker ?? {}) };
-    for (const agenzia of agenzie) {
-      unione[agenzia] = { ...(unione[agenzia] ?? {}), ...(realOdds?.[agenzia] ?? calcolate) };
-    }
-    oddsPerBookmaker = unione;
   }
 
-  // Un'agenzia assegnata dopo la pubblicazione delle quote non avrebbe le
-  // sue: si scaricano adesso, senza toccare quelle gia' pubblicate.
-  const mancanti = agenzie.filter(a => !(oddsPerBookmaker ?? {})[a]);
-  if (mancanti.length > 0) {
-    const realOdds = await fetchRealMatchdayOdds(api.matches, apiKey, mancanti);
-    const base: Record<string, Record<string, MatchOdds>> = { ...(oddsPerBookmaker ?? {}) };
-    for (const agenzia of mancanti) {
-      base[agenzia] = realOdds?.[agenzia] ?? generateMatchdayOdds(api.matches);
+  // Un'agenzia assegnata dopo la pubblicazione non ha ancora le sue quote.
+  const senzaQuote = agenzie.filter(a => !(oddsPerBookmaker ?? {})[a]);
+  if (senzaQuote.length > 0) {
+    const reali = await fetchRealMatchdayOdds(api.matches, apiKey, senzaQuote);
+    if (reali) {
+      const base: Record<string, Record<string, MatchOdds>> = { ...(oddsPerBookmaker ?? {}) };
+      for (const agenzia of senzaQuote) base[agenzia] = reali[agenzia] ?? {};
+      oddsPerBookmaker = base;
     }
-    oddsPerBookmaker = base;
+  }
+
+  // In giornata entrano solo le partite quotate dall'agenzia predefinita: sono
+  // quelle che il circuito generale puo' giocare davvero.
+  const quotate = odds ?? {};
+  const scartate = mergedMatches.filter(m => !quotate[m.id]);
+  const matchesGiocabili = mergedMatches.filter(m => !!quotate[m.id]);
+  if (scartate.length > 0) {
+    logger.warn('syncMatchday: partite senza quote, escluse dalla giornata', {
+      quante: scartate.length,
+      partite: scartate.map(m => `${m.homeTeam.name}-${m.awayTeam.name}`),
+    });
+  }
+  if (matchesGiocabili.length === 0) {
+    logger.error('syncMatchday: nessuna partita quotata, giornata non aggiornata');
+    return prev ?? null;
   }
 
   const docData: MatchdayDoc = {
@@ -406,8 +432,8 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
     season: api.season,
     status: prev?.status ?? 'open',
     deadline: prev?.deadline ?? Timestamp.fromDate(api.deadline),
-    matches: mergedMatches,
-    odds,
+    matches: matchesGiocabili,
+    odds: quotate,
     ...(oddsPerBookmaker ? { oddsPerBookmaker } : {}),
     settled: prev?.settled ?? false,
   };

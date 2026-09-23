@@ -6,7 +6,7 @@
 // Mercati non coperti → fallback al engine algoritmico.
 // ============================================
 
-import { generateMatchOdds, type MatchOdds } from './odds';
+import type { MatchOdds } from './odds';
 import { fetchJson } from './http';
 
 const API_BASE = 'https://api.odds-api.io/v3';
@@ -255,7 +255,26 @@ export async function bookmakerDisponibili(apiKey: string): Promise<string[]> {
 
 // ---------- Estrazione quote ----------
 
-function extractOddsFromResponse(
+/** Linea over/under da usare per il mercato Multigoal dell'app. */
+const LINEE_MULTIGOAL = [0.5, 1.5, 2.5, 3.5] as const;
+
+/**
+ * Traduce la risposta del fornitore nei mercati dell'app, prendendo solo
+ * quello che il bookmaker pubblica davvero.
+ *
+ * Nessun mercato viene inventato: quello che il fornitore non ha resta
+ * assente, e l'app non lo mette in schedina. Fino al 23/09/2026 i mercati
+ * mancanti venivano riempiti da un motore di calcolo, e il risultato erano
+ * quote che nessun bookmaker avrebbe mai esposto.
+ *
+ * Corrispondenze verificate il 23/09/2026 su Serie A:
+ *   ML → esito · Double Chance → doppia_chance · Totals → over_under (2.5)
+ *   e multigoal (0.5/1.5/2.5/3.5) · Both Teams To Score → goal_nogoal
+ *   ML HT → esito_1t · Totals HT (1.5) → over_under_1t
+ * Il GG/NG di primo tempo non lo pubblica nessuna delle agenzie: non esiste
+ * piu' come mercato giocabile.
+ */
+export function extractOddsFromResponse(
   response: OddsApiResponse,
   bookmaker: string
 ): Partial<MatchOdds> | null {
@@ -265,36 +284,71 @@ function extractOddsFromResponse(
   const result: Partial<MatchOdds> = {};
 
   for (const market of bookData) {
-    if (market.name === 'ML' && market.odds.length > 0) {
-      const o = market.odds[0];
-      const h = num(o.home);
-      const d = num(o.draw);
-      const a = num(o.away);
-      if (h != null && d != null && a != null) {
-        result.esito = { '1': h, X: d, '2': a };
-        result.doppia_chance = {
-          '1X': Math.round((1 / (1 / h + 1 / d)) * 100) / 100,
-          '12': Math.round((1 / (1 / h + 1 / a)) * 100) / 100,
-          X2: Math.round((1 / (1 / d + 1 / a)) * 100) / 100,
-        };
+    switch (market.name) {
+      case 'ML': {
+        const o = market.odds[0];
+        const h = num(o?.home);
+        const d = num(o?.draw);
+        const a = num(o?.away);
+        if (h != null && d != null && a != null) result.esito = { '1': h, X: d, '2': a };
+        break;
       }
-    } else if (market.name === 'Totals') {
-      // Find O/U 2.5
-      const ou25 = market.odds.find(o => o.hdp === 2.5);
-      if (ou25) {
-        const ov = num(ou25.over);
-        const un = num(ou25.under);
-        if (ov != null && un != null) {
-          result.over_under = { OVER: ov, UNDER: un };
+      case 'Double Chance': {
+        const o = market.odds[0] as (OddsApiMarketOdds & Record<string, string>) | undefined;
+        const unoX = num(o?.['1X']);
+        const unoDue = num(o?.['12']);
+        const xDue = num(o?.['X2']);
+        if (unoX != null && unoDue != null && xDue != null) {
+          result.doppia_chance = { '1X': unoX, '12': unoDue, X2: xDue };
         }
+        break;
       }
-    } else if (market.name === 'Both Teams To Score' && market.odds.length > 0) {
-      const o = market.odds[0];
-      const gg = num(o.yes);
-      const ng = num(o.no);
-      if (gg != null && ng != null) {
-        result.goal_nogoal = { GG: gg, NG: ng };
+      case 'Totals': {
+        const linea = (v: number) => market.odds.find(o => o.hdp === v);
+        const due5 = linea(2.5);
+        const ov25 = num(due5?.over);
+        const un25 = num(due5?.under);
+        if (ov25 != null && un25 != null) result.over_under = { OVER: ov25, UNDER: un25 };
+
+        const multigoal: Record<string, number> = {};
+        for (const l of LINEE_MULTIGOAL) {
+          const riga = linea(l);
+          const ov = num(riga?.over);
+          const un = num(riga?.under);
+          if (ov != null) multigoal[`O${l}`] = ov;
+          if (un != null) multigoal[`U${l}`] = un;
+        }
+        // Solo se il bookmaker copre tutte le linee: una tabella a buchi in
+        // schedina confonde piu' di quanto aggiunga.
+        if (Object.keys(multigoal).length === LINEE_MULTIGOAL.length * 2) {
+          result.multigoal = multigoal;
+        }
+        break;
       }
+      case 'Both Teams To Score': {
+        const o = market.odds[0];
+        const gg = num(o?.yes);
+        const ng = num(o?.no);
+        if (gg != null && ng != null) result.goal_nogoal = { GG: gg, NG: ng };
+        break;
+      }
+      case 'ML HT': {
+        const o = market.odds[0];
+        const h = num(o?.home);
+        const d = num(o?.draw);
+        const a = num(o?.away);
+        if (h != null && d != null && a != null) result.esito_1t = { '1': h, X: d, '2': a };
+        break;
+      }
+      case 'Totals HT': {
+        const uno5 = market.odds.find(o => o.hdp === 1.5);
+        const ov = num(uno5?.over);
+        const un = num(uno5?.under);
+        if (ov != null && un != null) result.over_under_1t = { OVER: ov, UNDER: un };
+        break;
+      }
+      default:
+        break;
     }
   }
 
@@ -303,16 +357,18 @@ function extractOddsFromResponse(
 
 // ---------- API pubblica ----------
 
+/** Una partita ha quote giocabili solo se ha almeno l'1X2. */
+export function haQuoteGiocabili(odds: Partial<MatchOdds> | undefined): boolean {
+  return !!odds?.esito;
+}
+
 /**
- * Quote di una giornata per ognuna delle agenzie richieste.
+ * Quote di una giornata per ognuna delle agenzie richieste, prese solo dal
+ * fornitore. Indicizzate per agenzia: `quote['Goldbet IT'][matchId]`.
  *
- * Il risultato e' indicizzato per agenzia: `quote['Goldbet IT'][matchId]`.
- * Ogni agenzia ha una mappa completa — dove mancano le quote reali (partita
- * non trovata, mercato assente) resta il motore di calcolo, cosi' nessuna
- * lega si ritrova con una partita senza quote.
- *
- * Restituisce null solo se nessuna agenzia ha prodotto nemmeno una quota
- * reale: in quel caso chi chiama usa il motore di calcolo per tutti.
+ * Una partita compare solo se quell'agenzia ne pubblica almeno l'1X2, e di
+ * ogni partita compaiono solo i mercati davvero quotati. Chi chiama decide
+ * cosa fare con le partite mancanti: qui non si inventa nulla.
  */
 export async function fetchRealMatchdayOdds(
   matches: {
@@ -340,7 +396,7 @@ export async function fetchRealMatchdayOdds(
 
   const risultato: Record<string, Record<string, MatchOdds>> = {};
   for (const b of bookmakers) risultato[b] = {};
-  let qualcunaReale = false;
+  let qualcuna = false;
 
   const compiti = matches.map(async match => {
     const slug = ODDS_API_LEAGUE_SLUG[match.competition];
@@ -348,38 +404,25 @@ export async function fetchRealMatchdayOdds(
     const event = events?.find(
       e => teamsMatch(e.home, match.homeTeam.name) && teamsMatch(e.away, match.awayTeam.name)
     );
-    const algo = generateMatchOdds(match.homeTeam.id, match.awayTeam.id);
-    const risposta = event ? await fetchEventOdds(apiKey, event.id, bookmakers) : null;
+    if (!event) return [];
+    const risposta = await fetchEventOdds(apiKey, event.id, bookmakers);
+    if (!risposta) return [];
 
-    return bookmakers.map(bookmaker => {
-      const real = risposta ? extractOddsFromResponse(risposta, bookmaker) : null;
-      if (real && (real.esito || real.over_under || real.goal_nogoal)) {
-        return {
-          bookmaker,
-          id: match.id,
-          odds: {
-            esito: real.esito ?? algo.esito,
-            over_under: real.over_under ?? algo.over_under,
-            goal_nogoal: real.goal_nogoal ?? algo.goal_nogoal,
-            doppia_chance: real.doppia_chance ?? algo.doppia_chance,
-            multigoal: algo.multigoal,
-            esito_1t: algo.esito_1t,
-            over_under_1t: algo.over_under_1t,
-            goal_nogoal_1t: algo.goal_nogoal_1t,
-          } as MatchOdds,
-          isReal: true,
-        };
-      }
-      return { bookmaker, id: match.id, odds: algo, isReal: false };
-    });
+    return bookmakers
+      .map(bookmaker => ({
+        bookmaker,
+        id: match.id,
+        odds: extractOddsFromResponse(risposta, bookmaker) ?? {},
+      }))
+      .filter(r => haQuoteGiocabili(r.odds));
   });
 
   for (const perPartita of await Promise.all(compiti)) {
     for (const r of perPartita) {
-      risultato[r.bookmaker][r.id] = r.odds;
-      if (r.isReal) qualcunaReale = true;
+      risultato[r.bookmaker][r.id] = r.odds as MatchOdds;
+      qualcuna = true;
     }
   }
 
-  return qualcunaReale ? risultato : null;
+  return qualcuna ? risultato : null;
 }

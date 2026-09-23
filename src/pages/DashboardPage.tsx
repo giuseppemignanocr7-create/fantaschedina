@@ -231,13 +231,13 @@ export function DashboardPage() {
                     </div>
                   </div>
 
-                  {nextOdds && (
+                  {nextOdds?.esito && (
                     <div className="flex items-center gap-1 flex-shrink-0">
                       {(['1','X','2'] as const).map(k => (
                         <div key={k} className="flex flex-col items-center bg-white border border-paper-line rounded-lg px-1.5 py-1 min-w-[31px]">
                           <span className="text-[7px] text-paper-muted font-bold leading-none">{k}</span>
                           <span className="text-[11px] font-mono font-black text-blue-600 leading-tight">
-                            {nextOdds.esito[k].toFixed(2)}
+                            {nextOdds.esito?.[k]?.toFixed(2) ?? '—'}
                           </span>
                         </div>
                       ))}
