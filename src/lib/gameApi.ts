@@ -399,6 +399,40 @@ export async function penaltyDuelMoveFn(
   return res.data;
 }
 
+// --- SCHEDINE DI UNA LEGA (solo per chi l'ha creata) ---
+
+export interface SchedinaDiLega {
+  userId: string;
+  username: string;
+  submittedAt: number | null;
+  settled: boolean;
+  finalPoints: number | null;
+  correctPredictions: number | null;
+  predictions: { matchId: string; betType: string; outcome: string; odds: number }[];
+}
+
+export interface SchedineLegaResponse {
+  matchdayNumber: number;
+  schedine: SchedinaDiLega[];
+  mancanti: { userId: string; username: string }[];
+}
+
+/**
+ * Schedine dei membri di una lega, anche prima della chiusura. Il server
+ * risponde solo a chi ha creato la lega.
+ */
+export async function getSchedineLegaFn(
+  leagueId: string,
+  matchdayNumber?: number
+): Promise<SchedineLegaResponse> {
+  const fn = httpsCallable<{ leagueId: string; matchdayNumber?: number }, SchedineLegaResponse>(
+    functions,
+    'getSchedineLega'
+  );
+  const res = await fn({ leagueId, matchdayNumber });
+  return res.data;
+}
+
 /** Estrae il messaggio utente da un errore di una callable. */
 export function callableErrorMessage(e: unknown): string {
   const err = e as { message?: string; code?: string };

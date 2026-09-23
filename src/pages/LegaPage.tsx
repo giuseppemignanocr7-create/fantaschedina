@@ -19,6 +19,7 @@ import {
   ChevronRight, Share2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getSchedineLegaFn, callableErrorMessage, type SchedineLegaResponse } from '@/lib/gameApi';
 import { useAppStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { useLiveMatchday } from '@/hooks/useLiveMatchday';
@@ -32,7 +33,9 @@ import { getUserSchedinaForMatchday, type SchedinaDoc } from '@/lib/db';
 import type { Match } from '@/types';
 
 const SEZIONI = ['SCHEDINA', 'CLASSIFICA', 'PARTITE', 'MEMBRI'] as const;
-type Sezione = (typeof SEZIONI)[number];
+/** Visibile solo a chi ha creato la lega: le schedine dei membri, subito. */
+const SEZIONE_CREATORE = 'GIOCATE' as const;
+type Sezione = (typeof SEZIONI)[number] | typeof SEZIONE_CREATORE;
 
 function medaglia(posizione: number): string | null {
   return posizione === 1 ? '🥇' : posizione === 2 ? '🥈' : posizione === 3 ? '🥉' : null;
@@ -60,12 +63,33 @@ export function LegaPage() {
   const [caricamento, setCaricamento] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
   const [codiceCopiato, setCodiceCopiato] = useState(false);
+  const [giocate, setGiocate] = useState<SchedineLegaResponse | null>(null);
+  const [erroreGiocate, setErroreGiocate] = useState<string | null>(null);
 
   useEffect(() => {
     if (!currentMatchday) void loadMatchday();
   }, [currentMatchday, loadMatchday]);
 
   useLiveMatchday();
+
+  // Le schedine dei membri le serve il server, e solo a chi ha creato la lega.
+  const sonoIlCreatore = !!lega && lega.ownerId === uid;
+  useEffect(() => {
+    if (sezione !== SEZIONE_CREATORE || !sonoIlCreatore || !leagueId) return;
+    let annullato = false;
+    getSchedineLegaFn(leagueId)
+      .then(r => {
+        if (annullato) return;
+        setErroreGiocate(null);
+        setGiocate(r);
+      })
+      .catch(e => {
+        if (!annullato) setErroreGiocate(callableErrorMessage(e));
+      });
+    return () => {
+      annullato = true;
+    };
+  }, [sezione, sonoIlCreatore, leagueId]);
 
   const carica = useCallback(async () => {
     if (!leagueId || !uid) return;
@@ -197,7 +221,7 @@ export function LegaPage() {
 
         {/* Sottomenu della lega */}
         <div className="flex gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
-          {SEZIONI.map(s => (
+          {[...SEZIONI, ...(sonoIlCreatore ? [SEZIONE_CREATORE] : [])].map(s => (
             <button
               key={s}
               onClick={() => setSezione(s)}
@@ -231,6 +255,10 @@ export function LegaPage() {
             giornata={currentMatchday?.number ?? null}
             liveScores={liveScores}
           />
+        )}
+
+        {sezione === SEZIONE_CREATORE && sonoIlCreatore && (
+          <SezioneGiocate dati={giocate} errore={erroreGiocate} partite={partite} />
         )}
 
         {sezione === 'MEMBRI' && (
@@ -542,6 +570,99 @@ function SezionePartite({
   );
 }
 
+// --- GIOCATE DEI MEMBRI (solo il creatore) -----------------------------------
+
+/**
+ * Chi organizza la lega vede cosa hanno giocato i suoi, senza aspettare la
+ * chiusura. E' un'eccezione all'anti-copia, quindi la pagina lo dice chiaro:
+ * i membri sanno di essere visti (vedi SezioneMembri).
+ */
+function SezioneGiocate({
+  dati,
+  errore,
+  partite,
+}: {
+  dati: SchedineLegaResponse | null;
+  errore: string | null;
+  partite: Match[];
+}) {
+  const nomePartita = (matchId: string) => {
+    const m = partite.find(x => x.id === matchId);
+    return m ? `${m.homeTeam.shortName}-${m.awayTeam.shortName}` : '—';
+  };
+
+  if (errore) {
+    return (
+      <div className="glass-card p-4">
+        <p className="text-sm text-red-600">{errore}</p>
+      </div>
+    );
+  }
+
+  if (!dati) {
+    return (
+      <div className="glass-card p-6 flex items-center justify-center gap-2 text-slate-500 text-sm">
+        <Loader2 size={16} className="animate-spin" /> Carico le giocate…
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="glass-card p-3">
+        <p className="text-[11px] text-slate-600">
+          Giornata {dati.matchdayNumber}: {dati.schedine.length} schedine inviate
+          {dati.mancanti.length > 0 && `, ${dati.mancanti.length} ancora da giocare`}.
+        </p>
+      </div>
+
+      {dati.schedine.length === 0 && (
+        <div className="glass-card p-6 text-center text-sm text-slate-500">
+          Nessuno ha ancora inviato la schedina di questa lega.
+        </div>
+      )}
+
+      {dati.schedine.map(s => (
+        <div key={s.userId} className="glass-card overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200">
+            <p className="font-bold text-sm text-slate-900 truncate">{s.username}</p>
+            {s.settled ? (
+              <span className="text-xs font-black text-primary-700">{s.finalPoints ?? 0} pt</span>
+            ) : (
+              <span className="text-[10px] text-slate-500">
+                {s.predictions.length} pronostici
+              </span>
+            )}
+          </div>
+          <div className="divide-y divide-slate-100">
+            {s.predictions.map(p => (
+              <div key={`${s.userId}-${p.matchId}-${p.betType}`} className="flex items-center gap-2 px-3 py-1.5">
+                <span className="text-[11px] text-slate-500 flex-1 truncate">{nomePartita(p.matchId)}</span>
+                <span className="text-[10px] text-slate-400 uppercase">{p.betType.replace(/_/g, ' ')}</span>
+                <span className="w-8 text-center text-[11px] font-black text-primary-800 bg-primary-500/15 rounded">
+                  {p.outcome}
+                </span>
+                <span className="text-[11px] font-mono text-accent-700 w-10 text-right">{p.odds.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {dati.mancanti.length > 0 && (
+        <div className="glass-card p-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">
+            Non hanno ancora giocato
+          </p>
+          <p className="text-xs text-slate-600">
+            {dati.mancanti.map(m => m.username).join(', ')}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- MEMBRI ------------------------------------------------------------------
 
 function SezioneMembri({
@@ -585,6 +706,11 @@ function SezioneMembri({
         </button>
         <p className="text-[10px] text-slate-500 mt-1.5">
           Chi tocca il link entra qui senza digitare il codice.
+        </p>
+        <p className="text-[10px] text-slate-500 mt-2 pt-2 border-t border-slate-200">
+          👁 Chi ha creato la lega ({lega.ownerName}) vede le schedine dei membri
+          appena vengono inviate. Fra di voi le schedine restano coperte fino
+          alla chiusura.
         </p>
         {lega.description && (
           <p className="text-xs text-slate-500 mt-2 pt-2 border-t border-slate-200">

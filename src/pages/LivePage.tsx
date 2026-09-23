@@ -11,7 +11,7 @@ import { useAppStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { useLiveMatchday } from '@/hooks/useLiveMatchday';
 import { calculateBetPoints, calculateSchedinaScore } from '@/lib/scoring';
-import { LiveTracker, CountdownTimer, WinSimulator, SkeletonList } from '@/components/ui';
+import { LiveTracker, CountdownTimer, SkeletonList } from '@/components/ui';
 
 export function LivePage() {
   const {
@@ -19,7 +19,6 @@ export function LivePage() {
     currentSchedina,
     currentUser,
     rankings,
-    prizePool,
     liveScores,
     isLoadingOdds,
     isLoadingRankings,
@@ -29,7 +28,6 @@ export function LivePage() {
       currentSchedina: s.currentSchedina,
       currentUser: s.currentUser,
       rankings: s.rankings,
-      prizePool: s.prizePool,
       liveScores: s.liveScores,
       isLoadingOdds: s.isLoadingOdds,
       isLoadingRankings: s.isLoadingRankings,
@@ -52,9 +50,6 @@ export function LivePage() {
     }));
     return calculateSchedinaScore(previewResults).finalPoints;
   }, [predictions]);
-  const userPosition =
-    rankings.findIndex(r => r.participantId === currentUser?.id) + 1 || rankings.length;
-
   if (!currentMatchday) {
     if (isLoadingOdds) {
       return (
@@ -270,15 +265,6 @@ export function LivePage() {
                   </p>
                 )}
               </div>
-
-            {/* Win Simulator */}
-            <WinSimulator
-              totalPoints={currentUser?.totalPoints ?? 0}
-              weeklyPool={prizePool.weeklyPool}
-              finalPool={prizePool.finalPool}
-              currentRank={userPosition}
-              participantCount={rankings.length}
-            />
 
             {/* Leaderboard Mini */}
             <div className="glass-card overflow-hidden">

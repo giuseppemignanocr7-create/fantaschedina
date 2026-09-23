@@ -2487,6 +2487,86 @@ export const manageLeague = onCall(callableOpts, async request => {
   throw new HttpsError('invalid-argument', `Azione sconosciuta: ${action}`);
 });
 
+
+// ---------- 5-bis. SCHEDINE DI UNA LEGA (callable, solo il creatore) ----------
+
+/**
+ * Le schedine dei membri di una lega, appena inviate.
+ *
+ * Fuori da qui le schedine altrui si vedono solo a tempo scaduto (anti-copia,
+ * vedi firestore.rules): questa e' l'unica eccezione, chiesta da chi organizza
+ * le leghe per poter seguire chi ha giocato e cosa. Proprio perche' e'
+ * un'eccezione passa da una callable che controlla di persona chi chiede,
+ * invece di allargare le regole a tutti (Giovanni, 20/09/2026).
+ *
+ * Chi entra in una lega lo sa: la pagina della lega lo dice a tutti i membri.
+ */
+export const getSchedineLega = onCall(callableOpts, async request => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await enforceRateLimit(uid, 'getSchedineLega', 30, 60_000);
+
+  const leagueId = typeof request.data?.leagueId === 'string' ? request.data.leagueId : '';
+  if (!leagueId || leagueId.length > 128) {
+    throw new HttpsError('invalid-argument', 'Lega non valida');
+  }
+
+  const legaSnap = await db.collection('leagues').doc(leagueId).get();
+  if (!legaSnap.exists) throw new HttpsError('not-found', 'Lega non trovata');
+  const lega = legaSnap.data() as { ownerId?: string; memberIds?: string[] };
+  if (lega.ownerId !== uid) {
+    throw new HttpsError('permission-denied', 'Solo chi ha creato la lega vede le schedine');
+  }
+
+  const richiesta = Number(request.data?.matchdayNumber);
+  let numero = Number.isInteger(richiesta) && richiesta > 0 ? richiesta : null;
+  if (numero == null) {
+    const corrente = await getCurrentMatchday();
+    if (!corrente) throw new HttpsError('unavailable', 'Nessuna giornata disponibile');
+    numero = corrente.number;
+  }
+
+  const snap = await db
+    .collection('schedine')
+    .where('leagueId', '==', leagueId)
+    .where('matchdayNumber', '==', numero)
+    .get();
+
+  const schedine = snap.docs.map(d => {
+    const s = d.data() as SchedinaDoc & { finalPoints?: number; correctPredictions?: number };
+    return {
+      userId: s.userId,
+      username: s.username,
+      submittedAt: s.submittedAt?.toMillis() ?? null,
+      settled: s.settled === true,
+      finalPoints: s.finalPoints ?? null,
+      correctPredictions: s.correctPredictions ?? null,
+      predictions: (s.predictions ?? []).map(p => ({
+        matchId: p.matchId,
+        betType: p.betType,
+        outcome: p.outcome,
+        odds: p.odds,
+      })),
+    };
+  });
+
+  // Anche chi non ha ancora giocato: per chi organizza, sapere chi manca e'
+  // meta' dell'informazione utile.
+  const presenti = new Set(schedine.map(s => s.userId));
+  const mancanti = (lega.memberIds ?? []).filter(m => !presenti.has(m));
+  const profili = await Promise.all(
+    mancanti.map(m => db.collection('profiles').doc(m).get())
+  );
+
+  return {
+    matchdayNumber: numero,
+    schedine,
+    mancanti: profili
+      .filter(d => d.exists)
+      .map(d => ({ userId: d.id, username: (d.data()?.username as string) ?? 'giocatore' })),
+  };
+});
+
 // ---------- 6. LEGHE: contatore leaguesJoined (trigger) ----------
 
 export const onLeagueWritten = onDocumentWritten(
