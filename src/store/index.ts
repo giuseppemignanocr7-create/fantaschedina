@@ -39,6 +39,7 @@ import {
   callableErrorMessage,
 } from '@/lib/gameApi';
 import { MAX_PICKS_PER_SCHEDINA, type PowerUpSelection } from '@/lib/economy';
+import { getLeague } from '@/lib/leagues';
 import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
 import { getCached, setCached, invalidate, invalidatePrefix, CACHE_TTL } from '@/lib/cache';
 
@@ -311,6 +312,19 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       currentSchedina: emptyDraft(currentMatchday?.number ?? 1, currentUser?.id),
       error: null,
     });
+
+    // Una lega con la sua agenzia gioca su quote diverse: vanno mostrate
+    // quelle, altrimenti i punti non tornerebbero con quello che si vede.
+    if (currentMatchday) {
+      try {
+        const lega = leagueId ? await getLeague(leagueId) : null;
+        const quote = await getMatchdayOdds(currentMatchday.number, lega?.bookmaker ?? null);
+        if (quote) set({ matchOdds: quote, lastOddsUpdate: new Date() });
+      } catch (err) {
+        console.warn('[Store] quote del circuito:', err);
+      }
+    }
+
     await get().loadUserSchedina();
   },
 

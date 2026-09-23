@@ -26,6 +26,12 @@ export interface LeagueDoc {
   maxMembers: number;
   memberIds: string[];
   memberCount: number;
+  /** Agenzia scritta da chi ha creato la lega, in attesa che l'admin la assegni. */
+  agenziaRichiesta?: string | null;
+  /** Agenzia assegnata dall'admin: decide il palinsesto delle quote della lega. */
+  bookmaker?: string | null;
+  /** `in_attesa` finche' l'admin non assegna l'agenzia richiesta. */
+  stato?: 'in_attesa' | 'attiva';
   createdAt: Timestamp | null;
 }
 
@@ -42,11 +48,19 @@ export async function createLeague(
   name: string,
   description: string,
   isPrivate: boolean,
-  maxMembers: number
+  maxMembers: number,
+  /** Agenzia per il palinsesto delle quote: vuota = quote standard. */
+  agenziaRichiesta = ''
 ): Promise<void> {
   void ownerId;
   void ownerName;
-  await manageLeagueFn('create', { name, description, isPrivate, maxMembers });
+  await manageLeagueFn('create', {
+    name,
+    description,
+    isPrivate,
+    maxMembers,
+    agenziaRichiesta,
+  });
 }
 
 export async function getUserLeagues(uid: string): Promise<LeagueDoc[]> {

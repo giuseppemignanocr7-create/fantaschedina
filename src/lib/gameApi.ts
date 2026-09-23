@@ -433,6 +433,53 @@ export async function getSchedineLegaFn(
   return res.data;
 }
 
+// --- LEGHE IN ATTESA (solo amministratore) ---
+
+export interface LegaInAttesa {
+  id: string;
+  name: string;
+  ownerName: string;
+  agenziaRichiesta: string;
+  memberCount: number;
+  createdAt: number | null;
+}
+
+export interface LegheInAttesaResponse {
+  agenzieDisponibili: string[];
+  leghe: LegaInAttesa[];
+}
+
+export async function adminLegheInAttesaFn(): Promise<LegheInAttesaResponse> {
+  const fn = httpsCallable<{ action: string }, LegheInAttesaResponse>(functions, 'adminLeghe');
+  const res = await fn({ action: 'elenco' });
+  return res.data;
+}
+
+/** Assegna l'agenzia a una lega in attesa e la fa partire. */
+export async function adminAssegnaAgenziaFn(
+  leagueId: string,
+  bookmaker: string
+): Promise<{ ok: boolean; bookmaker: string | null }> {
+  const fn = httpsCallable<
+    { action: string; leagueId: string; bookmaker: string },
+    { ok: boolean; bookmaker: string | null }
+  >(functions, 'adminLeghe');
+  const res = await fn({ action: 'assegna', leagueId, bookmaker });
+  return res.data;
+}
+
+/** Fa partire la lega sulle quote standard, senza agenzia dedicata. */
+export async function adminRifiutaAgenziaFn(
+  leagueId: string
+): Promise<{ ok: boolean; bookmaker: string | null }> {
+  const fn = httpsCallable<
+    { action: string; leagueId: string },
+    { ok: boolean; bookmaker: string | null }
+  >(functions, 'adminLeghe');
+  const res = await fn({ action: 'rifiuta', leagueId });
+  return res.data;
+}
+
 /** Estrae il messaggio utente da un errore di una callable. */
 export function callableErrorMessage(e: unknown): string {
   const err = e as { message?: string; code?: string };

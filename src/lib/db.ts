@@ -198,6 +198,8 @@ export interface MatchdayDoc {
   deadline: Timestamp;
   matches: SerializedMatch[];
   odds: Record<string, MatchOdds>;
+  /** Quote per agenzia, per le leghe che ne hanno una propria. */
+  oddsPerBookmaker?: Record<string, Record<string, MatchOdds>>;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
   settled: boolean;
@@ -238,10 +240,22 @@ export function subscribeMatchday(
   );
 }
 
-export async function getMatchdayOdds(number: number): Promise<Record<string, MatchOdds> | null> {
+/**
+ * Quote della giornata. Con `bookmaker` si chiedono quelle di quell'agenzia
+ * (le usano le leghe che ne hanno una propria); senza, quelle predefinite del
+ * circuito generale. Se l'agenzia non ha il suo palinsesto si ripiega sulle
+ * predefinite, che sono comunque quelle con cui il server valutera' la
+ * schedina: mostrarne altre sarebbe peggio che mostrare queste.
+ */
+export async function getMatchdayOdds(
+  number: number,
+  bookmaker?: string | null
+): Promise<Record<string, MatchOdds> | null> {
   const snap = await getDoc(doc(db, COL.matchdays, String(number)));
   if (!snap.exists()) return null;
-  return (snap.data() as MatchdayDoc).odds;
+  const dati = snap.data() as MatchdayDoc;
+  if (bookmaker) return dati.oddsPerBookmaker?.[bookmaker] ?? dati.odds;
+  return dati.odds;
 }
 
 /**

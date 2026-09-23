@@ -219,6 +219,23 @@ export function LegaPage() {
           </div>
         </div>
 
+        {lega.stato === 'in_attesa' && (
+          <div className="glass-card p-3 border-yellow-500/40 bg-yellow-500/10">
+            <p className="text-xs font-bold text-yellow-900">
+              ⏳ Lega in attesa di attivazione
+            </p>
+            <p className="text-[11px] text-yellow-900/80 mt-0.5">
+              Hai chiesto le quote di {lega.agenziaRichiesta}. L'amministratore deve collegare
+              il palinsesto: fino ad allora la schedina di questa lega non si può inviare.
+            </p>
+          </div>
+        )}
+        {lega.bookmaker && (
+          <p className="text-[11px] text-slate-500">
+            Quote di questa lega: <span className="font-bold text-slate-700">{lega.bookmaker}</span>
+          </p>
+        )}
+
         {/* Sottomenu della lega */}
         <div className="flex gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
           {[...SEZIONI, ...(sonoIlCreatore ? [SEZIONE_CREATORE] : [])].map(s => (

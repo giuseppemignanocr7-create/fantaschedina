@@ -10,7 +10,13 @@ import { generateMatchOdds, type MatchOdds } from './odds';
 import { fetchJson } from './http';
 
 const API_BASE = 'https://api.odds-api.io/v3';
-const BOOKMAKER = 'Goldbet IT';
+
+/**
+ * Agenzia usata dal circuito generale e da ogni lega che non ne ha chiesta
+ * una propria. Le altre le sceglie l'amministratore fra quelle attive sul
+ * piano (vedi bookmakerDisponibili).
+ */
+export const BOOKMAKER_PREDEFINITO = 'Goldbet IT';
 
 /**
  * Codice campionato interno (COMPETITIONS in config.ts) → slug lega su
@@ -214,17 +220,46 @@ async function fetchLeagueEvents(apiKey: string, leagueSlug: string): Promise<Od
 
 // ---------- Fetch quote per singolo evento ----------
 
-async function fetchEventOdds(apiKey: string, eventId: number): Promise<OddsApiResponse | null> {
-  const url = `${API_BASE}/odds?apiKey=${apiKey}&eventId=${eventId}&bookmakers=${encodeURIComponent(BOOKMAKER)}`;
+async function fetchEventOdds(
+  apiKey: string,
+  eventId: number,
+  bookmakers: string[]
+): Promise<OddsApiResponse | null> {
+  // Le agenzie si chiedono tutte insieme: il fornitore le restituisce in un
+  // unico oggetto, quindi due leghe su due agenzie diverse non costano due
+  // chiamate. Oltre il numero consentito dal piano risponde 403, ed e' il
+  // motivo per cui la lista la decide bookmakerDisponibili.
+  const url = `${API_BASE}/odds?apiKey=${apiKey}&eventId=${eventId}&bookmakers=${encodeURIComponent(bookmakers.join(','))}`;
   return fetchJson<OddsApiResponse>(url, { label: 'odds-api:odds' });
+}
+
+interface BookmakerSelezionati {
+  bookmakers?: string[];
+  count?: number;
+}
+
+/**
+ * Agenzie attive sul piano sottoscritto. Sul piano in uso sono due: sceglierne
+ * altre richiede un piano superiore, quindi l'amministratore deve vedere
+ * quali sono davvero disponibili invece di indovinare.
+ */
+export async function bookmakerDisponibili(apiKey: string): Promise<string[]> {
+  if (!apiKey) return [BOOKMAKER_PREDEFINITO];
+  const res = await fetchJson<BookmakerSelezionati>(
+    `${API_BASE}/bookmakers/selected?apiKey=${apiKey}`,
+    { label: 'odds-api:bookmakers' }
+  );
+  const lista = res?.bookmakers ?? [];
+  return lista.length > 0 ? lista : [BOOKMAKER_PREDEFINITO];
 }
 
 // ---------- Estrazione quote ----------
 
 function extractOddsFromResponse(
-  response: OddsApiResponse
+  response: OddsApiResponse,
+  bookmaker: string
 ): Partial<MatchOdds> | null {
-  const bookData = response.bookmakers?.[BOOKMAKER];
+  const bookData = response.bookmakers?.[bookmaker];
   if (!bookData || !Array.isArray(bookData)) return null;
 
   const result: Partial<MatchOdds> = {};
@@ -268,6 +303,17 @@ function extractOddsFromResponse(
 
 // ---------- API pubblica ----------
 
+/**
+ * Quote di una giornata per ognuna delle agenzie richieste.
+ *
+ * Il risultato e' indicizzato per agenzia: `quote['Goldbet IT'][matchId]`.
+ * Ogni agenzia ha una mappa completa — dove mancano le quote reali (partita
+ * non trovata, mercato assente) resta il motore di calcolo, cosi' nessuna
+ * lega si ritrova con una partita senza quote.
+ *
+ * Restituisce null solo se nessuna agenzia ha prodotto nemmeno una quota
+ * reale: in quel caso chi chiama usa il motore di calcolo per tutti.
+ */
 export async function fetchRealMatchdayOdds(
   matches: {
     id: string;
@@ -275,12 +321,11 @@ export async function fetchRealMatchdayOdds(
     homeTeam: { id: string; name: string };
     awayTeam: { id: string; name: string };
   }[],
-  apiKey: string
-): Promise<Record<string, MatchOdds> | null> {
-  if (!apiKey) return null;
+  apiKey: string,
+  bookmakers: string[] = [BOOKMAKER_PREDEFINITO]
+): Promise<Record<string, Record<string, MatchOdds>> | null> {
+  if (!apiKey || bookmakers.length === 0) return null;
 
-  // Un fetch eventi per ogni campionato coinvolto (solo quelli con uno slug
-  // odds-api.io noto: gli altri restano sul motore algoritmico).
   const slugsNeeded = [...new Set(
     matches.map(m => ODDS_API_LEAGUE_SLUG[m.competition]).filter((s): s is string => !!s)
   )];
@@ -293,51 +338,48 @@ export async function fetchRealMatchdayOdds(
   }));
   if (eventsBySlug.size === 0) return null;
 
-  // Match each game to an API event, then fetch all odds in parallel
-  const matchTasks = matches.map(async (match) => {
+  const risultato: Record<string, Record<string, MatchOdds>> = {};
+  for (const b of bookmakers) risultato[b] = {};
+  let qualcunaReale = false;
+
+  const compiti = matches.map(async match => {
     const slug = ODDS_API_LEAGUE_SLUG[match.competition];
     const events = slug ? eventsBySlug.get(slug) : undefined;
     const event = events?.find(
       e => teamsMatch(e.home, match.homeTeam.name) && teamsMatch(e.away, match.awayTeam.name)
     );
-
     const algo = generateMatchOdds(match.homeTeam.id, match.awayTeam.id);
+    const risposta = event ? await fetchEventOdds(apiKey, event.id, bookmakers) : null;
 
-    if (event) {
-      const oddsResponse = await fetchEventOdds(apiKey, event.id);
-      if (oddsResponse) {
-        const real = extractOddsFromResponse(oddsResponse);
-        if (real && (real.esito || real.over_under || real.goal_nogoal)) {
-          return {
-            id: match.id,
-            odds: {
-              esito: real.esito ?? algo.esito,
-              over_under: real.over_under ?? algo.over_under,
-              goal_nogoal: real.goal_nogoal ?? algo.goal_nogoal,
-              doppia_chance: real.doppia_chance ?? algo.doppia_chance,
-              multigoal: algo.multigoal,
-              esito_1t: algo.esito_1t,
-              over_under_1t: algo.over_under_1t,
-              goal_nogoal_1t: algo.goal_nogoal_1t,
-            } as MatchOdds,
-            isReal: true,
-          };
-        }
+    return bookmakers.map(bookmaker => {
+      const real = risposta ? extractOddsFromResponse(risposta, bookmaker) : null;
+      if (real && (real.esito || real.over_under || real.goal_nogoal)) {
+        return {
+          bookmaker,
+          id: match.id,
+          odds: {
+            esito: real.esito ?? algo.esito,
+            over_under: real.over_under ?? algo.over_under,
+            goal_nogoal: real.goal_nogoal ?? algo.goal_nogoal,
+            doppia_chance: real.doppia_chance ?? algo.doppia_chance,
+            multigoal: algo.multigoal,
+            esito_1t: algo.esito_1t,
+            over_under_1t: algo.over_under_1t,
+            goal_nogoal_1t: algo.goal_nogoal_1t,
+          } as MatchOdds,
+          isReal: true,
+        };
       }
-    }
-
-    return { id: match.id, odds: algo, isReal: false };
+      return { bookmaker, id: match.id, odds: algo, isReal: false };
+    });
   });
 
-  const results = await Promise.all(matchTasks);
-
-  const result: Record<string, MatchOdds> = {};
-  let hasAnyReal = false;
-
-  for (const r of results) {
-    result[r.id] = r.odds;
-    if (r.isReal) hasAnyReal = true;
+  for (const perPartita of await Promise.all(compiti)) {
+    for (const r of perPartita) {
+      risultato[r.bookmaker][r.id] = r.odds;
+      if (r.isReal) qualcunaReale = true;
+    }
   }
 
-  return hasAnyReal ? result : null;
+  return qualcunaReale ? risultato : null;
 }
