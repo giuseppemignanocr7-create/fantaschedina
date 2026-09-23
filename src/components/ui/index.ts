@@ -1,6 +1,5 @@
 export { Toast, ToastContainer, type ToastData, type ToastType } from './Toast';
 export { CountdownTimer } from './CountdownTimer';
-export { WinSimulator } from './WinSimulator';
 export { QuickBet } from './QuickBet';
 export { LiveTracker } from './LiveTracker';
 export { PowerUpSelector } from './PowerUpSelector';
