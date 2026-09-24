@@ -39,6 +39,10 @@ export function LeghePage() {
   // Agenzia per il palinsesto delle quote: la scrive chi crea la lega, poi
   // l'amministratore la assegna. Vuota = quote standard, lega subito attiva.
   const [agenzia, setAgenzia] = useState('');
+  // Il pulsante Crea resta sempre acceso: se manca il nome lo si dice e si
+  // evidenzia il campo, invece di lasciare un pulsante spento senza spiegare
+  // perche' (Giuseppe, 24/09/2026).
+  const [nomeMancante, setNomeMancante] = useState(false);
 
   // Form join
   const [inviteCode, setInviteCode] = useState('');
@@ -129,7 +133,12 @@ export function LeghePage() {
   };
 
   const handleCreate = async () => {
-    if (!nome.trim() || busy) return;
+    if (busy) return;
+    if (!nome.trim()) {
+      setNomeMancante(true);
+      document.getElementById('leagueName')?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -394,11 +403,27 @@ export function LeghePage() {
               <input
                 id="leagueName"
                 value={nome}
-                onChange={e => setNome(e.target.value)}
+                onChange={e => {
+                  setNome(e.target.value);
+                  if (e.target.value.trim()) setNomeMancante(false);
+                }}
                 maxLength={40}
-                placeholder="Amici del Gol"
-                className="w-full bg-surface border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 focus:outline-none"
+                // Il segnaposto era grigio scuro, quasi come un testo vero:
+                // sembrava un nome gia' scritto e il pulsante restava spento.
+                placeholder="Es. Amici del Gol"
+                aria-invalid={nomeMancante}
+                className={cn(
+                  'w-full bg-surface border rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none',
+                  nomeMancante
+                    ? 'border-red-500 ring-2 ring-red-500/30'
+                    : 'border-slate-200 focus:border-primary-500/50'
+                )}
               />
+              {nomeMancante && (
+                <p className="text-[11px] text-red-600 font-bold mt-1">
+                  Scrivi il nome della lega per crearla.
+                </p>
+              )}
             </div>
             <div>
               <label htmlFor="leagueDescription" className="text-[10px] font-bold uppercase tracking-widest text-slate-500 block mb-1.5">
@@ -409,8 +434,8 @@ export function LeghePage() {
                 value={descrizione}
                 onChange={e => setDescrizione(e.target.value)}
                 maxLength={80}
-                placeholder="Sfida tra amici veri!"
-                className="w-full bg-surface border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 focus:outline-none"
+                placeholder="Es. Sfida tra amici veri!"
+                className="w-full bg-surface border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500/50 focus:outline-none"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -465,12 +490,18 @@ export function LeghePage() {
 
             <button
               onClick={handleCreate}
-              disabled={!nome.trim() || busy}
+              disabled={busy}
               className="w-full py-3 rounded-xl bg-primary-500 hover:bg-primary-400 disabled:opacity-40 disabled:cursor-not-allowed text-night font-black text-sm uppercase tracking-wide transition-colors flex items-center justify-center gap-2"
             >
               {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-              Crea lega
+              {agenzia.trim() ? 'Crea e invia la richiesta' : 'Crea lega'}
             </button>
+            {agenzia.trim() && (
+              <p className="text-[10px] text-slate-500 text-center -mt-2">
+                La lega nasce in attesa: la richiesta per {agenzia.trim()} arriva
+                all'amministratore, che la attiva.
+              </p>
+            )}
           </div>
         )}
 
