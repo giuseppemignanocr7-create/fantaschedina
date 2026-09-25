@@ -74,15 +74,15 @@ export function MissioniPage() {
         <div className="grid grid-cols-3 gap-2">
           <div className="glass-card p-3 text-center">
             <p className="text-xl font-black text-primary-700">{completedCount}</p>
-            <p className="text-[9px] text-slate-500 uppercase tracking-wide">Completate</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide">Completate</p>
           </div>
           <div className="glass-card p-3 text-center">
             <p className="text-xl font-black text-slate-900">{claimableCount}</p>
-            <p className="text-[9px] text-slate-500 uppercase tracking-wide">Da riscuotere</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide">Da riscuotere</p>
           </div>
           <div className="glass-card p-3 text-center">
             <p className="text-xl font-black text-yellow-700">{earnedCoins}</p>
-            <p className="text-[9px] text-slate-500 uppercase tracking-wide">🪙 Guadagnati</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide">🪙 Guadagnati</p>
           </div>
         </div>
 
@@ -128,7 +128,7 @@ export function MissioniPage() {
                   <p className="text-xs text-slate-500 mt-0.5">{m.description}</p>
                   {!m.isClaimed && (
                     <div className="mt-2">
-                      <div className="flex justify-between text-[9px] mb-1">
+                      <div className="flex justify-between text-[10px] mb-1">
                         <span className="text-slate-600">Progresso</span>
                         <span className="text-slate-500 font-bold">{m.progress}/{m.target}</span>
                       </div>

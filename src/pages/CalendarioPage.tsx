@@ -84,14 +84,14 @@ export function CalendarioPage() {
                       ) : (
                         <span className="text-xs text-slate-500 font-bold">{formatTime(m.scheduledAt)}</span>
                       )}
-                      <p className="text-[8px] text-slate-600">{formatDateShort(m.scheduledAt)}</p>
+                      <p className="text-[10px] text-slate-600">{formatDateShort(m.scheduledAt)}</p>
                     </div>
                     <span className="font-bold text-sm text-slate-900 flex-1 truncate">
                       {m.awayTeam.shortName || m.awayTeam.name}
                     </span>
                   </div>
                   {isLive && (
-                    <span className="text-[9px] font-black text-live bg-live/15 px-1.5 py-0.5 rounded uppercase animate-pulse">
+                    <span className="text-[10px] font-black text-live bg-live/15 px-1.5 py-0.5 rounded uppercase animate-pulse">
                       Live
                     </span>
                   )}

@@ -200,6 +200,8 @@ export interface MatchdayDoc {
   odds: Record<string, MatchOdds>;
   /** Quote per agenzia, per le leghe che ne hanno una propria. */
   oddsPerBookmaker?: Record<string, Record<string, MatchOdds>>;
+  /** Partite quotate (mercato esito) per agenzia, scritto dal server. */
+  quotateConteggio?: Record<string, number>;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
   settled: boolean;
@@ -240,22 +242,45 @@ export function subscribeMatchday(
   );
 }
 
+/** Agenzia delle quote generali. Specchio di BOOKMAKER_PREDEFINITO in functions/src/realOdds.ts. */
+export const BOOKMAKER_PREDEFINITO = 'Goldbet IT';
+
+export interface MatchdayCircuito {
+  matchday: Matchday;
+  /** Quote con cui si gioca in questo circuito (vuote se non ce ne sono). */
+  odds: Record<string, MatchOdds>;
+  /**
+   * La lega ha un'agenzia propria che non ha ancora pubblicato il palinsesto.
+   * Non si ripiega sulle quote del generale: il server valuta la schedina di
+   * lega con quelle dell'agenzia, quindi mostrarne altre sarebbe un inganno.
+   */
+  agenziaSenzaQuote: boolean;
+}
+
 /**
- * Quote della giornata. Con `bookmaker` si chiedono quelle di quell'agenzia
- * (le usano le leghe che ne hanno una propria); senza, quelle predefinite del
- * circuito generale. Se l'agenzia non ha il suo palinsesto si ripiega sulle
- * predefinite, che sono comunque quelle con cui il server valutera' la
- * schedina: mostrarne altre sarebbe peggio che mostrare queste.
+ * Giornata e quote del circuito in una sola lettura. Con `bookmaker` (la lega
+ * ha un'agenzia assegnata) valgono solo le quote di quell'agenzia; senza,
+ * quelle predefinite del circuito generale.
  */
-export async function getMatchdayOdds(
+export async function getMatchdayCircuito(
   number: number,
-  bookmaker?: string | null
-): Promise<Record<string, MatchOdds> | null> {
+  bookmaker: string | null
+): Promise<MatchdayCircuito | null> {
   const snap = await getDoc(doc(db, COL.matchdays, String(number)));
   if (!snap.exists()) return null;
   const dati = snap.data() as MatchdayDoc;
-  if (bookmaker) return dati.oddsPerBookmaker?.[bookmaker] ?? dati.odds;
-  return dati.odds;
+  const matchday = matchdayDocToMatchday(dati);
+  if (bookmaker) {
+    // L'agenzia predefinita e' quella delle quote generali: per lei `odds` e'
+    // lo stesso palinsesto. Per le altre nessun ripiego.
+    const quote =
+      bookmaker === BOOKMAKER_PREDEFINITO
+        ? dati.oddsPerBookmaker?.[bookmaker] ?? dati.odds
+        : dati.oddsPerBookmaker?.[bookmaker];
+    const vuote = !quote || Object.keys(quote).length === 0;
+    return { matchday, odds: vuote ? {} : quote, agenziaSenzaQuote: vuote };
+  }
+  return { matchday, odds: dati.odds ?? {}, agenziaSenzaQuote: false };
 }
 
 /**

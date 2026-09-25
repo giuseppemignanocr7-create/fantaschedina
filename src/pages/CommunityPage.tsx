@@ -45,15 +45,15 @@ export function CommunityPage() {
         <div className="grid grid-cols-3 gap-2">
           <div className="glass-card p-3 text-center">
             <p className="text-xl font-black text-primary-700">{totalPlayers}</p>
-            <p className="text-[9px] text-slate-500 uppercase tracking-wide">Giocatori</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide">Giocatori</p>
           </div>
           <div className="glass-card p-3 text-center">
             <p className="text-xl font-black text-yellow-700">{perfectCount}</p>
-            <p className="text-[9px] text-slate-500 uppercase tracking-wide">Schedine 10/10</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide">Schedine 10/10</p>
           </div>
           <div className="glass-card p-3 text-center">
             <p className="text-xl font-black text-slate-900">{avgPoints.toFixed(1)}</p>
-            <p className="text-[9px] text-slate-500 uppercase tracking-wide">Media pt/giornata</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide">Media pt/giornata</p>
           </div>
         </div>
 
@@ -86,7 +86,7 @@ export function CommunityPage() {
                     <p className="font-bold text-sm text-slate-900 truncate">
                       {s.username}
                       {s.correctPredictions >= 10 && (
-                        <span className="ml-2 text-[9px] font-black text-yellow-700 bg-yellow-500/10 px-1.5 py-0.5 rounded uppercase">
+                        <span className="ml-2 text-[10px] font-black text-yellow-700 bg-yellow-500/10 px-1.5 py-0.5 rounded uppercase">
                           Perfetta! 🏆
                         </span>
                       )}

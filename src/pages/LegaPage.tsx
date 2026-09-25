@@ -91,6 +91,10 @@ export function LegaPage() {
     };
   }, [sezione, sonoIlCreatore, leagueId]);
 
+  // Si ricarica solo quando cambia la giornata, non a ogni aggiornamento live
+  // del suo documento: prima ogni punteggio in diretta rimetteva la pagina
+  // intera sotto lo spinner.
+  const numeroGiornata = currentMatchday?.number ?? null;
   const carica = useCallback(async () => {
     if (!leagueId || !uid) return;
     setCaricamento(true);
@@ -98,6 +102,7 @@ export function LegaPage() {
     try {
       const doc = await getLeague(leagueId);
       if (!doc) {
+        setLega(null);
         setErrore('Questa lega non esiste, oppure non ne fai parte.');
         return;
       }
@@ -108,8 +113,8 @@ export function LegaPage() {
         getRankingsFn(leagueId)
           .then(r => r.rankings)
           .catch(() => []),
-        currentMatchday
-          ? getUserSchedinaForMatchday(uid, currentMatchday.number, leagueId).catch(() => null)
+        numeroGiornata != null
+          ? getUserSchedinaForMatchday(uid, numeroGiornata, leagueId).catch(() => null)
           : Promise.resolve(null),
       ]);
       setClassifica(righe);
@@ -119,7 +124,7 @@ export function LegaPage() {
     } finally {
       setCaricamento(false);
     }
-  }, [leagueId, uid, currentMatchday]);
+  }, [leagueId, uid, numeroGiornata]);
 
   // Come in LeghePage: il caricamento parte fuori dal ciclo di render, cosi
   // il primo setState non avviene dentro l’effetto.
@@ -170,7 +175,9 @@ export function LegaPage() {
     setTimeout(() => setCodiceCopiato(false), 2000);
   };
 
-  if (caricamento) {
+  // Lo spinner a pagina intera solo la prima volta: i ricaricamenti successivi
+  // lasciano la lega a schermo.
+  if (caricamento && !lega) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 size={24} className="text-primary-700 animate-spin" />
@@ -178,7 +185,7 @@ export function LegaPage() {
     );
   }
 
-  if (errore || !lega) {
+  if (!lega) {
     return (
       <div className="min-h-screen px-4 py-6 max-w-2xl mx-auto">
         <ErrorState message={errore ?? 'Lega non disponibile'} onRetry={() => void carica()} />
@@ -218,6 +225,18 @@ export function LegaPage() {
             </p>
           </div>
         </div>
+
+        {errore && (
+          <div className="glass-card p-3 border-red-500/30 bg-red-500/5 flex flex-wrap items-center justify-between gap-2" role="alert">
+            <p className="text-xs text-red-700">Dati non aggiornati: {errore}</p>
+            <button
+              onClick={() => void carica()}
+              className="min-h-[44px] px-3 rounded-lg border border-red-500/30 text-xs font-bold text-red-700 hover:bg-red-50"
+            >
+              Riprova
+            </button>
+          </div>
+        )}
 
         {lega.stato === 'in_attesa' && (
           <div className="glass-card p-3 border-yellow-500/40 bg-yellow-500/10">
@@ -362,7 +381,7 @@ function SezioneSchedina({
           <p className="text-xs text-slate-500">Giornata {schedina.matchdayNumber}</p>
           <p className="font-bold text-slate-900 text-sm">
             {schedina.settled
-              ? `${schedina.correctPredictions}/10 · ${schedina.finalPoints} punti`
+              ? `${schedina.correctPredictions}/${schedina.predictions?.length || 10} · ${schedina.finalPoints} punti`
               : 'Schedina inviata'}
           </p>
         </div>

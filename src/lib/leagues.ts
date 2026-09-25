@@ -13,7 +13,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { getRankingsFn, manageLeagueFn, type RankingRow } from './gameApi';
+import { manageLeagueFn } from './gameApi';
 
 export interface LeagueDoc {
   id: string;
@@ -33,13 +33,6 @@ export interface LeagueDoc {
   /** `in_attesa` finche' l'admin non assegna l'agenzia richiesta. */
   stato?: 'in_attesa' | 'attiva';
   createdAt: Timestamp | null;
-}
-
-export interface LeagueStanding {
-  rank: number;
-  userId: string;
-  username: string;
-  totalPoints: number;
 }
 
 export async function createLeague(
@@ -107,21 +100,4 @@ export async function leaveLeague(uid: string, leagueId: string): Promise<void> 
 
 export async function deleteLeague(leagueId: string): Promise<void> {
   await manageLeagueFn('delete', { leagueId });
-}
-
-/**
- * Classifica di lega dai punti reali dei membri.
- *
- * Il calcolo è del server (callable `getRankings` con `leagueId`): prima
- * questa funzione scaricava l'intero elenco dei profili del gioco per poi
- * tenerne i pochi della lega.
- */
-export async function getLeagueStandings(league: LeagueDoc): Promise<LeagueStanding[]> {
-  const { rankings } = await getRankingsFn(league.id);
-  return rankings.map((r: RankingRow) => ({
-    rank: r.rank,
-    userId: r.participantId,
-    username: r.username,
-    totalPoints: r.totalPoints,
-  }));
 }

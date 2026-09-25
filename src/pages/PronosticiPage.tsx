@@ -11,11 +11,20 @@ import { useShallow } from 'zustand/react/shallow';
 import { sideCannons, vibrate } from '@/lib/juice';
 import type { BetType, BetOutcome, Prediction, Match } from '@/types';
 import type { MatchOdds } from '@/data/mockData';
-import { CountdownTimer, PowerUpSelector, TeamLogo } from '@/components/ui';
+import { CountdownTimer, PowerUpSelector, TeamLogo, ErrorState, useConferma } from '@/components/ui';
 import { useToast } from '@/contexts/ToastContext';
 import { useSchedinaEditWindow } from '@/hooks';
 import { MAX_PICKS_PER_SCHEDINA, type PowerUpSelection } from '@/lib/economy';
-import { calculateBetPoints, calculateSchedinaScore } from '@/lib/scoring';
+import {
+  BONUS_TUTTI_GIUSTI,
+  BONUS_UNO_SBAGLIATO,
+  MIN_RICHIESTE_BONUS_UNO_SBAGLIATO,
+  costoPowerup,
+  puntiGiocata,
+  puntiPotenziali,
+} from '@/lib/anteprimaPunti';
+import { pickRichieste } from '@/lib/pickRichieste';
+import { QUOTA_MINIMA, quotaGiocabile, quoteAncoraAperte } from '@/lib/markets';
 import { competitionName } from '@/lib/competitions';
 import { getUserLeagues, type LeagueDoc } from '@/lib/leagues';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -87,6 +96,8 @@ type SlipPanelProps = {
   onPowerupsChange: (p: PowerUpSelection) => void;
   /** Power-up allegati alla schedina gia' inviata (riepilogo a schedina chiusa). */
   savedPowerups: PowerUpSelection | undefined;
+  /** Gettoni dei power-up gia' pagati, rimborsati al re-invio di una modifica. */
+  creditoPowerup: number;
   onReset: () => void;
   onSubmit: () => void;
   onEdit: () => void;
@@ -109,6 +120,7 @@ const SlipPanel = memo(function SlipPanel({
   powerups,
   onPowerupsChange,
   savedPowerups,
+  creditoPowerup,
   onReset,
   onSubmit,
   onEdit,
@@ -134,8 +146,13 @@ const SlipPanel = memo(function SlipPanel({
             {completedCount}/{total}
           </span>
           {completedCount > 0 && !isLocked && (
-            <button onClick={onReset} title="Azzera" aria-label="Azzera pronostico" className="text-slate-600 hover:text-red-600 transition-colors p-0.5">
-              <RotateCcw size={11} />
+            <button
+              onClick={onReset}
+              title="Azzera la schedina"
+              aria-label="Azzera tutti i pronostici"
+              className="-my-2 -mr-2 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-600 hover:text-red-600 transition-colors"
+            >
+              <RotateCcw size={14} />
             </button>
           )}
         </div>
@@ -151,7 +168,7 @@ const SlipPanel = memo(function SlipPanel({
               pred ? 'bg-primary-500/5' : 'opacity-40'
             )}>
               <span className={cn(
-                'w-4 h-4 rounded text-[8px] font-black flex items-center justify-center flex-shrink-0',
+                'w-4 h-4 rounded text-[10px] font-black flex items-center justify-center flex-shrink-0',
                 pred ? 'bg-primary-500 text-night' : 'bg-slate-100 text-slate-600'
               )}>{idx + 1}</span>
               <span className="text-[10px] text-slate-500 flex-1 truncate leading-none">
@@ -178,13 +195,16 @@ const SlipPanel = memo(function SlipPanel({
           <span className="text-slate-500 flex items-center gap-1"><TrendingUp size={11} /> Punti potenziali</span>
           <span className="font-black text-primary-700 text-base">{Math.round(totalPotential)} pt</span>
         </div>
-        {isComplete && (
-          <div className="text-[9px] text-slate-600 text-center">
-            Bonus 10/10: <span className="text-green-600 font-bold">+50pt</span> · 9/10: <span className="text-yellow-700 font-bold">+20pt</span>
+        {total > 0 && (
+          <div className="text-[10px] text-slate-600 text-center">
+            Bonus tutti giusti: <span className="text-green-600 font-bold">+{BONUS_TUTTI_GIUSTI} pt</span>
+            {total >= MIN_RICHIESTE_BONUS_UNO_SBAGLIATO && (
+              <> · uno solo sbagliato: <span className="text-yellow-700 font-bold">+{BONUS_UNO_SBAGLIATO} pt</span></>
+            )}
           </div>
         )}
         {completedCount < total && completedCount > 0 && (
-          <div className="text-[9px] text-yellow-700/90 text-center font-bold">
+          <div className="text-[10px] text-yellow-700/90 text-center font-bold">
             Mancano {total - completedCount} pronostic{total - completedCount === 1 ? 'o' : 'i'}
           </div>
         )}
@@ -203,6 +223,7 @@ const SlipPanel = memo(function SlipPanel({
               matches={matches}
               predictions={predictions}
               disabled={isSubmitting}
+              credito={creditoPowerup}
             />
           )}
           <button
@@ -217,7 +238,7 @@ const SlipPanel = memo(function SlipPanel({
           >
             {isSubmitting
               ? <><div className="w-3 h-3 border-2 border-slate-300 border-t-white rounded-full animate-spin" /> Invio...</>
-              : <><Send size={13} /> {isComplete ? 'INVIA SCHEDINA' : `${completedCount}/${total} COMPLETATE`}</>
+              : <><Send size={13} /> {isComplete ? 'INVIA SCHEDINA' : total === 0 ? 'QUOTE NON DISPONIBILI' : `${completedCount}/${total} COMPLETATE`}</>
             }
           </button>
         </div>
@@ -247,25 +268,25 @@ const SlipPanel = memo(function SlipPanel({
               <div className="flex flex-wrap gap-1.5 justify-center pt-1">
                 <button
                   onClick={onEdit}
-                  className="flex items-center justify-center gap-1 py-1.5 px-3 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-800 text-[10px] font-bold hover:bg-primary-500/30 transition-all"
+                  className="min-h-[44px] flex items-center justify-center gap-1 px-3 rounded-lg bg-primary-500/20 border border-primary-500/30 text-primary-800 text-xs font-bold hover:bg-primary-500/30 transition-all"
                 >
-                  <Pencil size={11} />
+                  <Pencil size={12} />
                   Modifica
                 </button>
                 <button
                   onClick={onCancel}
                   disabled={isCancelling}
-                  className="flex items-center justify-center gap-1 py-1.5 px-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-600 text-[10px] font-bold hover:bg-red-500/30 transition-all disabled:opacity-50"
+                  className="min-h-[44px] flex items-center justify-center gap-1 px-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-600 text-xs font-bold hover:bg-red-500/30 transition-all disabled:opacity-50"
                 >
                   {isCancelling ? (
                     <div className="w-2.5 h-2.5 border-2 border-red-300/30 border-t-red-300 rounded-full animate-spin" />
                   ) : (
-                    <Trash2 size={11} />
+                    <Trash2 size={12} />
                   )}
-                  Annulla
+                  Ritira schedina
                 </button>
               </div>
-              <p className="text-[9px] text-slate-600">Disponibile fino a 2 ore dall'inizio della prima partita</p>
+              <p className="text-[10px] text-slate-600">Puoi modificarla o ritirarla fino a 2 ore prima dell'inizio della prima partita</p>
             </>
           ) : (
             <Link to="/classifica" className="text-[10px] text-primary-700 font-bold hover:text-primary-700 flex items-center gap-0.5 justify-center mt-1">
@@ -297,6 +318,10 @@ const MatchCard = memo(function MatchCard({
   isLocked: boolean;
   onSelect: (matchId: string, betType: BetType, outcome: BetOutcome) => void;
 }) {
+  const quoteMercato = odds?.[betType] as Record<string, number> | undefined;
+  const sottoMinimo = betDef.options.some(
+    opt => quoteMercato?.[opt.value] != null && quotaGiocabile(odds, betType, opt.value) == null
+  );
   return (
     <div
       className={cn(
@@ -307,7 +332,7 @@ const MatchCard = memo(function MatchCard({
       <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-1.5">
           <span className={cn(
-            'w-5 h-5 rounded text-[9px] font-black flex items-center justify-center',
+            'w-5 h-5 rounded text-[10px] font-black flex items-center justify-center',
             pred ? 'bg-primary-500 text-night' : 'bg-slate-100 text-slate-500'
           )}>{idx + 1}</span>
           <div>
@@ -319,10 +344,10 @@ const MatchCard = memo(function MatchCard({
               <span>{match.awayTeam.shortName}</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-[8px] font-bold text-accent-700/90 uppercase tracking-wide">
+              <span className="text-[10px] font-bold text-accent-700/90 uppercase tracking-wide">
                 {competitionName(match.competition)}
               </span>
-              <p className="text-[9px] text-slate-600">{formatDate(match.scheduledAt)}</p>
+              <p className="text-[10px] text-slate-600">{formatDate(match.scheduledAt)}</p>
             </div>
           </div>
         </div>
@@ -346,10 +371,10 @@ const MatchCard = memo(function MatchCard({
         betDef.cols === 4 && 'grid-cols-4',
       )}>
         {betDef.options.map((opt) => {
-          const typeOdds = odds?.[betType] as Record<string, number> | undefined;
-          const odd = typeOdds?.[opt.value];
           // Senza quota del bookmaker non si offre la giocata: prima al suo
-          // posto compariva un 2.00 fisso, cioe' un numero inventato.
+          // posto compariva un 2.00 fisso, cioe' un numero inventato. Anche
+          // le quote sotto il minimo restano fuori: il server le rifiuta.
+          const odd = quotaGiocabile(odds, betType, opt.value);
           if (odd == null) return null;
           const isSelected = pred?.outcome === opt.value && pred?.betType === betType;
           return (
@@ -367,15 +392,15 @@ const MatchCard = memo(function MatchCard({
                 isLocked && 'opacity-50 cursor-not-allowed'
               )}
             >
-              <span className={cn('text-[9px] font-bold uppercase mb-0.5',
+              <span className={cn('text-[10px] font-bold uppercase mb-0.5',
                 isSelected ? 'text-slate-600' : 'text-slate-500')}>{opt.label}</span>
               <span className={cn('text-base font-mono font-black',
                 isSelected ? 'text-slate-900' : 'text-accent-700')}>
                 {odd.toFixed(2)}
               </span>
-              <span className={cn('text-[8px] font-bold mt-0.5',
+              <span className={cn('text-[10px] font-bold mt-0.5',
                 isSelected ? 'text-slate-500' : 'text-slate-600')}>
-                {Math.round(odd * 10)}pt
+                {puntiGiocata(odd)}pt
               </span>
               {isSelected && (
                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
@@ -386,6 +411,11 @@ const MatchCard = memo(function MatchCard({
           );
         })}
       </div>
+      {sottoMinimo && (
+        <p className="text-[10px] text-slate-500 mt-1.5 text-center">
+          Le quote sotto {QUOTA_MINIMA.toFixed(2)} non si possono giocare e non sono mostrate.
+        </p>
+      )}
     </div>
   );
 });
@@ -407,7 +437,13 @@ export function PronosticiPage() {
     applyLastMinuteChange,
     selectedPowerups,
     setPowerups,
+    agenziaSenzaQuote,
+    matchdayError,
+    loadMatchday,
   } = useAppStore(useShallow(s => ({
+      agenziaSenzaQuote: s.agenziaSenzaQuote,
+      matchdayError: s.matchdayError,
+      loadMatchday: s.loadMatchday,
       currentMatchday: s.currentMatchday,
       matchOdds: s.matchOdds,
       currentSchedina: s.currentSchedina,
@@ -443,27 +479,59 @@ export function PronosticiPage() {
   // profilo senza il campo `id` faceva sparire il selettore di circuito senza
   // un errore, e la schedina di lega diventava irraggiungibile.
   const [mieLeghe, setMieLeghe] = useState<LeagueDoc[]>([]);
+  const [erroreLeghe, setErroreLeghe] = useState(false);
+  const [tentativoLeghe, setTentativoLeghe] = useState(0);
   const uid = user?.uid ?? null;
   useEffect(() => {
     if (!uid) return;
     let annullato = false;
     getUserLeagues(uid)
       .then(l => {
-        if (!annullato) setMieLeghe(l);
+        if (annullato) return;
+        setMieLeghe(l);
+        setErroreLeghe(false);
       })
-      .catch(e => console.warn('[Pronostici] leghe:', e));
+      .catch(e => {
+        console.warn('[Pronostici] leghe:', e);
+        if (!annullato) setErroreLeghe(true);
+      });
     return () => {
       annullato = true;
     };
-  }, [uid]);
+  }, [uid, tentativoLeghe]);
+
+  const [dialogoConferma, chiediConferma] = useConferma();
 
   // `?lega=<id>` permette a Leghe di aprire direttamente la schedina giusta.
   const [searchParams, setSearchParams] = useSearchParams();
   const legaDaUrl = searchParams.get('lega');
+  const richiestaUrl = legaDaUrl && legaDaUrl.length > 0 ? legaDaUrl : null;
   useEffect(() => {
-    const richiesta = legaDaUrl && legaDaUrl.length > 0 ? legaDaUrl : null;
-    if (richiesta !== currentLeagueId) void setCircuito(richiesta);
-  }, [legaDaUrl, currentLeagueId, setCircuito]);
+    if (richiestaUrl === currentLeagueId) return;
+    let vivo = true;
+    void setCircuito(richiestaUrl).then(async esito => {
+      if (!vivo || esito !== 'bozza') return;
+      // C'e' una schedina non inviata: cambiando classifica andrebbe persa.
+      const ok = await chiediConferma({
+        titolo: 'Cambiare classifica?',
+        messaggio:
+          'La schedina che stai compilando non è stata inviata: cambiando classifica i pronostici scelti andranno persi.',
+        conferma: 'Cambia e scarta',
+        annulla: 'Resta qui',
+        pericolo: true,
+      });
+      if (!vivo) return;
+      if (ok) {
+        void setCircuito(richiestaUrl, { scartaBozza: true });
+      } else {
+        const attuale = useAppStore.getState().currentLeagueId;
+        setSearchParams(attuale ? { lega: attuale } : {}, { replace: true });
+      }
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [richiestaUrl, currentLeagueId, setCircuito, chiediConferma, setSearchParams]);
 
   const cambiaCircuito = (leagueId: string | null) => {
     setSearchParams(leagueId ? { lega: leagueId } : {}, { replace: true });
@@ -524,28 +592,76 @@ export function PronosticiPage() {
   };
 
   const handleCopiaDaGenerale = async () => {
-    const ok = await copiaDaGenerale();
-    if (ok) toast.success('Pronostici copiati dalla schedina generale');
-    else toast.error(useAppStore.getState().error || 'Copia non riuscita');
+    if ((currentSchedina?.predictions?.length ?? 0) > 0) {
+      const ok = await chiediConferma({
+        titolo: 'Sostituire i pronostici?',
+        messaggio: 'I pronostici già scelti per questa lega verranno sostituiti da quelli della schedina generale.',
+        conferma: 'Sostituisci',
+        pericolo: true,
+      });
+      if (!ok) return;
+    }
+    const esito = await copiaDaGenerale();
+    if (!esito) {
+      toast.error(useAppStore.getState().error || 'Copia non riuscita');
+    } else if (esito.scartati > 0) {
+      toast.warning(
+        `Copiati ${esito.copiati} pronostici con le quote della lega. ${esito.scartati} ${
+          esito.scartati === 1 ? 'è rimasto fuori' : 'sono rimasti fuori'
+        }: in questa lega quel mercato non è quotato (o la quota è sotto ${QUOTA_MINIMA.toFixed(2)}).`
+      );
+    } else {
+      toast.success(`Copiati ${esito.copiati} pronostici con le quote della lega`);
+    }
+  };
+
+  const handleReset = async () => {
+    const ok = await chiediConferma({
+      titolo: 'Azzerare la schedina?',
+      messaggio: 'Tutti i pronostici scelti verranno tolti.',
+      conferma: 'Azzera',
+      pericolo: true,
+    });
+    if (ok) resetSchedina();
+  };
+
+  const handleRitira = async () => {
+    const ok = await chiediConferma({
+      titolo: 'Ritirare la schedina?',
+      messaggio:
+        'La schedina non sarà più in gioco per questa giornata e i gettoni dei power-up ti verranno restituiti. Potrai compilarne una nuova fino alla chiusura.',
+      conferma: 'Ritira schedina',
+      annulla: 'Tienila',
+      pericolo: true,
+    });
+    if (!ok) return;
+    await handleCancel();
+    refreshProfile();
   };
 
   const predictions = useMemo(() => currentSchedina?.predictions || [], [currentSchedina?.predictions]);
-  const total = MAX_PICKS_PER_SCHEDINA;
   const completedCount = predictions.length;
-  const isComplete = completedCount === total;
+  // Dieci pronostici, o meno se l'agenzia del circuito ha quotato meno partite
+  // (contando, come il server, solo quelle non ancora iniziate). Una schedina
+  // gia' inviata resta della sua misura anche quando le partite cominciano.
+  const richiesteAperte = pickRichieste(quoteAncoraAperte(currentMatchday?.matches, matchOdds, now));
+  const total = currentSchedina?.isLocked && completedCount > 0 ? completedCount : richiesteAperte;
+  const isComplete = total > 0 && completedCount === total;
 
   const getPrediction = (matchId: string): Prediction | undefined =>
     predictions.find(p => p.matchId === matchId);
 
-  const totalPotential = useMemo(() => {
-    if (predictions.length === 0) return 0;
-    const previewResults = predictions.map(p => ({
-      ...p,
-      isCorrect: true,
-      pointsEarned: calculateBetPoints(p.odds, true),
-    }));
-    return calculateSchedinaScore(previewResults).finalPoints;
-  }, [predictions]);
+  // Punti se va tutto a segno, con i power-up scelti (Jolly, Scudo) e il bonus.
+  const powerupInAnteprima = currentSchedina?.isLocked ? currentSchedina.powerups : selectedPowerups;
+  const totalPotential = useMemo(
+    () => puntiPotenziali(predictions, powerupInAnteprima, total),
+    [predictions, powerupInAnteprima, total]
+  );
+  // Modificando una schedina gia' inviata, i power-up pagati tornano al re-invio.
+  const creditoPowerup =
+    currentSchedina?.submittedAt && !currentSchedina.isLocked
+      ? costoPowerup(currentSchedina.powerups)
+      : 0;
 
   // Mercati davvero quotati in questa giornata, per questo circuito: gli
   // altri non compaiono nemmeno come linguetta.
@@ -589,24 +705,20 @@ export function PronosticiPage() {
     // In modalità Cambio Last-Minute il click non modifica la schedina: propone
     // la sostituzione, che poi va confermata perché costa gettoni.
     if (lastMinuteMode && isMatchOpen(matchId) && predictions.some(p => p.matchId === matchId)) {
-      const mOdds = matchOdds[matchId];
-      const typeOdds = mOdds?.[betType] as Record<string, number> | undefined;
-      const quota = typeOdds?.[outcome];
+      const quota = quotaGiocabile(matchOdds[matchId], betType, outcome);
       if (quota == null) return;
       setPendingChange({ matchId, betType, outcome, odds: quota });
       return;
     }
     if (currentSchedina?.isLocked) return;
     const isNewMatch = !predictions.some(p => p.matchId === matchId);
-    if (isNewMatch && predictions.length >= MAX_PICKS_PER_SCHEDINA) {
-      toast.warning(`Hai già scelto ${MAX_PICKS_PER_SCHEDINA} partite: rimuovine una per cambiarla`);
+    if (isNewMatch && predictions.length >= total) {
+      toast.warning(`Hai già scelto ${total} partite: rimuovine una per cambiarla`);
       return;
     }
-    const mOdds = matchOdds[matchId];
-    const typeOdds = mOdds?.[betType] as Record<string, number> | undefined;
-    const odds = typeOdds?.[outcome];
-    // Il server valida sulle sue quote: una giocata senza quota verrebbe
-    // comunque rifiutata, ed e' giusto non farla nemmeno scegliere.
+    // Il server valida sulle sue quote: una giocata senza quota (o sotto il
+    // minimo) verrebbe comunque rifiutata, ed e' giusto non farla nemmeno scegliere.
+    const odds = quotaGiocabile(matchOdds[matchId], betType, outcome);
     if (odds == null) return;
     vibrate(15);
     updatePrediction(matchId, { matchId, betType, outcome, odds });
@@ -620,6 +732,8 @@ export function PronosticiPage() {
     if (!useAppStore.getState().error) {
       vibrate([50, 30, 80]);
       sideCannons();
+      // Il saldo gettoni cambia se ci sono power-up: va riletto.
+      refreshProfile();
       toast.success('Schedina inviata con successo!');
     } else {
       toast.error(useAppStore.getState().error || 'Errore nell\'invio della schedina');
@@ -638,6 +752,9 @@ export function PronosticiPage() {
           <div className="w-8 h-8 border-2 border-slate-300 border-t-primary-500 rounded-full animate-spin" />
         </div>
       );
+    }
+    if (matchdayError) {
+      return <ErrorState message={matchdayError} onRetry={() => void loadMatchday()} />;
     }
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -661,14 +778,18 @@ export function PronosticiPage() {
     powerups: selectedPowerups,
     onPowerupsChange: setPowerups,
     savedPowerups: currentSchedina?.powerups,
-    onReset: resetSchedina,
+    creditoPowerup,
+    onReset: () => void handleReset(),
     onSubmit: handleSubmit,
     onEdit: handleEdit,
-    onCancel: handleCancel,
+    onCancel: () => void handleRitira(),
   };
+
+  const legaCorrente = mieLeghe.find(l => l.id === currentLeagueId);
 
   return (
     <div className="min-h-screen">
+      {dialogoConferma}
       <div className="max-w-[1080px] mx-auto px-3 py-4">
         <div className="flex gap-4 items-start">
 
@@ -704,6 +825,32 @@ export function PronosticiPage() {
               </div>
             </div>
 
+            {matchdayError && (
+              <div className="glass-card p-3 border-red-500/30 bg-red-500/5 flex flex-wrap items-center justify-between gap-2" role="alert">
+                <p className="text-xs text-red-700">{matchdayError}</p>
+                <button
+                  onClick={() => void loadMatchday()}
+                  className="min-h-[44px] flex items-center gap-1.5 px-3 rounded-lg bg-white border border-red-500/30 text-red-700 text-xs font-bold hover:bg-red-50"
+                >
+                  <RefreshCw size={12} /> Riprova
+                </button>
+              </div>
+            )}
+
+            {erroreLeghe && (
+              <div className="glass-card p-3 flex flex-wrap items-center justify-between gap-2" role="alert">
+                <p className="text-xs text-slate-600">
+                  Non siamo riusciti a caricare le tue leghe: per ora puoi giocare solo la classifica generale.
+                </p>
+                <button
+                  onClick={() => setTentativoLeghe(n => n + 1)}
+                  className="min-h-[44px] flex items-center gap-1.5 px-3 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-200"
+                >
+                  <RefreshCw size={12} /> Riprova
+                </button>
+              </div>
+            )}
+
             {/* Circuito: una schedina per la generale, una per ogni lega */}
             {mieLeghe.length > 0 && (
               <div className="glass-card p-3">
@@ -711,28 +858,43 @@ export function PronosticiPage() {
                   Per quale classifica stai giocando
                 </p>
                 <div className="flex flex-wrap gap-1.5">
-                  {[{ id: null as string | null, nome: 'Generale' },
-                    ...mieLeghe.map(l => ({ id: l.id as string | null, nome: l.name }))].map(circuito => (
+                  {[{ id: null as string | null, nome: 'Generale', inAttesa: false },
+                    ...mieLeghe.map(l => ({
+                      id: l.id as string | null,
+                      nome: l.name,
+                      // Lega in attesa dell'agenzia: non si gioca finche' l'admin non la assegna.
+                      inAttesa: l.stato === 'in_attesa',
+                    }))].map(circuito => (
                     <button
                       key={circuito.id ?? 'generale'}
                       onClick={() => cambiaCircuito(circuito.id)}
+                      disabled={circuito.inAttesa && currentLeagueId !== circuito.id}
+                      title={circuito.inAttesa ? "In attesa che l'admin assegni l'agenzia delle quote" : undefined}
                       className={cn(
-                        'px-3 py-1.5 rounded-lg text-xs font-bold border transition-all',
+                        'min-h-[44px] px-3 rounded-lg text-xs font-bold border transition-all disabled:opacity-50 disabled:cursor-not-allowed',
                         currentLeagueId === circuito.id
                           ? 'bg-primary-500 border-primary-400 text-night'
                           : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-100'
                       )}
                     >
                       {circuito.nome}
+                      {circuito.inAttesa && (
+                        <span className="block text-[10px] font-semibold">in attesa dell'agenzia</span>
+                      )}
                     </button>
                   ))}
                 </div>
+                {legaCorrente?.stato === 'in_attesa' && (
+                  <p className="mt-2 text-[11px] text-yellow-700 font-bold">
+                    Questa lega aspetta che l'admin le assegni l'agenzia delle quote: la schedina non si può ancora giocare.
+                  </p>
+                )}
                 {currentLeagueId && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <button
                       onClick={handleCopiaDaGenerale}
-                      disabled={!!currentSchedina?.isLocked}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold hover:bg-slate-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      disabled={!!currentSchedina?.isLocked || total === 0}
+                      className="min-h-[44px] flex items-center gap-1.5 px-3 rounded-lg bg-slate-100 border border-slate-200 text-slate-500 text-xs font-bold hover:bg-slate-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Copy size={12} />
                       Copia dalla schedina generale
@@ -811,6 +973,33 @@ export function PronosticiPage() {
               </div>
             )}
 
+            {/* Quante partite si possono davvero giocare in questo circuito */}
+            {!isLoadingOdds && agenziaSenzaQuote ? (
+              <div className="glass-card p-3 border-yellow-500/30 bg-yellow-500/5" role="status">
+                <p className="text-xs text-yellow-800 font-bold">
+                  Quote dell'agenzia non ancora disponibili
+                </p>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Questa lega gioca con le quote della sua agenzia, che non le ha ancora pubblicate. Riprova più tardi.
+                </p>
+              </div>
+            ) : !isLoadingOdds && total === 0 ? (
+              <div className="glass-card p-3 border-yellow-500/30 bg-yellow-500/5" role="status">
+                <p className="text-xs text-yellow-800 font-bold">Nessuna partita quotata per ora</p>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Senza quote del bookmaker la schedina non si può giocare. Riprova più tardi.
+                </p>
+              </div>
+            ) : total > 0 && total < MAX_PICKS_PER_SCHEDINA ? (
+              <div className="glass-card p-3 border-accent-500/30 bg-accent-500/5" role="status">
+                <p className="text-[11px] text-slate-700">
+                  Per questa giornata {currentLeagueId ? "l'agenzia della lega ha" : 'il bookmaker ha'} quotato
+                  solo {total} partit{total === 1 ? 'a' : 'e'}: la schedina è di{' '}
+                  <span className="font-bold">{total} pronostic{total === 1 ? 'o' : 'i'}</span> invece di {MAX_PICKS_PER_SCHEDINA}.
+                </p>
+              </div>
+            ) : null}
+
             {/* Progress + Countdown */}
             <div className="glass-card p-3 space-y-2">
               <div className="flex items-center justify-between text-xs">
@@ -823,7 +1012,7 @@ export function PronosticiPage() {
                 <div
                   className={cn('h-full rounded-full transition-all duration-500',
                     isComplete ? 'bg-green-500' : 'bg-gradient-to-r from-primary-600 to-primary-400')}
-                  style={{ width: `${(completedCount / total) * 100}%` }}
+                  style={{ width: `${total > 0 ? Math.min(100, (completedCount / total) * 100) : 0}%` }}
                 />
               </div>
               <div className="flex items-center justify-between">
@@ -891,15 +1080,15 @@ export function PronosticiPage() {
                     onClick={() => setSelectedBetType(bt.key)}
                     className={cn(
                       'flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap',
-                      selectedBetType === bt.key
+                      currentBetDef.key === bt.key
                         ? 'bg-primary-500 text-night'
                         : 'bg-slate-100 text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                     )}
                   >
                     <span className="font-black text-[11px]">{bt.shortLabel}</span>
                     <span className={cn(
-                      'text-[8px] font-normal hidden sm:block',
-                      selectedBetType === bt.key ? 'text-slate-500' : 'text-slate-600'
+                      'text-[10px] font-normal hidden sm:block',
+                      currentBetDef.key === bt.key ? 'text-slate-500' : 'text-slate-600'
                     )}>{bt.label}</span>
                   </button>
                 ))}
@@ -920,7 +1109,7 @@ export function PronosticiPage() {
                 idx={idx}
                 pred={getPrediction(match.id)}
                 odds={matchOdds[match.id]}
-                betType={selectedBetType}
+                betType={currentBetDef.key}
                 betDef={currentBetDef}
                 isLocked={!!currentSchedina?.isLocked && !lastMinuteMode}
                 onSelect={handleSelect}

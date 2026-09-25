@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { useConferma } from '@/components/ui/ConfirmDialog';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { burstConfetti, vibrate } from '@/lib/juice';
 import {
@@ -197,12 +198,25 @@ export function LeghePage() {
     }
   };
 
+  const [dialogoConferma, chiediConferma] = useConferma();
+
   const handleLeave = async (league: LeagueDoc) => {
     if (busy) return;
+    const ok = await chiediConferma({
+      titolo: `Abbandonare "${league.name}"?`,
+      messaggio: 'Uscirai dalla classifica della lega. Per rientrare ti servirà di nuovo il codice invito.',
+      conferma: 'Abbandona lega',
+      annulla: 'Resta',
+      pericolo: true,
+    });
+    if (!ok) return;
     setBusy(true);
+    setError(null);
     try {
       await leaveLeague(uid, league.id);
       await refresh();
+    } catch (e) {
+      setError((e as Error).message || 'Non siamo riusciti a farti uscire dalla lega. Riprova.');
     } finally {
       setBusy(false);
     }
@@ -210,10 +224,21 @@ export function LeghePage() {
 
   const handleDelete = async (league: LeagueDoc) => {
     if (busy) return;
+    const ok = await chiediConferma({
+      titolo: `Eliminare "${league.name}"?`,
+      messaggio: 'La lega sparisce per tutti i membri, con la sua classifica. Non si può annullare.',
+      conferma: 'Elimina lega',
+      annulla: 'Tienila',
+      pericolo: true,
+    });
+    if (!ok) return;
     setBusy(true);
+    setError(null);
     try {
       await deleteLeague(league.id);
       await refresh();
+    } catch (e) {
+      setError((e as Error).message || 'Non siamo riusciti a eliminare la lega. Riprova.');
     } finally {
       setBusy(false);
     }
@@ -221,6 +246,7 @@ export function LeghePage() {
 
   return (
     <div className="min-h-screen">
+      {dialogoConferma}
       <div className="max-w-2xl mx-auto px-3 py-3">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
@@ -317,7 +343,7 @@ export function LeghePage() {
                           <p className="font-black text-slate-900 truncate">
                             {league.name}
                             {isOwner && (
-                              <span className="ml-2 text-[9px] font-bold text-yellow-700 bg-yellow-500/10 px-1.5 py-0.5 rounded uppercase">
+                              <span className="ml-2 text-[10px] font-bold text-yellow-700 bg-yellow-500/10 px-1.5 py-0.5 rounded uppercase">
                                 Owner
                               </span>
                             )}
@@ -345,12 +371,12 @@ export function LeghePage() {
                           <KeyRound size={10} /> {league.inviteCode}
                         </span>
                         {league.stato === 'in_attesa' && (
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-800 normal-case tracking-normal">
+                          <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-800 normal-case tracking-normal">
                             In attesa dell'agenzia {league.agenziaRichiesta}
                           </span>
                         )}
                         {league.bookmaker && (
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-primary-500/15 text-primary-800 normal-case tracking-normal">
+                          <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-primary-500/15 text-primary-800 normal-case tracking-normal">
                             Quote {league.bookmaker}
                           </span>
                         )}
@@ -370,17 +396,17 @@ export function LeghePage() {
                       </button>
                       {isOwner ? (
                         <button
-                          onClick={() => handleDelete(league)}
+                          onClick={() => void handleDelete(league)}
                           disabled={busy}
-                          className="flex items-center gap-1 text-xs text-red-600 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
+                          className="min-h-[44px] flex items-center gap-1 text-xs text-red-600 hover:text-red-600 px-3 rounded-lg hover:bg-red-500/10 transition-all disabled:opacity-50"
                         >
                           <Trash2 size={12} /> Elimina lega
                         </button>
                       ) : (
                         <button
-                          onClick={() => handleLeave(league)}
+                          onClick={() => void handleLeave(league)}
                           disabled={busy}
-                          className="flex items-center gap-1 text-xs text-red-600 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-500/10 transition-all"
+                          className="min-h-[44px] flex items-center gap-1 text-xs text-red-600 hover:text-red-600 px-3 rounded-lg hover:bg-red-500/10 transition-all disabled:opacity-50"
                         >
                           <LogOut size={12} /> Abbandona
                         </button>
@@ -518,8 +544,9 @@ export function LeghePage() {
                   value={inviteCode}
                   onChange={e => setInviteCode(e.target.value.toUpperCase())}
                   maxLength={6}
-                  placeholder="ABC123"
-                  className="flex-1 bg-surface border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono tracking-[0.3em] text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 focus:outline-none uppercase"
+                  placeholder="Es. ABC123"
+                  aria-describedby="leagueInviteCodeHint"
+                  className="flex-1 min-w-0 min-h-[44px] bg-surface border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono tracking-[0.3em] text-slate-900 placeholder:text-slate-400 placeholder:tracking-normal placeholder:font-sans focus:border-primary-500/50 focus:outline-none uppercase"
                 />
                 <button
                   onClick={handleJoinByCode}
@@ -529,6 +556,12 @@ export function LeghePage() {
                   {busy ? <Loader2 size={14} className="animate-spin" /> : 'ENTRA'}
                 </button>
               </div>
+              <p id="leagueInviteCodeHint" className="text-[11px] text-slate-500">
+                Il codice è di 6 caratteri, lettere e numeri: te lo dà chi ha creato la lega.
+                {inviteCode.trim().length > 0 && inviteCode.trim().length < 6 && (
+                  <span className="font-bold text-yellow-700"> Ne mancano {6 - inviteCode.trim().length}.</span>
+                )}
+              </p>
             </div>
 
             {/* Leghe pubbliche */}

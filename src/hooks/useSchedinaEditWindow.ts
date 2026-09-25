@@ -40,9 +40,9 @@ export function useSchedinaEditWindow() {
     await cancelSchedina();
     if (!useAppStore.getState().error) {
       vibrate([40, 20, 40]);
-      toast.success('Schedina annullata con successo. Gettoni power-up rimborsati.');
+      toast.success('Schedina ritirata. I gettoni dei power-up ti sono stati restituiti.');
     } else {
-      toast.error(useAppStore.getState().error || 'Errore nell\'annullamento della schedina');
+      toast.error(useAppStore.getState().error || 'Non siamo riusciti a ritirare la schedina. Riprova.');
     }
   };
 

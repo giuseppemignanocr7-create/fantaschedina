@@ -202,7 +202,7 @@ export function MinigiochiPage() {
               <span className="text-2xl">🛡️</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-slate-900">Scudo</p>
-                <p className="text-[10px] text-slate-500">Annulla le penalità delle quote basse</p>
+                <p className="text-[10px] text-slate-500">Annulla la penalità delle quote tra 1.25 e 1.29</p>
               </div>
               <span className="text-xs font-black text-yellow-700 flex-shrink-0">150🪙</span>
             </Link>
@@ -210,7 +210,7 @@ export function MinigiochiPage() {
               <span className="text-2xl">⭐</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-slate-900">Assicurazione</p>
-                <p className="text-[10px] text-slate-500">Con 8/10 corretti ricevi il bonus del 9/10</p>
+                <p className="text-[10px] text-slate-500">Con due soli pronostici sbagliati prendi comunque il bonus di +5 punti</p>
               </div>
               <span className="text-xs font-black text-yellow-700 flex-shrink-0">120🪙</span>
             </Link>

@@ -199,7 +199,7 @@ export function FantaschedinePage() {
             <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">
               Punti accumulati
             </p>
-            <p className="text-[9px] text-slate-600 mt-0.5">media {totalStats.avgPoints}</p>
+            <p className="text-[10px] text-slate-600 mt-0.5">media {totalStats.avgPoints}</p>
           </div>
           <div className="glass-card p-4 text-center border-t-2 border-green-500">
             <p className="text-3xl font-mono font-bold text-green-600">{totalStats.avgCorrect}</p>
@@ -309,7 +309,7 @@ export function FantaschedinePage() {
                           <span className="text-sm text-slate-500">pt</span>
                         </p>
                         <p className="text-xs text-slate-500">
-                          {schedina.settled ? `${schedina.correctPredictions}/10 corretti` : '—'}
+                          {schedina.settled ? `${schedina.correctPredictions}/${schedina.predictions?.length || 10} corretti` : '—'}
                         </p>
                       </div>
 

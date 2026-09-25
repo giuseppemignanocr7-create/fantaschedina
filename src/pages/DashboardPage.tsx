@@ -8,6 +8,9 @@ import { useShallow } from 'zustand/react/shallow';
 import { cn } from '@/lib/utils';
 import { PushBanner } from '@/components/ui/PushToggle';
 import { teamColor } from '@/lib/teamColors';
+import { pickRichieste } from '@/lib/pickRichieste';
+import { quoteAncoraAperte } from '@/lib/markets';
+import { competitionName } from '@/lib/competitions';
 
 // Le nove icone della home, nell'ordine chiesto dal regolamento di gioco
 // (Giovanni, 01/09/2026): GIOCA al posto di PRONOSTICI, poi leghe, live,
@@ -73,7 +76,8 @@ const featureTiles = [
   },
   {
     to: '/fantaschedine',
-    label: 'LE MIE FANTASCHEDINE',
+    // Trattino morbido: su una tile stretta va a capo come FANTA-SCHEDINE.
+    label: 'LE MIE FANTA­SCHEDINE',
     sub: 'Le schedine giocate',
     emoji: '📋',
     c1: '#3f9de8',
@@ -136,9 +140,24 @@ export function DashboardPage() {
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0]
     ?? currentMatchday?.matches[0];
 
-  const predCount = (currentSchedina?.predictions || []).filter(p => p.betType === 'esito').length;
-  const total = currentMatchday?.matches.length || 10;
-  const nextOdds = nextMatch ? matchOdds[nextMatch.id] : null;
+  // Tutti i pronostici contano, di qualunque mercato: prima si contavano solo
+  // gli 1X2, e il totale era il numero di partite invece dei pronostici richiesti.
+  const predCount = (currentSchedina?.predictions ?? []).length;
+  // Come il server: solo le partite quotate ancora in programma (qui basta lo
+  // stato: la home non tiene un orologio). Una schedina inviata resta della sua misura.
+  const total =
+    currentSchedina?.isLocked && predCount > 0
+      ? predCount
+      : pickRichieste(quoteAncoraAperte(currentMatchday?.matches, matchOdds, 0));
+  const nextEsito = nextMatch ? matchOdds[nextMatch.id]?.esito : undefined;
+  const quoteEsito =
+    nextEsito && (['1', 'X', '2'] as const).every(k => typeof nextEsito[k] === 'number')
+      ? nextEsito
+      : null;
+  // Le giornate possono pescare da piu' campionati: l'intestazione dice quali.
+  const campionati = [...new Set((currentMatchday?.matches ?? []).map(m => m.competition).filter((c): c is string => !!c))];
+  const etichettaCampionati =
+    campionati.length === 1 ? competitionName(campionati[0]).toUpperCase() : campionati.length > 1 ? 'PIÙ CAMPIONATI' : '';
 
   const formatMatchTime = (d: Date) => {
     const now = new Date();
@@ -174,7 +193,7 @@ export function DashboardPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="font-display font-black text-sm text-paper-ink truncate">{currentUser?.username ?? 'Ospite'}</span>
-                {currentUser && <span className="text-[8px] font-black bg-primary-500 text-night px-1.5 py-0.5 rounded uppercase flex-shrink-0">PRO</span>}
+                {currentUser && <span className="text-[10px] font-black bg-primary-500 text-night px-1.5 py-0.5 rounded uppercase flex-shrink-0">PRO</span>}
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black text-primary-700">{userPoints.toFixed(1)} pt</span>
@@ -189,7 +208,7 @@ export function DashboardPage() {
               <p className="text-base font-black text-paper-ink leading-none mb-1.5">#{userRank}</p>
               <Link
                 to="/pronostici"
-                className="inline-flex items-center gap-0.5 border border-paper-line rounded-lg px-2 py-1 text-[9px] font-black text-paper-ink hover:bg-paper transition-colors"
+                className="inline-flex items-center gap-0.5 border border-paper-line rounded-lg px-2 py-1 text-[10px] font-black text-paper-ink hover:bg-paper transition-colors"
               >
                 Pronostici <ChevronRight size={10} />
               </Link>
@@ -201,14 +220,16 @@ export function DashboardPage() {
             <div className="px-3 py-2.5">
               {/* Header row */}
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[9px] font-black text-blue-700 uppercase tracking-[0.2em]">
-                  {currentMatchday ? `GIORNATA ${currentMatchday.number} · SERIE A` : 'PROSSIMO MATCH'}
+                <p className="text-[10px] font-black text-blue-700 uppercase tracking-[0.2em]">
+                  {currentMatchday
+                    ? `GIORNATA ${currentMatchday.number}${etichettaCampionati ? ` · ${etichettaCampionati}` : ''}`
+                    : 'PROSSIMO MATCH'}
                 </p>
                 <button
                   onClick={refreshOdds}
                   disabled={isLoadingOdds}
                   className={cn(
-                    'flex items-center gap-1 text-[9px] font-bold transition-all',
+                    'flex items-center gap-1 text-[10px] font-bold transition-all',
                     isLoadingOdds ? 'text-slate-600' : 'text-paper-muted hover:text-blue-700'
                   )}
                 >
@@ -225,23 +246,25 @@ export function DashboardPage() {
                       <span className="text-slate-600 font-medium not-italic text-[11px]"> vs </span>
                       <span style={{ color: teamColor(nextMatch.awayTeam.id) }}>{nextMatch.awayTeam.shortName}</span>
                     </p>
-                    <div className="flex items-center gap-1 mt-0.5 text-[9px] text-paper-muted whitespace-nowrap">
+                    <div className="flex items-center gap-1 mt-0.5 text-[10px] text-paper-muted whitespace-nowrap">
                       <Clock size={9} className="flex-shrink-0" />
                       <span className="truncate">{formatMatchTime(nextMatch.scheduledAt)}</span>
                     </div>
                   </div>
 
-                  {nextOdds?.esito && (
+                  {quoteEsito ? (
                     <div className="flex items-center gap-1 flex-shrink-0">
                       {(['1','X','2'] as const).map(k => (
                         <div key={k} className="flex flex-col items-center bg-white border border-paper-line rounded-lg px-1.5 py-1 min-w-[31px]">
-                          <span className="text-[7px] text-paper-muted font-bold leading-none">{k}</span>
+                          <span className="text-[10px] text-paper-muted font-bold leading-none">{k}</span>
                           <span className="text-[11px] font-mono font-black text-blue-600 leading-tight">
-                            {nextOdds.esito?.[k]?.toFixed(2) ?? '—'}
+                            {quoteEsito[k].toFixed(2)}
                           </span>
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    <span className="text-[10px] text-paper-muted flex-shrink-0">Quota non disponibile</span>
                   )}
 
                   <Link
@@ -277,10 +300,10 @@ export function DashboardPage() {
         {/* ── Griglia delle nove icone ── */}
         <div className="grid grid-cols-4 gap-2.5">
           {featureTiles.map((tile, ti) => {
-            // La tile è larga ~78px su un telefono da 375px: il corpo del testo
-            // segue la parola più lunga, così nessuna etichetta va a capo a metà.
-            const longestWord = Math.max(...tile.label.split(' ').map(w => w.length));
-            const labelSize = longestWord > 10 ? 'text-[7.5px]' : longestWord > 7 ? 'text-[9px]' : 'text-[10px]';
+            // La tile è larga ~78px su un telefono da 375px. Le etichette non
+            // scendono sotto i 10px (prima arrivavano a 7.5, illeggibili): la
+            // parola lunga va a capo sul trattino morbido, e il sottotitolo
+            // compare solo dove la tile è abbastanza larga da contenerlo.
             return (
               <Link
                 key={tile.to}
@@ -296,10 +319,10 @@ export function DashboardPage() {
                   {tile.emoji}
                 </span>
                 <div className="w-full text-center">
-                  <p className={cn('font-black uppercase leading-[1.1] tracking-tight', labelSize)} style={{ color: tile.ink }}>
+                  <p className="font-black uppercase leading-[1.1] tracking-tight text-[10px]" style={{ color: tile.ink }}>
                     {tile.label}
                   </p>
-                  <p className="text-[7.5px] leading-[1.15] mt-0.5" style={{ color: tile.ink, opacity: 0.82 }}>
+                  <p className="hidden sm:block text-[10px] leading-[1.15] mt-0.5" style={{ color: tile.ink, opacity: 0.82 }}>
                     {tile.sub}
                   </p>
                 </div>
@@ -338,8 +361,8 @@ export function DashboardPage() {
                 <div className="absolute top-0 bottom-0 w-10 bg-white/10 animate-shine" style={{ animationDelay: `${si * 800}ms` }} />
               </div>
               <p className="font-black text-[15px] leading-none text-white" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.25)' }}>{s.name}</p>
-              <p className="text-[9px] text-white/85 mt-1 mb-2.5 leading-snug flex-1">{s.tagline}</p>
-              <span className="self-start text-[9px] font-black uppercase px-3 py-1.5 rounded-lg bg-white/90 text-slate-800">
+              <p className="text-[10px] text-white/85 mt-1 mb-2.5 leading-snug flex-1">{s.tagline}</p>
+              <span className="self-start text-[10px] font-black uppercase px-3 py-1.5 rounded-lg bg-white/90 text-slate-800">
                 {s.cta} →
               </span>
             </Link>
@@ -361,7 +384,7 @@ export function DashboardPage() {
                   <div className="w-11 h-11 rounded-full bg-primary-500/15 border border-primary-500/30 flex items-center justify-center group-hover:bg-primary-500/30 group-hover:border-primary-600 transition-all duration-200">
                     <Icon size={18} className="text-primary-700" strokeWidth={1.9} />
                   </div>
-                  <span className="text-[9px] text-paper-muted group-hover:text-paper-ink text-center whitespace-nowrap transition-colors">{action.label}</span>
+                  <span className="text-[10px] text-paper-muted group-hover:text-paper-ink text-center whitespace-nowrap transition-colors">{action.label}</span>
                 </Link>
               );
             })}

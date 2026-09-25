@@ -80,7 +80,7 @@ export function StatistichePage() {
               ].map(k => (
                 <div key={k.label} className="glass-card p-3 text-center">
                   <p className="text-lg font-black text-primary-700">{k.value}</p>
-                  <p className="text-[9px] text-slate-500 uppercase tracking-wide">{k.label}</p>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wide">{k.label}</p>
                 </div>
               ))}
             </div>
@@ -93,14 +93,14 @@ export function StatistichePage() {
               <div className="flex items-end gap-1.5 h-28">
                 {trend.map((r, i) => (
                   <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-[9px] font-bold text-slate-500">
+                    <span className="text-[10px] font-bold text-slate-500">
                       {r.finalPoints.toFixed(0)}
                     </span>
                     <div
                       className="w-full rounded-t bg-gradient-to-t from-primary-600 to-primary-400 min-h-[4px]"
                       style={{ height: `${(r.finalPoints / trendMax) * 100}%` }}
                     />
-                    <span className="text-[8px] text-slate-600">G{r.matchday}</span>
+                    <span className="text-[10px] text-slate-600">G{r.matchday}</span>
                   </div>
                 ))}
               </div>
@@ -138,11 +138,11 @@ export function StatistichePage() {
             <div className="grid grid-cols-2 gap-2">
               <div className="glass-card p-3 text-center">
                 <p className="text-lg font-black text-green-600">+{totalBonus}</p>
-                <p className="text-[9px] text-slate-500 uppercase tracking-wide">Bonus totali</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wide">Bonus totali</p>
               </div>
               <div className="glass-card p-3 text-center">
                 <p className="text-lg font-black text-red-600">{totalPenalty}</p>
-                <p className="text-[9px] text-slate-500 uppercase tracking-wide">Penalità totali</p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wide">Penalità totali</p>
               </div>
             </div>
           </>

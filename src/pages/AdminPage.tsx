@@ -434,9 +434,9 @@ function MatchdayTab({ onError, onSuccess }: {
             max={38}
             value={settleNumber}
             onChange={e => setSettleNumber(e.target.value)}
-            placeholder="N. giornata"
+            placeholder="Es. 5"
             aria-label="Numero giornata da liquidare"
-            className="flex-1 px-3 py-2 rounded-xl bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 outline-none"
+            className="flex-1 px-3 py-2 rounded-xl bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-primary-500/50 outline-none"
           />
           <button
             onClick={() => handleSettle(false)}
@@ -490,9 +490,9 @@ function MatchdayTab({ onError, onSuccess }: {
             type="text"
             value={resetConferma}
             onChange={e => setResetConferma(e.target.value)}
-            placeholder="AZZERA"
+            placeholder="Scrivi AZZERA"
             aria-label="Conferma azzeramento stagione"
-            className="flex-1 px-3 py-2 rounded-xl bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-red-500/50 outline-none"
+            className="flex-1 px-3 py-2 rounded-xl bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-red-500/50 outline-none"
           />
           <button
             onClick={handleResetStagione}
@@ -696,19 +696,19 @@ function SponsorsTab({ onError, onSuccess }: {
         <div className="glass-card p-4 space-y-3">
           <input
             type="text"
-            placeholder="Nome sponsor"
+            placeholder="Es. Pizzeria da Mario"
             aria-label="Nome sponsor"
             value={form.name}
             onChange={e => setForm({ ...form, name: e.target.value })}
-            className="w-full px-3 py-2 rounded-lg bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 outline-none"
+            className="w-full px-3 py-2 rounded-lg bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-primary-500/50 outline-none"
           />
           <input
             type="text"
-            placeholder="Tagline (opzionale)"
+            placeholder="Es. La pizza dei campioni (facoltativa)"
             aria-label="Tagline sponsor"
             value={form.tagline}
             onChange={e => setForm({ ...form, tagline: e.target.value })}
-            className="w-full px-3 py-2 rounded-lg bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 outline-none"
+            className="w-full px-3 py-2 rounded-lg bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-primary-500/50 outline-none"
           />
           <div className="flex gap-2">
             <input
@@ -720,11 +720,11 @@ function SponsorsTab({ onError, onSuccess }: {
             />
             <input
               type="text"
-              placeholder="URL link (opzionale)"
+              placeholder="Es. https://www.sito.it (facoltativo)"
               aria-label="URL link sponsor"
               value={form.href}
               onChange={e => setForm({ ...form, href: e.target.value })}
-              className="flex-1 px-3 py-2 rounded-lg bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 outline-none"
+              className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-primary-500/50 outline-none"
             />
           </div>
           <button
@@ -926,9 +926,9 @@ function PremiSettimanaliCard({ onError, onSuccess }: {
           max={38}
           value={giornata}
           onChange={e => setGiornata(e.target.value)}
-          placeholder="N. giornata"
+          placeholder="Es. 5"
           aria-label="Giornata dei premi"
-          className="flex-1 px-3 py-2 rounded-xl bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-600 focus:border-primary-500/50 outline-none"
+          className="flex-1 px-3 py-2 rounded-xl bg-surface border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-primary-500/50 outline-none"
         />
         <button
           onClick={carica}

@@ -93,17 +93,17 @@ export function AccountPage() {
           <div className="mt-3 flex gap-4 text-center">
             <div>
               <p className="text-lg font-black text-primary-700">{points.toFixed(1)}</p>
-              <p className="text-[9px] text-slate-500 uppercase">Punti</p>
+              <p className="text-[10px] text-slate-500 uppercase">Punti</p>
             </div>
             <div className="w-px bg-slate-100" />
             <div>
               <p className="text-lg font-black text-slate-900">#{rank}</p>
-              <p className="text-[9px] text-slate-500 uppercase">Posizione</p>
+              <p className="text-[10px] text-slate-500 uppercase">Posizione</p>
             </div>
             <div className="w-px bg-slate-100" />
             <div>
               <p className="text-lg font-black text-yellow-700 flex items-center gap-1 justify-center"><Coins size={14} />{coins}</p>
-              <p className="text-[9px] text-slate-500 uppercase">Gettoni</p>
+              <p className="text-[10px] text-slate-500 uppercase">Gettoni</p>
             </div>
           </div>
         </div>

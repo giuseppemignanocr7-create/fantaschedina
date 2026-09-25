@@ -47,17 +47,17 @@ export function WalletCard() {
         <Link to="/pronostici" className="rounded-xl bg-slate-100 hover:bg-slate-200 p-2 transition-colors">
           <p className="text-base">🃏</p>
           <p className="text-[10px] font-bold text-slate-900 leading-tight">Power-up</p>
-          <p className="text-[9px] text-slate-500">sulla schedina</p>
+          <p className="text-[10px] text-slate-500">sulla schedina</p>
         </Link>
         <Link to="/premi" className="rounded-xl bg-slate-100 hover:bg-slate-200 p-2 transition-colors">
           <p className="text-base">🎟️</p>
           <p className="text-[10px] font-bold text-slate-900 leading-tight">Biglietti</p>
-          <p className="text-[9px] text-slate-500">estrazione premi</p>
+          <p className="text-[10px] text-slate-500">estrazione premi</p>
         </Link>
         <Link to="/minigiochi" className="rounded-xl bg-slate-100 hover:bg-slate-200 p-2 transition-colors">
           <p className="text-base">🎮</p>
           <p className="text-[10px] font-bold text-slate-900 leading-tight">Guadagnali</p>
-          <p className="text-[9px] text-slate-500">sala giochi</p>
+          <p className="text-[10px] text-slate-500">sala giochi</p>
         </Link>
       </div>
 

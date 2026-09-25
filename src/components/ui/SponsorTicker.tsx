@@ -22,15 +22,6 @@ interface SponsorTickerProps {
 // il consumer passa un array di sponsor reali.
 const DEFAULT_SPONSORS: Sponsor[] = [];
 
-// Sponsor demo mostrati SOLO come segnaposto quando non ci sono ancora
-// sponsor reali attivi su Firestore (collezione `sponsors`, gestita da
-// AdminPage). Non linkano da nessuna parte: nessun href, quindi nessun
-// link morto. Da rimuovere quando arrivano i primi sponsor veri.
-const DEMO_SPONSORS: Sponsor[] = [
-  { name: 'GoalZone', tagline: 'Abbigliamento sportivo', accent: '#3b82f6' },
-  { name: 'MaxEnergy', tagline: 'Energy drink ufficiale', accent: '#f59e0b' },
-];
-
 /**
  * Card sponsor: badge colorato con l'iniziale del brand, nome in tinta e
  * claim sotto. `fill` la fa espandere nella griglia statica, altrimenti
@@ -61,7 +52,7 @@ function SponsorCard({ s, fill = false }: { s: Sponsor; fill?: boolean }) {
           {s.name}
         </p>
         {s.tagline && (
-          <p className="text-[7px] text-white/45 uppercase tracking-tight font-semibold truncate">{s.tagline}</p>
+          <p className="text-[10px] text-white/45 uppercase tracking-tight font-semibold truncate">{s.tagline}</p>
         )}
       </div>
       {s.href && <ChevronRight size={12} className="text-white/25 flex-shrink-0" />}
@@ -105,23 +96,30 @@ export function SponsorTicker({ sponsors = DEFAULT_SPONSORS, className }: Sponso
  * su tornano a scorrere, altrimenti non ci starebbero.
  */
 export function SponsorBanner() {
-  const [sponsors, setSponsors] = useState<Sponsor[]>(DEMO_SPONSORS);
+  // Solo sponsor veri, attivi su Firestore (gestiti da AdminPage): senza,
+  // la striscia non compare. Prima c'erano due marchi inventati come segnaposto.
+  const [sponsors, setSponsors] = useState<Sponsor[]>([]);
 
   useEffect(() => {
     const q = query(collection(db, 'sponsors'), where('active', '==', true));
-    const unsub = onSnapshot(q, snap => {
-      const list: Sponsor[] = snap.docs.map(d => {
-        const data = d.data();
-        return {
-          name: data.name as string,
-          tagline: data.tagline as string | undefined,
-          accent: data.accent as string | undefined,
-          href: data.href as string | undefined,
-        };
-      });
-      // Finché non ci sono sponsor reali attivi, resta il placeholder demo.
-      setSponsors(list.length > 0 ? list : DEMO_SPONSORS);
-    });
+    const unsub = onSnapshot(
+      q,
+      snap => {
+        const list: Sponsor[] = snap.docs
+          .map(d => {
+            const data = d.data();
+            return {
+              name: data.name as string,
+              tagline: data.tagline as string | undefined,
+              accent: data.accent as string | undefined,
+              href: data.href as string | undefined,
+            };
+          })
+          .filter(s => typeof s.name === 'string' && s.name.trim().length > 0);
+        setSponsors(list);
+      },
+      err => console.warn('[SponsorBanner] sponsor:', err)
+    );
     return () => unsub();
   }, []);
 
