@@ -95,6 +95,30 @@ export async function joinLeagueByCode(
   await manageLeagueFn('joinByCode', { inviteCode });
 }
 
+/**
+ * Chi crea una lega vede le schedine dei membri appena inviate (callable
+ * getSchedineLega, funzione voluta): chi entra deve saperlo prima.
+ */
+export const AVVISO_GIOCATE_VISIBILI = 'Il creatore della lega vedrà le tue giocate appena le invii.';
+
+/** Cio' che chi apre un link d'invito vede prima di decidere se entrare. */
+export interface AnteprimaInvito {
+  leagueId: string;
+  name: string;
+  ownerName: string;
+  memberCount: number;
+  maxMembers: number;
+  giaMembro: boolean;
+}
+
+/**
+ * Dati essenziali della lega di un codice invito. Le regole non lasciano
+ * leggere una lega privata a chi non ne fa parte: li fornisce il server.
+ */
+export async function anteprimaInvito(inviteCode: string): Promise<AnteprimaInvito> {
+  return manageLeagueFn<AnteprimaInvito>('anteprimaInvito', { inviteCode });
+}
+
 export async function joinLeague(uid: string, leagueId: string): Promise<void> {
   void uid;
   await manageLeagueFn('joinPublic', { leagueId });

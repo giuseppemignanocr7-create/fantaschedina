@@ -30,6 +30,7 @@ import {
   getFirestore,
   Timestamp,
   DocumentReference,
+  FieldPath,
   FieldValue,
   Transaction,
 } from 'firebase-admin/firestore';
@@ -2751,6 +2752,9 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
 export const getRankings = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  // La classifica generale legge tutti i profili: senza un tetto una raffica
+  // di chiamate diventa una raffica di letture pagate.
+  await enforceRateLimit(uid, 'getRankings', 30, 60_000);
 
   const leagueId = request.data?.leagueId as string | undefined;
   if (leagueId) {
@@ -2836,7 +2840,9 @@ export const getPublicProfiles = onCall(callableOpts, async request => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   }
-  const pageSize = Math.min(100, Math.max(10, Number(request.data?.pageSize ?? 100)));
+  // Tetto largo: il client scorre tutte le pagine (100 profili l'una) in fila.
+  await enforceRateLimit(request.auth.uid, 'getPublicProfiles', 100, 60_000);
+  const pageSize =Math.min(100, Math.max(10, Number(request.data?.pageSize ?? 100)));
   const cursor = request.data?.cursor as string | undefined;
 
   let query = db.collection('profiles').orderBy('totalPoints', 'desc').limit(pageSize);
@@ -3051,6 +3057,42 @@ async function rimborsaBiglietti(matchday: number): Promise<void> {
   logger.info(`Giornata ${matchday}: estrazione annullata, ${tickets.size} biglietti rimborsati`);
 }
 
+/** Leghe con agenzia richiesta che uno stesso creatore puo' avere ferme insieme. */
+const MAX_LEGHE_IN_ATTESA = 3;
+
+/** Esito di un ingresso in lega: ripetere la richiesta non e' un errore. */
+async function entraInLega(
+  ref: DocumentReference,
+  uid: string,
+  opts: { soloPubblica: boolean }
+): Promise<{ giaMembro: boolean }> {
+  return db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError('not-found', 'Lega non trovata');
+    const league = snap.data() as {
+      isPrivate?: boolean;
+      memberIds?: string[];
+      maxMembers?: number;
+    };
+    const members = Array.isArray(league.memberIds) ? league.memberIds : [];
+    // Idempotente: un doppio tocco sul link, o la rete che ripete la
+    // chiamata, trova l'utente gia' dentro e non deve dare errore.
+    if (members.includes(uid)) return { giaMembro: true };
+    if (opts.soloPubblica && league.isPrivate) {
+      throw new HttpsError('permission-denied', 'Lega privata');
+    }
+    if (members.length >= Number(league.maxMembers ?? 0)) {
+      throw new HttpsError('resource-exhausted', 'Lega al completo');
+    }
+    tx.update(ref, {
+      memberIds: [...members, uid],
+      memberCount: members.length + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return { giaMembro: false };
+  });
+}
+
 export const manageLeague = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
@@ -3077,8 +3119,28 @@ export const manageLeague = onCall(callableOpts, async request => {
     if (!Number.isInteger(requestedMax) || requestedMax < 2 || requestedMax > 100) {
       throw new HttpsError('invalid-argument', 'Numero massimo partecipanti non valido');
     }
+    // Creare leghe e' raro: un tetto proprio, oltre a quello generico della
+    // callable, evita che uno script riempia la collezione.
+    await enforceRateLimit(uid, 'manageLeague_create', 5, 3_600_000);
     const profile = await db.collection('profiles').doc(uid).get();
     if (!profile.exists) throw new HttpsError('not-found', 'Profilo non trovato');
+
+    // Ogni richiesta di agenzia finisce sul tavolo dell'amministratore: non
+    // piu' di MAX_LEGHE_IN_ATTESA ferme alla volta per lo stesso creatore.
+    if (agenziaRichiesta) {
+      const inAttesa = await db
+        .collection('leagues')
+        .where('ownerId', '==', uid)
+        .where('stato', '==', 'in_attesa')
+        .limit(MAX_LEGHE_IN_ATTESA)
+        .get();
+      if (inAttesa.size >= MAX_LEGHE_IN_ATTESA) {
+        throw new HttpsError(
+          'resource-exhausted',
+          `Hai gia' ${MAX_LEGHE_IN_ATTESA} leghe in attesa dell'agenzia: aspetta che vengano attivate`
+        );
+      }
+    }
 
     let inviteCode = '';
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -3109,6 +3171,9 @@ export const manageLeague = onCall(callableOpts, async request => {
       agenziaRichiesta: agenziaRichiesta || null,
       bookmaker: null,
       stato: agenziaRichiesta ? 'in_attesa' : 'attiva',
+      // Una sola notifica all'amministratore per lega: il campo fa da
+      // prenotazione, cosi' nessun altro percorso la rimanda.
+      adminNotificatoAt: agenziaRichiesta ? FieldValue.serverTimestamp() : null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -3125,6 +3190,7 @@ export const manageLeague = onCall(callableOpts, async request => {
             title: '🏆 Nuova lega da attivare',
             body: `${profile.data()?.username ?? 'Un utente'} ha creato "${name}" e chiede il palinsesto ${agenziaRichiesta}.`,
             path: '/admin',
+            tag: `lega-attesa-${ref.id}`,
           },
           'social'
         ).catch(err => logger.warn('notifica lega in attesa non inviata', err));
@@ -3133,7 +3199,7 @@ export const manageLeague = onCall(callableOpts, async request => {
     return { ok: true, leagueId: ref.id, stato: agenziaRichiesta ? 'in_attesa' : 'attiva' };
   }
 
-  if (action === 'joinByCode') {
+  if (action === 'joinByCode' || action === 'anteprimaInvito') {
     const inviteCode =
       typeof request.data?.inviteCode === 'string'
         ? request.data.inviteCode.trim().toUpperCase()
@@ -3148,24 +3214,32 @@ export const manageLeague = onCall(callableOpts, async request => {
       .get();
     if (found.empty) throw new HttpsError('not-found', 'Codice invito non valido');
     const ref = found.docs[0].ref;
-    await db.runTransaction(async tx => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new HttpsError('not-found', 'Lega non trovata');
-      const league = snap.data() as { memberIds?: string[]; maxMembers?: number };
-      const members = Array.isArray(league.memberIds) ? league.memberIds : [];
-      if (members.includes(uid)) {
-        throw new HttpsError('failed-precondition', 'Sei già membro di questa lega');
-      }
-      if (members.length >= Number(league.maxMembers ?? 0)) {
-        throw new HttpsError('resource-exhausted', 'Lega al completo');
-      }
-      tx.update(ref, {
-        memberIds: [...members, uid],
-        memberCount: members.length + 1,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    });
-    return { ok: true, leagueId: ref.id };
+
+    if (action === 'anteprimaInvito') {
+      // Chi apre un link d'invito vede dove sta entrando prima di entrare:
+      // una lega privata non e' leggibile dalle regole finche' non se ne fa
+      // parte, quindi i pochi dati da mostrare li da' il server.
+      const lega = found.docs[0].data() as {
+        name?: string;
+        ownerName?: string;
+        memberIds?: string[];
+        memberCount?: number;
+        maxMembers?: number;
+      };
+      const membri = Array.isArray(lega.memberIds) ? lega.memberIds : [];
+      return {
+        ok: true,
+        leagueId: ref.id,
+        name: lega.name ?? '',
+        ownerName: lega.ownerName ?? '',
+        memberCount: Number(lega.memberCount ?? membri.length),
+        maxMembers: Number(lega.maxMembers ?? 0),
+        giaMembro: membri.includes(uid),
+      };
+    }
+
+    const { giaMembro } = await entraInLega(ref, uid, { soloPubblica: false });
+    return { ok: true, leagueId: ref.id, giaMembro };
   }
 
   const leagueId = typeof request.data?.leagueId === 'string' ? request.data.leagueId : '';
@@ -3175,29 +3249,8 @@ export const manageLeague = onCall(callableOpts, async request => {
   const ref = db.collection('leagues').doc(leagueId);
 
   if (action === 'joinPublic') {
-    await db.runTransaction(async tx => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new HttpsError('not-found', 'Lega non trovata');
-      const league = snap.data() as {
-        isPrivate?: boolean;
-        memberIds?: string[];
-        maxMembers?: number;
-      };
-      if (league.isPrivate) throw new HttpsError('permission-denied', 'Lega privata');
-      const members = Array.isArray(league.memberIds) ? league.memberIds : [];
-      if (members.includes(uid)) {
-        throw new HttpsError('failed-precondition', 'Sei già membro di questa lega');
-      }
-      if (members.length >= Number(league.maxMembers ?? 0)) {
-        throw new HttpsError('resource-exhausted', 'Lega al completo');
-      }
-      tx.update(ref, {
-        memberIds: [...members, uid],
-        memberCount: members.length + 1,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    });
-    return { ok: true, leagueId };
+    const { giaMembro } = await entraInLega(ref, uid, { soloPubblica: true });
+    return { ok: true, leagueId, giaMembro };
   }
 
   if (action === 'leave') {
@@ -3430,11 +3483,23 @@ export const onLeagueWritten = onDocumentWritten(
     const before = (event.data?.before?.data()?.memberIds ?? []) as string[];
     const after = (event.data?.after?.data()?.memberIds ?? []) as string[];
     const added = after.filter(uid => !before.includes(uid));
+    const leagueId = event.params.leagueId;
+    // Il contatore conta leghe distinte: uscire e rientrare nella stessa lega,
+    // o un trigger consegnato due volte, non devono farlo salire ancora.
+    // `leaguesJoinedIds` tiene traccia di quelle gia' contate.
     for (const uid of added) {
+      const profileRef = db.collection('profiles').doc(uid);
       await db
-        .collection('profiles')
-        .doc(uid)
-        .set({ leaguesJoined: FieldValue.increment(1) }, { merge: true })
+        .runTransaction(async tx => {
+          const snap = await tx.get(profileRef);
+          if (!snap.exists) return;
+          const contate = (snap.data()?.leaguesJoinedIds ?? []) as string[];
+          if (contate.includes(leagueId)) return;
+          tx.update(profileRef, {
+            leaguesJoinedIds: FieldValue.arrayUnion(leagueId),
+            leaguesJoined: FieldValue.increment(1),
+          });
+        })
         .catch(err => logger.warn(`leaguesJoined update failed for ${uid}`, err));
     }
   }
@@ -3522,8 +3587,10 @@ export const exportMyData = onCall(callableOpts, async request => {
  * infine l'utenza di autenticazione.
  *
  * Scelte deliberate:
- * - le leghe di cui l'utente è proprietario vengono eliminate: senza owner
- *   resterebbero orfane e non più amministrabili;
+ * - le leghe di cui l'utente è proprietario passano al membro entrato per
+ *   primo fra quelli rimasti: cancellarle toglierebbe la lega (e la sua
+ *   classifica) a tutti gli altri. Se non resta nessuno, la lega si cancella
+ *   con la sua classifica;
  * - i duelli vengono cancellati integralmente perché contengono lo username
  *   di entrambi i giocatori;
  * - l'utenza Auth è rimossa per ultima: se qualcosa fallisce prima, l'utente
@@ -3550,32 +3617,143 @@ export const deleteAccount = onCall(callableOpts, async request => {
     return docs.length;
   };
 
-  const [schedineSnap, walletSnap, duelsP1, duelsP2, ownedLeagues, memberLeagues] =
-    await Promise.all([
-      db.collection('schedine').where('userId', '==', uid).get(),
-      db.collection('wallet_transactions').where('userId', '==', uid).get(),
-      db.collection('penalty_duels').where('p1.uid', '==', uid).get(),
-      db.collection('penalty_duels').where('p2.uid', '==', uid).get(),
-      db.collection('leagues').where('ownerId', '==', uid).get(),
-      db.collection('leagues').where('memberIds', 'array-contains', uid).get(),
-    ]);
+  const [
+    schedineSnap, archivioSnap, walletSnap, duelsP1, duelsP2, ownedLeagues, memberLeagues,
+    pushSnap, ticketsSnap, rateSnap, usernamesSnap, cooldownSnap, profileSnap,
+  ] = await Promise.all([
+    db.collection('schedine').where('userId', '==', uid).get(),
+    db.collection('schedine_archivio').where('userId', '==', uid).get(),
+    db.collection('wallet_transactions').where('userId', '==', uid).get(),
+    db.collection('penalty_duels').where('p1.uid', '==', uid).get(),
+    db.collection('penalty_duels').where('p2.uid', '==', uid).get(),
+    db.collection('leagues').where('ownerId', '==', uid).get(),
+    db.collection('leagues').where('memberIds', 'array-contains', uid).get(),
+    db.collection('push_tokens').where('uid', '==', uid).get(),
+    db.collection('raffle_tickets').where('uid', '==', uid).get(),
+    // Gli id dei limiti sono `${uid}_${azione}`: si prendono per prefisso.
+    db
+      .collection('rate_limits')
+      .where(FieldPath.documentId(), '>=', `${uid}_`)
+      .where(FieldPath.documentId(), '<', `${uid}_`)
+      .get(),
+    db.collection('usernames').where('uid', '==', uid).get(),
+    // Le sfide sono per coppia (`uidA_uidB`, ordinati) e non hanno un campo
+    // con l'uid: si scorrono i soli id.
+    db.collection('sfide_cooldowns').select().get(),
+    db.collection('profiles').doc(uid).get(),
+  ]);
+  const cooldownMiei = cooldownSnap.docs.filter(
+    d => d.id.startsWith(`${uid}_`) || d.id.endsWith(`_${uid}`)
+  );
+
+  // Riga di classifica in ogni lega toccata: quelle di cui fa parte, quelle
+  // gia' lasciate (leaguesJoinedIds) e, se l'indice c'e', tutte le altre.
+  const standingRefs = new Map<string, DocumentReference>();
+  const legheToccate = new Set<string>([
+    ...memberLeagues.docs.map(d => d.id),
+    ...ownedLeagues.docs.map(d => d.id),
+    ...((profileSnap.data()?.leaguesJoinedIds ?? []) as string[]),
+  ]);
+  for (const id of legheToccate) {
+    const ref = db.collection('leagues').doc(id).collection('standings').doc(uid);
+    standingRefs.set(ref.path, ref);
+  }
+  try {
+    const altre = await db.collectionGroup('standings').where('userId', '==', uid).get();
+    for (const d of altre.docs) standingRefs.set(d.ref.path, d.ref);
+  } catch (err) {
+    logger.warn('deleteAccount: ricerca standings per collection group non riuscita', err);
+  }
+
+  const deleteRefs = async (refs: DocumentReference[]): Promise<number> => {
+    for (let i = 0; i < refs.length; i += 400) {
+      const batch = db.batch();
+      for (const r of refs.slice(i, i + 400)) batch.delete(r);
+      await batch.commit();
+    }
+    return refs.length;
+  };
 
   const removed = {
     schedine: await deleteAll(schedineSnap.docs),
+    schedineArchivio: await deleteAll(archivioSnap.docs),
     walletTransactions: await deleteAll(walletSnap.docs),
     penaltyDuels: await deleteAll([...duelsP1.docs, ...duelsP2.docs]),
-    ownedLeagues: await deleteAll(ownedLeagues.docs),
+    pushTokens: await deleteAll(pushSnap.docs),
+    raffleTickets: await deleteAll(ticketsSnap.docs),
+    sfideCooldowns: await deleteAll(cooldownMiei),
+    usernames: await deleteAll(usernamesSnap.docs),
+    standings: await deleteRefs([...standingRefs.values()]),
+    quiz: await deleteRefs([
+      db.collection('quiz_sessions').doc(uid),
+      db.collection('quiz_seen').doc(uid),
+      db.collection('minigame_sessions').doc(`${uid}_memoria`),
+      db.collection('minigame_sessions').doc(`${uid}_rigori`),
+    ]),
+    leagueTransferred: 0,
+    leagueDeleted: 0,
+    leagueLeft: 0,
   };
 
-  // Uscita dalle leghe altrui: si rimuove il membro, la lega resta agli altri.
-  const ownedIds = new Set(ownedLeagues.docs.map(d => d.id));
-  for (const league of memberLeagues.docs) {
-    if (ownedIds.has(league.id)) continue;
-    await league.ref.update({
-      memberIds: FieldValue.arrayRemove(uid),
-      memberCount: FieldValue.increment(-1),
+  // Casella notifiche: il documento e la sottocollezione `items`.
+  await db.recursiveDelete(db.collection('notifications').doc(uid));
+
+  // Leghe: da quelle altrui si esce; quelle proprie passano al membro entrato
+  // per primo, o spariscono se non resta nessuno.
+  const leghe = new Map<string, DocumentReference>();
+  for (const d of [...ownedLeagues.docs, ...memberLeagues.docs]) leghe.set(d.id, d.ref);
+  for (const ref of leghe.values()) {
+    const esito = await db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return 'assente' as const;
+      const lega = snap.data() as { ownerId?: string; memberIds?: string[] };
+      const rimasti = (Array.isArray(lega.memberIds) ? lega.memberIds : []).filter(m => m !== uid);
+      if (lega.ownerId !== uid) {
+        tx.update(ref, {
+          memberIds: rimasti,
+          memberCount: rimasti.length,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        return 'uscito' as const;
+      }
+      if (rimasti.length === 0) return 'da_cancellare' as const;
+      const erede = rimasti[0];
+      const eredeSnap = await tx.get(db.collection('profiles').doc(erede));
+      tx.update(ref, {
+        ownerId: erede,
+        ownerName: (eredeSnap.data()?.username as string) ?? 'player',
+        memberIds: rimasti,
+        memberCount: rimasti.length,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return 'ceduta' as const;
     });
+    if (esito === 'uscito') removed.leagueLeft += 1;
+    if (esito === 'ceduta') {
+      removed.leagueTransferred += 1;
+      const dopo = (await ref.get()).data();
+      const erede = dopo?.ownerId as string | undefined;
+      if (erede) {
+        await notifica(
+          [erede],
+          {
+            title: '👑 Ora la lega è tua',
+            body: `Chi aveva creato "${(dopo?.name as string) ?? 'la lega'}" ha chiuso l'account: la gestisci tu.`,
+            path: `/leghe/${ref.id}`,
+          },
+          'social'
+        ).catch(() => undefined);
+      }
+    }
+    if (esito === 'da_cancellare') {
+      await db.recursiveDelete(ref);
+      removed.leagueDeleted += 1;
+    }
   }
+
+  // Per ultimi i limiti di frequenza: fino a qui proteggono anche questa
+  // stessa chiamata da ripetizioni a raffica.
+  await deleteAll(rateSnap.docs);
 
   await db.collection('profiles').doc(uid).delete();
 
