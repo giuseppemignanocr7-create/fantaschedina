@@ -3,11 +3,12 @@
 // Fetch quote reali da bookmaker.
 // Free tier: max 2 bookmaker, 5000 req/hour.
 // Mercati coperti: ML (1X2), Totals (O/U), BTTS (GG/NG).
-// Mercati non coperti → fallback al engine algoritmico.
+// Mercati non coperti → non si giocano (nessuna quota calcolata).
 // ============================================
 
 import type { MatchOdds } from './odds';
 import { fetchJson } from './http';
+import { ODDS_API_LEAGUE_SLUG } from './palinsesto';
 
 const API_BASE = 'https://api.odds-api.io/v3';
 
@@ -18,26 +19,12 @@ const API_BASE = 'https://api.odds-api.io/v3';
  */
 export const BOOKMAKER_PREDEFINITO = 'Goldbet IT';
 
-/**
- * Codice campionato interno (COMPETITIONS in config.ts) → slug lega su
- * odds-api.io. uefa.champions/uefa.europa non hanno ancora uno slug stabile
- * fuori stagione (solo turni di qualificazione con nomi variabili): quando
- * riparte la fase a gironi va aggiunto qui.
- */
-const ODDS_API_LEAGUE_SLUG: Record<string, string> = {
-  'ita.1': 'italy-serie-a',
-  'eng.1': 'england-premier-league',
-  'esp.1': 'spain-laliga',
-  'ger.1': 'germany-bundesliga',
-  'fra.1': 'france-ligue-1',
-  'ita.coppa_italia': 'italy-coppa-italia',
-  'bra.1': 'brazil-brasileiro-serie-a',
-  'usa.1': 'usa-mls',
-};
+// Codice campionato → slug del fornitore: vedi ODDS_API_LEAGUE_SLUG in
+// palinsesto.ts (serve anche all'attivazione dei campionati).
 
 // ---------- Tipi risposta API ----------
 
-interface OddsApiEvent {
+export interface OddsApiEvent {
   id: number;
   home: string;
   away: string;
@@ -93,15 +80,17 @@ const TEAM_CANONICAL: Record<string, string> = {
   'genoa': 'genoa', 'genoa cfc': 'genoa', 'genoa cricket': 'genoa',
   'cagliari': 'cagliari', 'cagliari calcio': 'cagliari',
   'verona': 'verona', 'hellas verona': 'verona', 'hellas': 'verona',
+  'hellas verona fc': 'verona', 'verona fc': 'verona',
   'parma': 'parma', 'parma calcio': 'parma',
   'como': 'como', 'como 1907': 'como', 'como calcio': 'como',
   'monza': 'monza', 'ac monza': 'monza',
   'venezia': 'venezia', 'venezia fc': 'venezia',
   'lecce': 'lecce', 'us lecce': 'lecce',
   'sassuolo': 'sassuolo', 'sas': 'sassuolo',
-  'cremonese': 'cremonese', 'cre': 'cremonese',
+  'cremonese': 'cremonese', 'cre': 'cremonese', 'us cremonese': 'cremonese',
   'salernitana': 'salernitana', 'sal': 'salernitana',
-  'pisa': 'pisa', 'pis': 'pisa',
+  'pisa': 'pisa', 'pis': 'pisa', 'ac pisa': 'pisa', 'ac pisa 1909': 'pisa',
+  'pisa sc': 'pisa', 'sc pisa': 'pisa', 'pisa sporting club': 'pisa',
   'frosinone': 'frosinone', 'frosinone calcio': 'frosinone',
   'pescara': 'pescara',
   'brescia': 'brescia',
@@ -188,6 +177,14 @@ const FORNITORE_SERIE_A: Record<string, string> = {
   'us lecce': 'lecce',
   'udinese calcio': 'udinese',
   'venezia fc': 'venezia',
+  // Neopromosse 2025/26: i nomi del fornitore non erano in elenco e le loro
+  // partite restavano senza evento abbinato. Si coprono le forme con e senza
+  // sigla societaria, cosi' un cambio di dicitura non le fa sparire.
+  'ac pisa 1909': 'pisa',
+  'pisa sc': 'pisa',
+  'us cremonese': 'cremonese',
+  'hellas verona': 'verona',
+  'hellas verona fc': 'verona',
 };
 
 export function canonicalName(name: string): string {
@@ -197,12 +194,41 @@ export function canonicalName(name: string): string {
   return lower
     .replace(/^(fc|ac|as|ssc|us|usv|hellas)\s+/g, '')
     // Citta' appiccicata al nome dal fornitore ("Lazio Rome", "Inter Milano").
-    .replace(/\s+(fc|cf|bc|cfc|calcio|1907|turin|rome|roma|milano|milan)\s*$/g, '')
+    .replace(/\s+(fc|cf|bc|cfc|calcio|1907|1909|turin|rome|roma|milano|milan)\s*$/g, '')
     .trim();
 }
 
 export function teamsMatch(a: string, b: string): boolean {
   return canonicalName(a) === canonicalName(b);
+}
+
+/**
+ * Scarto massimo fra l'orario ESPN e quello del fornitore perche' siano la
+ * stessa partita. Con i soli nomi, un evento di un'altra giornata (andata e
+ * ritorno, recupero, coppa) si abbinava lo stesso e la partita prendeva le
+ * quote di un'altra gara.
+ */
+export const SCARTO_MASSIMO_MS = 36 * 60 * 60 * 1000;
+
+/**
+ * Evento del fornitore che corrisponde alla partita: stesse squadre, orario
+ * entro ±36 ore e ancora da giocare (`pending`). Un evento gia' iniziato,
+ * rinviato o cancellato non si usa: le sue quote non sono piu' quelle di
+ * una partita da giocare.
+ */
+export function trovaEvento(
+  events: OddsApiEvent[],
+  match: { homeTeam: { name: string }; awayTeam: { name: string }; scheduledAt: Date }
+): OddsApiEvent | undefined {
+  const kickoff = match.scheduledAt.getTime();
+  return events.find(e => {
+    if (e.status !== 'pending') return false;
+    if (!teamsMatch(e.home, match.homeTeam.name) || !teamsMatch(e.away, match.awayTeam.name)) {
+      return false;
+    }
+    const data = Date.parse(e.date);
+    return Number.isFinite(data) && Math.abs(data - kickoff) <= SCARTO_MASSIMO_MS;
+  });
 }
 
 function num(s: string | undefined): number | null {
@@ -362,13 +388,25 @@ export function haQuoteGiocabili(odds: Partial<MatchOdds> | undefined): boolean 
   return !!odds?.esito;
 }
 
+export interface QuoteScaricate {
+  /** Quote per agenzia: `quote['Goldbet IT'][matchId]`. */
+  quote: Record<string, Record<string, MatchOdds>>;
+  /**
+   * Partite per cui il fornitore ha risposto davvero: per queste, se una
+   * agenzia non ha quote, vuol dire che non le pubblica (o le ha ritirate).
+   * Le altre (errore di rete, campionato non caricato) restano in sospeso.
+   */
+  verificate: string[];
+}
+
 /**
  * Quote di una giornata per ognuna delle agenzie richieste, prese solo dal
- * fornitore. Indicizzate per agenzia: `quote['Goldbet IT'][matchId]`.
+ * fornitore.
  *
  * Una partita compare solo se quell'agenzia ne pubblica almeno l'1X2, e di
  * ogni partita compaiono solo i mercati davvero quotati. Chi chiama decide
- * cosa fare con le partite mancanti: qui non si inventa nulla.
+ * cosa fare con le partite mancanti: qui non si inventa nulla. Restituisce
+ * null solo se il fornitore non ha risposto per nessun campionato.
  */
 export async function fetchRealMatchdayOdds(
   matches: {
@@ -376,10 +414,11 @@ export async function fetchRealMatchdayOdds(
     competition: string;
     homeTeam: { id: string; name: string };
     awayTeam: { id: string; name: string };
+    scheduledAt: Date;
   }[],
   apiKey: string,
   bookmakers: string[] = [BOOKMAKER_PREDEFINITO]
-): Promise<Record<string, Record<string, MatchOdds>> | null> {
+): Promise<QuoteScaricate | null> {
   if (!apiKey || bookmakers.length === 0) return null;
 
   const slugsNeeded = [...new Set(
@@ -396,17 +435,23 @@ export async function fetchRealMatchdayOdds(
 
   const risultato: Record<string, Record<string, MatchOdds>> = {};
   for (const b of bookmakers) risultato[b] = {};
-  let qualcuna = false;
+  const verificate: string[] = [];
 
   const compiti = matches.map(async match => {
     const slug = ODDS_API_LEAGUE_SLUG[match.competition];
     const events = slug ? eventsBySlug.get(slug) : undefined;
-    const event = events?.find(
-      e => teamsMatch(e.home, match.homeTeam.name) && teamsMatch(e.away, match.awayTeam.name)
-    );
-    if (!event) return [];
+    // Campionato non caricato: non si sa nulla, non si conclude nulla.
+    if (!events) return [];
+    const event = trovaEvento(events, match);
+    if (!event) {
+      // Palinsesto letto e partita assente (o non piu' da giocare): per il
+      // fornitore oggi non e' quotata.
+      verificate.push(match.id);
+      return [];
+    }
     const risposta = await fetchEventOdds(apiKey, event.id, bookmakers);
     if (!risposta) return [];
+    verificate.push(match.id);
 
     return bookmakers
       .map(bookmaker => ({
@@ -420,9 +465,8 @@ export async function fetchRealMatchdayOdds(
   for (const perPartita of await Promise.all(compiti)) {
     for (const r of perPartita) {
       risultato[r.bookmaker][r.id] = r.odds as MatchOdds;
-      qualcuna = true;
     }
   }
 
-  return qualcuna ? risultato : null;
+  return { quote: risultato, verificate };
 }

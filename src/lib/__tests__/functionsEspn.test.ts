@@ -2,7 +2,53 @@
 // Fino al 21/09/2026 non arrivava mai: quelle giocate valevano zero punti e
 // contavano come indovinate, cioe' il bonus 10/10 regalato a chi le giocava.
 import { describe, it, expect } from 'vitest';
-import { golPrimoTempo } from '../../../functions/src/espn';
+import { golPrimoTempo, intervalloDate, statoEspn } from '../../../functions/src/espn';
+
+describe('statoEspn', () => {
+  it('traduce gli stati regolari', () => {
+    expect(statoEspn({ state: 'pre', completed: false, name: 'STATUS_SCHEDULED' })).toBe('scheduled');
+    expect(statoEspn({ state: 'in', completed: false, name: 'STATUS_FIRST_HALF' })).toBe('live');
+    expect(statoEspn({ state: 'post', completed: true, name: 'STATUS_FULL_TIME' })).toBe('finished');
+  });
+
+  it('riconosce rinvii, cancellazioni e sospensioni definitive', () => {
+    expect(statoEspn({ state: 'post', completed: false, name: 'STATUS_POSTPONED' })).toBe('postponed');
+    expect(statoEspn({ state: 'pre', completed: false, name: 'STATUS_POSTPONED' })).toBe('postponed');
+    expect(statoEspn({ state: 'post', completed: false, name: 'STATUS_CANCELED' })).toBe('canceled');
+    expect(statoEspn({ state: 'post', completed: false, name: 'STATUS_CANCELLED' })).toBe('canceled');
+    expect(statoEspn({ state: 'post', completed: true, name: 'STATUS_ABANDONED' })).toBe('abandoned');
+  });
+
+  it('senza nome ricade sullo stato', () => {
+    expect(statoEspn({ state: 'post', completed: false })).toBe('scheduled');
+    expect(statoEspn(undefined)).toBe('scheduled');
+  });
+});
+
+describe('intervalloDate', () => {
+  it('una sola richiesta per tutta la giornata', () => {
+    expect(
+      intervalloDate([
+        new Date('2026-09-27T16:00:00Z'),
+        new Date('2026-09-26T18:45:00Z'),
+        new Date('2026-09-29T18:45:00Z'),
+      ])
+    ).toBe('20260926-20260929');
+  });
+
+  it('allarga di un giorno per lato se richiesto', () => {
+    expect(intervalloDate([new Date('2026-09-27T16:00:00Z')], 1)).toBe('20260926-20260928');
+  });
+
+  it('un giorno solo resta un giorno solo', () => {
+    expect(intervalloDate([new Date('2026-09-27T16:00:00Z')])).toBe('20260927');
+  });
+
+  it('senza date non c e intervallo', () => {
+    expect(intervalloDate([])).toBeNull();
+    expect(intervalloDate([new Date('n/d')])).toBeNull();
+  });
+});
 
 describe('golPrimoTempo', () => {
   it('legge il numero quando ESPN manda `value` (scoreboard)', () => {

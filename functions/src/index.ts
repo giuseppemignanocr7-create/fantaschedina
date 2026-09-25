@@ -65,7 +65,23 @@ import {
   bookmakerDisponibili,
   BOOKMAKER_PREDEFINITO,
 } from './realOdds';
-import { fetchActiveMatchdayPool, fetchResults } from './espn';
+import {
+  fetchActiveMatchdayPool,
+  fetchResults,
+  type EspnResult,
+  type PartitaDaLeggere,
+} from './espn';
+import {
+  applicaAggiornamento,
+  contaQuotate,
+  eSospesa,
+  haEsito,
+  partitaIniziata,
+  partitaQuotabile,
+  slugFornitore,
+  statoDaSync,
+  unisciQuote,
+} from './palinsesto';
 import {
   resolveShot,
   simulateOpponentShot,
@@ -158,6 +174,12 @@ interface MatchdayDoc {
    * dell'agenzia predefinita, che vale per il circuito generale.
    */
   oddsPerBookmaker?: Record<string, Record<string, MatchOdds>>;
+  /**
+   * Partite della giornata con l'1X2 di ciascuna agenzia
+   * (`{ 'Goldbet IT': 10, 'Eurobet IT': 7 }`): l'app lo usa per avvisare chi
+   * gioca in una lega che la sua agenzia ne quota meno delle altre.
+   */
+  quotateConteggio?: Record<string, number>;
   settled: boolean;
   /** Notifiche gia' inviate per questa giornata (una sola volta ciascuna). */
   reminderSentAt?: Timestamp;
@@ -303,6 +325,26 @@ async function getActiveCompetitions(): Promise<{ code: string; slug: string }[]
     .map(c => ({ code: c.code, slug: c.slug }));
 }
 
+/**
+ * Partita salvata → richiesta dei risultati ESPN. Il parziale di primo tempo
+ * gia' salvato viaggia con la richiesta, cosi' non si richiede il summary a
+ * ogni giro.
+ */
+function perEspn(m: StoredMatch): PartitaDaLeggere {
+  const r = m.result;
+  return {
+    id: m.id,
+    scheduledAt: m.scheduledAt.toDate(),
+    competition: m.competition,
+    ...(r?.htHomeGoals != null && r.htAwayGoals != null
+      ? { ht: { home: r.htHomeGoals, away: r.htAwayGoals } }
+      : {}),
+  };
+}
+
+/** Anticipo della deadline sul primo fischio d'inizio della giornata. */
+const ANTICIPO_DEADLINE_MS = 2 * 60 * 60 * 1000;
+
 /** Crea/aggiorna il doc della prossima giornata con quote server-side (pool multi-campionato). */
 async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | null> {
   const competitions = await getActiveCompetitions();
@@ -338,122 +380,255 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
     number = all.empty ? 1 : (all.docs[0].data() as MatchdayDoc).number + 1;
   }
 
-  const ref = db.collection('matchdays').doc(String(number));
+  const numero: number = number;
+  const ref = db.collection('matchdays').doc(String(numero));
+  const metaRef = db.collection('matchdays').doc('_meta');
   const snap = await ref.get();
   const prev = snap.exists ? (snap.data() as MatchdayDoc) : null;
+  const adesso = Date.now();
 
-  const matches: StoredMatch[] = api.matches.map(m => ({
-    id: m.id,
-    matchday: number as number,
-    competition: m.competition,
-    homeTeam: m.homeTeam,
-    awayTeam: m.awayTeam,
-    scheduledAt: Timestamp.fromDate(m.scheduledAt),
-    status: m.status,
-  }));
+  // Rinvii e orari spostati delle partite gia' in giornata. Il pool vede solo
+  // quelle ancora da giocare, lo scoreboard ESPN anche le rinviate e le
+  // cancellate: senza questa lettura una partita rinviata restava
+  // 'scheduled' al suo vecchio orario e la giornata non si chiudeva mai.
+  const esistenti = prev?.matches ?? [];
+  const dalPool = new Map(api.matches.map(m => [m.id, m]));
+  const letti: Map<string, EspnResult> = esistenti.length > 0
+    ? await fetchResults(esistenti.map(perEspn), { parziali: false }).catch(err => {
+        logger.warn('syncMatchday: stato partite da ESPN non letto', err);
+        return new Map<string, EspnResult>();
+      })
+    : new Map<string, EspnResult>();
+  const daEspn = new Map<string, { status?: string; scheduledAt?: Date }>();
+  for (const m of esistenti) {
+    const r = letti.get(m.id);
+    const p = dalPool.get(m.id);
+    const status = r?.status ?? p?.status;
+    const scheduledAt = p?.scheduledAt ?? r?.scheduledAt;
+    if (status || scheduledAt) daEspn.set(m.id, { status, scheduledAt });
+  }
+  const aggiorna = (m: StoredMatch, bloccata: boolean): StoredMatch => {
+    const e = daEspn.get(m.id);
+    if (!e) return m;
+    const status = statoDaSync(m.status, e.status, bloccata);
+    // L'orario si segue finche' la partita e' da giocare; un rinvio dopo la
+    // deadline resta fermo com'e' (vedi statoDaSync).
+    const spostabile = status === 'scheduled' || (eSospesa(status) && !bloccata);
+    const orario =
+      spostabile && e.scheduledAt && e.scheduledAt.getTime() !== m.scheduledAt.toMillis()
+        ? Timestamp.fromDate(e.scheduledAt)
+        : m.scheduledAt;
+    if (status === m.status && orario === m.scheduledAt) return m;
+    return { ...m, status, scheduledAt: orario };
+  };
 
-  // Le partite già pubblicate non si rimuovono mai (i pronostici già fatti le
-  // referenziano), ma le partite di un campionato appena attivato dall'admin
-  // vengono aggiunte al pool della giornata già aperta invece di essere ignorate.
-  const prevMatches = prev?.matches ?? [];
-  const prevIds = new Set(prevMatches.map(m => m.id));
-  const newMatches = matches.filter(m => !prevIds.has(m.id));
-  const mergedMatches = prevMatches.length ? [...prevMatches, ...newMatches] : matches;
+  // Partite nuove: solo da giocare, e solo se la giornata e' ancora aperta.
+  // Dopo la deadline (o a giornata chiusa/valutata) il pool non aggiunge
+  // nulla: chi ha gia' giocato non potrebbe sceglierle, e la giornata dopo le
+  // prendera' per conto suo.
+  const presentiPrima = new Set(esistenti.map(m => m.id));
+  const nuove = giornataAperta(prev, adesso)
+    ? api.matches.filter(
+        m =>
+          !presentiPrima.has(m.id) &&
+          partitaQuotabile(m.status, m.scheduledAt.getTime(), adesso) &&
+          (!prev || m.scheduledAt.getTime() > prev.deadline.toMillis())
+      )
+    : [];
 
-  // Le quote non si rigenerano mai una volta pubblicate (a meno di forceOdds),
-  // ma le partite nuove aggiunte al pool hanno comunque bisogno delle loro quote.
+  // Si chiedono al fornitore tutte le partite ancora da giocare, non solo le
+  // nuove: serve a recuperare quelle rimaste senza quote al giro prima e ad
+  // accorgersi di quelle ritirate. Le quote gia' pubblicate restano quelle
+  // (salvo forceOdds), le partite cominciate non si toccano.
+  const daQuotare = [
+    ...esistenti
+      .map(m => aggiorna(m, prev ? prev.deadline.toMillis() <= adesso : false))
+      .filter(m => partitaQuotabile(m.status, m.scheduledAt.toMillis(), adesso))
+      .map(m => ({
+        id: m.id,
+        competition: m.competition,
+        homeTeam: m.homeTeam,
+        awayTeam: m.awayTeam,
+        scheduledAt: m.scheduledAt.toDate(),
+      })),
+    ...nuove,
+  ];
+
   const apiKey = ODDS_API_KEY.value();
   // Agenzie da scaricare: la predefinita piu' quelle assegnate alle leghe
   // attive. Vengono chieste in un'unica richiesta per partita, quindi due
   // agenzie non costano il doppio.
-  const agenzie = await agenzieInUso(apiKey);
+  const { scaricabili: agenzie, richieste } = await agenzieInUso(apiKey);
 
   // Le quote arrivano solo dal fornitore. Dove non ci sono, non ci sono: una
   // partita senza quote non entra in giornata e un mercato non quotato non si
   // gioca. Prima un motore di calcolo riempiva i buchi, e chi giocava quelle
   // partite lo faceva su numeri inventati (23/09/2026).
-  let odds = (!forceOdds ? prev?.odds ?? null : null);
-  let oddsPerBookmaker = (!forceOdds ? prev?.oddsPerBookmaker ?? null : null);
-
-  const daQuotare = odds
-    ? api.matches.filter(m => !prevIds.has(m.id))
-    : api.matches;
-
-  if (daQuotare.length > 0) {
-    const reali = await fetchRealMatchdayOdds(daQuotare, apiKey, agenzie);
-    if (!reali) {
-      logger.error('syncMatchday: nessuna quota dal fornitore, giornata non aggiornata', {
-        partite: daQuotare.length,
-        agenzie,
-      });
-      // Meglio una giornata ferma che una giornata con quote inventate: si
-      // tiene quello che c'era e si riprova al giro successivo.
-      if (!odds) return prev ?? null;
-    } else {
-      const predefinite = reali[BOOKMAKER_PREDEFINITO] ?? {};
-      odds = { ...(odds ?? {}), ...predefinite };
-      const unione: Record<string, Record<string, MatchOdds>> = { ...(oddsPerBookmaker ?? {}) };
-      for (const agenzia of agenzie) {
-        unione[agenzia] = { ...(unione[agenzia] ?? {}), ...(reali[agenzia] ?? {}) };
-      }
-      oddsPerBookmaker = unione;
-    }
+  const reali = daQuotare.length > 0
+    ? await fetchRealMatchdayOdds(daQuotare, apiKey, agenzie)
+    : null;
+  if (daQuotare.length > 0 && !reali) {
+    // Meglio una giornata ferma che una giornata con quote inventate: si
+    // tiene quello che c'era e si riprova al giro successivo.
+    logger.error('syncMatchday: nessuna risposta dal fornitore, quote invariate', {
+      partite: daQuotare.length,
+      agenzie,
+    });
+    if (!prev) return null;
   }
-
-  // Un'agenzia assegnata dopo la pubblicazione non ha ancora le sue quote.
-  const senzaQuote = agenzie.filter(a => !(oddsPerBookmaker ?? {})[a]);
-  if (senzaQuote.length > 0) {
-    const reali = await fetchRealMatchdayOdds(api.matches, apiKey, senzaQuote);
-    if (reali) {
-      const base: Record<string, Record<string, MatchOdds>> = { ...(oddsPerBookmaker ?? {}) };
-      for (const agenzia of senzaQuote) base[agenzia] = reali[agenzia] ?? {};
-      oddsPerBookmaker = base;
-    }
-  }
+  const quoteNuove = reali?.quote ?? {};
+  const verificate = reali?.verificate ?? [];
 
   // In giornata entrano solo le partite quotate dall'agenzia predefinita: sono
   // quelle che il circuito generale puo' giocare davvero.
-  const quotate = odds ?? {};
-  const scartate = mergedMatches.filter(m => !quotate[m.id]);
-  const matchesGiocabili = mergedMatches.filter(m => !!quotate[m.id]);
+  const nuoveQuotate = nuove.filter(m => haEsito(quoteNuove[BOOKMAKER_PREDEFINITO]?.[m.id]));
+  const scartate = nuove.filter(m => !haEsito(quoteNuove[BOOKMAKER_PREDEFINITO]?.[m.id]));
   if (scartate.length > 0) {
     logger.warn('syncMatchday: partite senza quote, escluse dalla giornata', {
       quante: scartate.length,
       partite: scartate.map(m => `${m.homeTeam.name}-${m.awayTeam.name}`),
     });
   }
-  if (matchesGiocabili.length === 0) {
-    logger.error('syncMatchday: nessuna partita quotata, giornata non aggiornata');
+
+  // Scrittura in transazione sulla versione piu' recente del documento: gli
+  // aggiornamenti live e la valutazione scrivono le stesse partite, e una
+  // scrittura costruita su una lettura vecchia cancellerebbe i loro risultati.
+  // Le mappe delle quote si riscrivono intere (update, non merge): con il
+  // merge le partite tolte e le agenzie non piu' usate restavano per sempre.
+  const docData = await db.runTransaction(async tx => {
+    const [freshSnap, metaSnap] = await Promise.all([tx.get(ref), tx.get(metaRef)]);
+    const fresh = freshSnap.exists ? (freshSnap.data() as MatchdayDoc) : null;
+    const ora = Date.now();
+    const bloccata = fresh ? fresh.deadline.toMillis() <= ora : false;
+
+    const aggiornate = (fresh?.matches ?? []).map(m => aggiorna(m, bloccata));
+    const presenti = new Set(aggiornate.map(m => m.id));
+    const aggiunte: StoredMatch[] = giornataAperta(fresh, ora)
+      ? nuoveQuotate
+          .filter(m => !presenti.has(m.id))
+          .filter(m => !fresh || m.scheduledAt.getTime() > fresh.deadline.toMillis())
+          .map(m => ({
+            id: m.id,
+            matchday: numero,
+            competition: m.competition,
+            homeTeam: m.homeTeam,
+            awayTeam: m.awayTeam,
+            scheduledAt: Timestamp.fromDate(m.scheduledAt),
+            status: m.status,
+          }))
+      : [];
+    const matches = [...aggiornate, ...aggiunte];
+    if (matches.length === 0) return null;
+
+    const iniziate = matches
+      .filter(m => partitaIniziata(m.status, m.scheduledAt.toMillis(), ora))
+      .map(m => m.id);
+    const ferme = new Set(iniziate);
+    const partite = matches
+      .filter(m => ferme.has(m.id) || partitaQuotabile(m.status, m.scheduledAt.toMillis(), ora))
+      .map(m => m.id);
+    const unisci = (agenzia: string, prima: Record<string, MatchOdds> | undefined) => {
+      const scaricata = agenzie.includes(agenzia);
+      return unisciQuote(prima, scaricata ? quoteNuove[agenzia] : undefined, iniziate, {
+        partite,
+        verificate: scaricata ? verificate : [],
+        riquota: forceOdds,
+      });
+    };
+    const odds = unisci(BOOKMAKER_PREDEFINITO, fresh?.odds);
+    // Un'agenzia che nessuna lega usa piu' esce dalla mappa; una richiesta
+    // ma non scaricabile adesso tiene quello che aveva.
+    const oddsPerBookmaker: Record<string, Record<string, MatchOdds>> = {};
+    for (const agenzia of new Set([...agenzie, ...richieste])) {
+      oddsPerBookmaker[agenzia] = unisci(agenzia, fresh?.oddsPerBookmaker?.[agenzia]);
+    }
+    const ids = matches.map(m => m.id);
+    const quotateConteggio: Record<string, number> = {
+      [BOOKMAKER_PREDEFINITO]: contaQuotate(odds, ids),
+    };
+    for (const [agenzia, mappa] of Object.entries(oddsPerBookmaker)) {
+      quotateConteggio[agenzia] = contaQuotate(mappa, ids);
+    }
+
+    // Deadline: due ore prima del primo fischio. Finche' non e' passata puo'
+    // solo anticipare (una partita spostata prima); poi non si muove piu'.
+    const primoFischio = Math.min(
+      ...matches.filter(m => m.status === 'scheduled').map(m => m.scheduledAt.toMillis())
+    );
+    let deadline: Timestamp;
+    if (!fresh) {
+      deadline = Timestamp.fromMillis(primoFischio - ANTICIPO_DEADLINE_MS);
+    } else if (
+      !bloccata &&
+      Number.isFinite(primoFischio) &&
+      primoFischio - ANTICIPO_DEADLINE_MS < fresh.deadline.toMillis()
+    ) {
+      deadline = Timestamp.fromMillis(primoFischio - ANTICIPO_DEADLINE_MS);
+    } else {
+      deadline = fresh.deadline;
+    }
+
+    const campi = {
+      matches,
+      odds,
+      oddsPerBookmaker,
+      quotateConteggio,
+      deadline,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (fresh) {
+      tx.update(ref, campi);
+    } else {
+      tx.set(ref, { number: numero, season: api.season, status: 'open', settled: false, ...campi });
+    }
+
+    // Il puntatore alla giornata corrente va solo avanti: una giornata piu'
+    // vecchia ancora aperta (rinvio, recupero) non deve riportarlo indietro.
+    const corrente = metaSnap.exists ? (metaSnap.data()?.currentNumber as number | undefined) : undefined;
+    if (corrente == null || numero > corrente) {
+      tx.set(
+        metaRef,
+        { currentNumber: numero, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+    }
+
+    const risultato: MatchdayDoc = {
+      number: numero,
+      season: fresh?.season ?? api.season,
+      status: fresh?.status ?? 'open',
+      deadline,
+      matches,
+      odds,
+      oddsPerBookmaker,
+      quotateConteggio,
+      settled: fresh?.settled ?? false,
+    };
+    return risultato;
+  });
+
+  if (!docData) {
+    logger.error('syncMatchday: nessuna partita quotata, giornata non creata');
     return prev ?? null;
   }
-
-  const docData: MatchdayDoc = {
-    number,
-    season: api.season,
-    status: prev?.status ?? 'open',
-    deadline: prev?.deadline ?? Timestamp.fromDate(api.deadline),
-    matches: matchesGiocabili,
-    odds: quotate,
-    ...(oddsPerBookmaker ? { oddsPerBookmaker } : {}),
-    settled: prev?.settled ?? false,
-  };
-  await ref.set(
-    { ...docData, updatedAt: FieldValue.serverTimestamp() },
-    { merge: true }
-  );
-  await db.collection('matchdays').doc('_meta').set(
-    { currentNumber: number, updatedAt: FieldValue.serverTimestamp() },
-    { merge: true }
-  );
   return docData;
+}
+
+/** Una giornata accetta partite nuove solo se aperta e prima della deadline. */
+function giornataAperta(md: MatchdayDoc | null, oraMs: number): boolean {
+  if (!md) return true;
+  return !md.settled && md.status === 'open' && md.deadline.toMillis() > oraMs;
 }
 
 /**
  * Agenzie di cui servono le quote: la predefinita piu' quelle assegnate alle
  * leghe attive, tenute solo se il piano le consente davvero (il fornitore
  * rifiuta la richiesta se si sfora, e si perderebbero tutte le quote).
+ * `richieste` sono tutte quelle che le leghe usano, anche se oggi non
+ * scaricabili: le loro quote gia' pubblicate non vanno cancellate per un
+ * disguido del fornitore.
  */
-async function agenzieInUso(apiKey: string): Promise<string[]> {
+async function agenzieInUso(apiKey: string): Promise<{ scaricabili: string[]; richieste: string[] }> {
   const consentite = await bookmakerDisponibili(apiKey);
   const leghe = await db.collection('leagues').where('bookmaker', '!=', null).get();
   const richieste = leghe.docs
@@ -465,7 +640,10 @@ async function agenzieInUso(apiKey: string): Promise<string[]> {
   if (scartate.length > 0) {
     logger.warn('agenzie non disponibili sul piano, ignorate', { scartate, consentite });
   }
-  return ammesse.length > 0 ? ammesse : [BOOKMAKER_PREDEFINITO];
+  return {
+    scaricabili: ammesse.length > 0 ? ammesse : [BOOKMAKER_PREDEFINITO],
+    richieste: volute,
+  };
 }
 
 // ---------- Notifiche push ----------
@@ -786,9 +964,7 @@ async function valutaGiornata(ref: DocumentReference): Promise<void> {
   if (md.deadline.toMillis() > now.toMillis()) return;
 
   // Aggiorna risultati da ESPN
-  const results = await fetchResults(
-    md.matches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
-  );
+  const results = await fetchResults(md.matches.map(perEspn));
 
   const updatedMatches = md.matches.map(m => {
     const r = results.get(m.id);
@@ -920,9 +1096,9 @@ export const updateLiveScores = onSchedule(
     });
     if (activeMatches.length === 0) return;
 
-    const results = await fetchResults(
-      activeMatches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
-    );
+    // Il parziale gia' salvato viaggia con la richiesta: niente summary ESPN
+    // per le partite che lo hanno gia'.
+    const results = await fetchResults(activeMatches.map(perEspn));
     if (results.size === 0) return;
 
     let changed = false;
@@ -931,9 +1107,20 @@ export const updateLiveScores = onSchedule(
     // cose che vale la pena raccontare mentre si gioca.
     const appenaFinite: { match: StoredMatch; result: MatchResult }[] = [];
     const esitoCambiato: { match: StoredMatch; prima: MatchResult; dopo: MatchResult }[] = [];
-    const updatedMatches = md.matches.map(m => {
+    // Solo le modifiche, partita per partita: si applicano dentro una
+    // transazione alla versione piu' recente del documento.
+    const modifiche = new Map<string, { status: string; result?: MatchResult }>();
+    md.matches.forEach(m => {
       const r = results.get(m.id);
       if (!r || r.status === 'scheduled') return m;
+      // Rinviata, cancellata o sospesa: si registra lo stato e basta, senza
+      // un punteggio che non vale (la valutazione annulla quei pronostici).
+      if (eSospesa(r.status)) {
+        if (m.status === r.status || m.status === 'finished') return m;
+        changed = true;
+        modifiche.set(m.id, { status: r.status });
+        return { ...m, status: r.status };
+      }
       if (m.status === 'scheduled' && r.status === 'live' && !primoFischio) primoFischio = m;
       const result: MatchResult = {
         homeGoals: r.homeGoals,
@@ -953,7 +1140,9 @@ export const updateLiveScores = onSchedule(
         m.status === r.status &&
         prev &&
         prev.homeGoals === result.homeGoals &&
-        prev.awayGoals === result.awayGoals
+        prev.awayGoals === result.awayGoals &&
+        // Il parziale arrivato dopo il fischio finale va salvato comunque.
+        (prev.htHomeGoals != null || result.htHomeGoals == null)
       ) {
         return m;
       }
@@ -963,20 +1152,41 @@ export const updateLiveScores = onSchedule(
       } else if (r.status === 'live' && prev && prev.outcome !== result.outcome) {
         esitoCambiato.push({ match: m, prima: prev, dopo: result });
       }
-      return { ...m, status: r.status, result };
+      modifiche.set(m.id, { status: r.status, result });
+      return applicaAggiornamento(m, { status: r.status, result });
     });
 
     if (!changed) return;
-    const avvisaKickoff = primoFischio !== null && !md.kickoffNotifiedAt;
-    await db.collection('matchdays').doc(String(md.number)).update({
-      matches: updatedMatches,
-      updatedAt: FieldValue.serverTimestamp(),
-      ...(avvisaKickoff ? { kickoffNotifiedAt: FieldValue.serverTimestamp() } : {}),
+    // Lettura e scrittura nella stessa transazione, fondendo partita per
+    // partita: la valutazione e la sincronizzazione scrivono lo stesso array,
+    // e riscriverlo da una lettura di due secondi prima cancellava i loro
+    // aggiornamenti (o loro i nostri).
+    const mdRef = db.collection('matchdays').doc(String(md.number));
+    const conPrimoFischio = primoFischio !== null;
+    const scritto = await db.runTransaction(async tx => {
+      const freshSnap = await tx.get(mdRef);
+      if (!freshSnap.exists) return null;
+      const fresh = freshSnap.data() as MatchdayDoc;
+      if (fresh.settled) return null;
+      const unite = fresh.matches.map(m => {
+        const agg = modifiche.get(m.id);
+        return agg ? applicaAggiornamento(m, agg) : m;
+      });
+      const avvisa = conPrimoFischio && !fresh.kickoffNotifiedAt;
+      tx.update(mdRef, {
+        matches: unite,
+        updatedAt: FieldValue.serverTimestamp(),
+        ...(avvisa ? { kickoffNotifiedAt: FieldValue.serverTimestamp() } : {}),
+      });
+      return { unite, avvisa };
     });
+    if (!scritto) return;
+    const avvisaKickoff = scritto.avvisa;
+    const finali = scritto.unite;
     logger.info(`Giornata ${md.number}: punteggi live aggiornati`);
 
     // Ultima partita chiusa: la valutazione parte adesso, non al giro orario.
-    const tutteChiuse = updatedMatches.every(m => m.status === 'finished');
+    const tutteChiuse = finali.every(m => m.status === 'finished');
 
     if (avvisaKickoff && primoFischio) {
       const pm = primoFischio as StoredMatch;
@@ -1387,8 +1597,14 @@ async function settleSchedine(
 }
 
 /**
- * Quote valide per un circuito: quelle dell'agenzia della lega se ne ha una
- * e se sono state scaricate, altrimenti quelle predefinite della giornata.
+ * Quote valide per un circuito: il generale e le leghe senza agenzia propria
+ * giocano su quelle predefinite, una lega con la sua agenzia solo su quelle
+ * dell'agenzia. Le agenzie non si mescolano mai: una partita che l'agenzia
+ * della lega non quota in quella lega non si gioca, e se il suo palinsesto
+ * non e' ancora stato scaricato la lega non ha partite giocabili (mappa
+ * vuota) finche' la sincronizzazione non lo porta. Prima si ripiegava sulle
+ * quote predefinite, e la lega giocava su un'agenzia diversa da quella
+ * promessa senza saperlo.
  */
 async function quotePerCircuito(
   md: MatchdayDoc,
@@ -1398,7 +1614,9 @@ async function quotePerCircuito(
   const lega = await db.collection('leagues').doc(leagueId).get();
   const agenzia = lega.data()?.bookmaker as string | undefined;
   if (!agenzia) return md.odds;
-  return md.oddsPerBookmaker?.[agenzia] ?? md.odds;
+  const proprie = md.oddsPerBookmaker?.[agenzia];
+  if (proprie) return proprie;
+  return agenzia === BOOKMAKER_PREDEFINITO ? md.odds : {};
 }
 
 // ---------- 3. SUBMIT SCHEDINA (callable) ----------
@@ -2738,6 +2956,20 @@ export const adminLeghe = onCall(
     const nomeLega = (snap.data()?.name as string) ?? 'la tua lega';
     const proprietario = snap.data()?.ownerId as string | undefined;
 
+    // Assegnare o rifiutare vale solo per una lega ancora in attesa: su una
+    // lega gia' attiva cambierebbe l'agenzia a partita in corso, con schedine
+    // gia' giocate sulle quote dell'altra. Il controllo sta nella stessa
+    // transazione della scrittura, cosi' due amministratori insieme non
+    // passano entrambi.
+    const attivaLega = (campi: Record<string, unknown>) =>
+      db.runTransaction(async tx => {
+        const attuale = await tx.get(ref);
+        if (attuale.data()?.stato !== 'in_attesa') {
+          throw new HttpsError('failed-precondition', 'La lega non è in attesa di attivazione');
+        }
+        tx.update(ref, { ...campi, stato: 'attiva', updatedAt: FieldValue.serverTimestamp() });
+      });
+
     if (action === 'assegna') {
       const agenzia = typeof request.data?.bookmaker === 'string' ? request.data.bookmaker : '';
       const disponibili = await bookmakerDisponibili(ODDS_API_KEY.value());
@@ -2747,14 +2979,11 @@ export const adminLeghe = onCall(
           `Agenzia non disponibile sul piano. Disponibili: ${disponibili.join(', ')}`
         );
       }
-      await ref.update({
-        bookmaker: agenzia,
-        stato: 'attiva',
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      await attivaLega({ bookmaker: agenzia });
       // Le quote dell'agenzia appena assegnata non ci sono ancora sulla
       // giornata aperta: la sincronizzazione le aggiunge senza toccare quelle
-      // gia' pubblicate.
+      // gia' pubblicate. Finche' non arrivano la lega non ha partite
+      // giocabili (vedi quotePerCircuito), non gioca su un'altra agenzia.
       await syncMatchdayInternal().catch(err =>
         logger.warn('quote della nuova agenzia non scaricate subito', err)
       );
@@ -2773,11 +3002,7 @@ export const adminLeghe = onCall(
     }
 
     if (action === 'rifiuta') {
-      await ref.update({
-        bookmaker: null,
-        stato: 'attiva',
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      await attivaLega({ bookmaker: null });
       if (proprietario) {
         await notifica(
           [proprietario],
@@ -2996,7 +3221,12 @@ export const adminManageCompetitions = onCall(callableOpts, async request => {
     const snap = await configRef.get();
     const active = (snap.exists ? (snap.data()?.active as string[]) : null) ?? DEFAULT_ACTIVE_COMPETITIONS;
     return {
-      competitions: COMPETITIONS.map(c => ({ ...c, active: active.includes(c.code) })),
+      competitions: COMPETITIONS.map(c => ({
+        ...c,
+        active: active.includes(c.code),
+        // Senza slug del fornitore il campionato non ha quote: non si attiva.
+        quotabile: !!slugFornitore(c.code),
+      })),
     };
   }
 
@@ -3008,6 +3238,15 @@ export const adminManageCompetitions = onCall(callableOpts, async request => {
     const snap = await configRef.get();
     const active = (snap.exists ? (snap.data()?.active as string[]) : null) ?? [...DEFAULT_ACTIVE_COMPETITIONS];
     const isActive = active.includes(code);
+    // Un campionato che il fornitore non quota porterebbe in giornata solo
+    // partite senza quote, cioe' ingiocabili: non si attiva. Disattivarlo
+    // resta sempre possibile.
+    if (!isActive && !slugFornitore(code)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Campionato senza quote del fornitore: non si può attivare'
+      );
+    }
     const updated = isActive ? active.filter(c => c !== code) : [...active, code];
     await configRef.set({ active: updated, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     return { ok: true, active: !isActive };
@@ -3029,9 +3268,7 @@ export const adminForceSettle = onCall(callableOpts, async request => {
   const md = mdSnap.data() as MatchdayDoc;
   if (md.settled) throw new HttpsError('failed-precondition', 'Giornata già settleata');
 
-  const results = await fetchResults(
-    md.matches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
-  );
+  const results = await fetchResults(md.matches.map(perEspn));
 
   const updatedMatches = md.matches.map(m => {
     const r = results.get(m.id);
