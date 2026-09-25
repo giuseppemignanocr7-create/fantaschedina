@@ -195,6 +195,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Sessioni di memoria e rigori: solo le Cloud Functions.
+    match /minigame_sessions/{id} {
+      allow read, write: if false;
+    }
+
     // ============================================
     // PENALTY DUELS — stato partita realtime.
     // Scritto solo dalle Cloud Functions, letto dai giocatori.
@@ -205,6 +210,12 @@ service cloud.firestore {
         resource.data.p2.uid == request.auth.uid
       );
       allow write: if false;
+    }
+
+    // Mosse del round in corso: restano nascoste a entrambi i giocatori
+    // finché il server non risolve il round (poi appare `lastRound` sopra).
+    match /penalty_duel_moves/{duelId} {
+      allow read, write: if false;
     }
 
     // ============================================

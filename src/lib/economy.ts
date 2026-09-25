@@ -22,6 +22,7 @@ export const COINS = {
   sfidaBaseReward: 5,
   sfidaMaxReward: 30,
   sfidaCooldownDays: 7,
+  sfideTettoGiornaliero: 50,
   // Memoria Calcio
   memoriaPerLevel: 5,
   memoriaTimeBonus: 1,

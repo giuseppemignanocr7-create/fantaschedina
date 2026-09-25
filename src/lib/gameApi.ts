@@ -67,8 +67,13 @@ export interface QuizQuestionPublic {
   options: string[];
 }
 
-export async function startQuiz(): Promise<{ questions: QuizQuestionPublic[] }> {
-  const fn = httpsCallable<{ action: string }, { questions: QuizQuestionPublic[] }>(
+/**
+ * Avvia il quiz del giorno, o riprende quello gia' aperto con le stesse
+ * domande. `scadeAt` (ms epoch, orologio del server): dopo, le risposte non
+ * valgono piu' nulla.
+ */
+export async function startQuiz(): Promise<{ questions: QuizQuestionPublic[]; scadeAt?: number }> {
+  const fn = httpsCallable<{ action: string }, { questions: QuizQuestionPublic[]; scadeAt?: number }>(
     functions,
     'playMinigame'
   );
@@ -92,6 +97,9 @@ export async function submitQuiz(answers: Record<string, number>): Promise<{
   reward: number;
   corrections: Record<string, number>;
   serie?: SerieInfo;
+  /** Risposte arrivate oltre il tempo massimo: valgono zero. */
+  scaduta?: boolean;
+  messaggio?: string;
 }> {
   const fn = httpsCallable<
     { action: string; answers: Record<string, number> },
@@ -101,6 +109,8 @@ export async function submitQuiz(answers: Record<string, number>): Promise<{
       reward: number;
       corrections: Record<string, number>;
       serie?: SerieInfo;
+      scaduta?: boolean;
+      messaggio?: string;
     }
   >(functions, 'playMinigame');
   const res = await fn({ action: 'quiz_submit', answers });
@@ -132,16 +142,32 @@ export interface RigoriShot {
   power: number;
 }
 
-export async function playRigori(shots: PenaltyShotInput[]): Promise<{
+/**
+ * Sessione di gioco aperta dal server (memoria, rigori): il risultato si
+ * manda insieme al suo `sessionId`, vale una volta sola e solo se la partita
+ * e' durata un tempo plausibile.
+ */
+export interface SessioneMinigioco {
+  sessionId: string;
+  serverTime: number;
+}
+
+export async function startRigori(): Promise<SessioneMinigioco> {
+  const fn = httpsCallable<{ action: string }, SessioneMinigioco>(functions, 'playMinigame');
+  const res = await fn({ action: 'rigori_start' });
+  return res.data;
+}
+
+export async function playRigori(sessionId: string, shots: PenaltyShotInput[]): Promise<{
   results: RigoriShot[];
   goals: number;
   reward: number;
 }> {
   const fn = httpsCallable<
-    { action: string; shots: PenaltyShotInput[] },
+    { action: string; sessionId: string; shots: PenaltyShotInput[] },
     { results: RigoriShot[]; goals: number; reward: number }
   >(functions, 'playMinigame');
-  const res = await fn({ action: 'rigori_play', shots });
+  const res = await fn({ action: 'rigori_play', sessionId, shots });
   return res.data;
 }
 
@@ -156,12 +182,22 @@ export interface MemoriaPlayResponse {
   serie?: SerieInfo;
 }
 
-export async function playMemoria(levelsCompleted: number, timeRemaining: number): Promise<MemoriaPlayResponse> {
+export async function startMemoria(): Promise<SessioneMinigioco> {
+  const fn = httpsCallable<{ action: string }, SessioneMinigioco>(functions, 'playMinigame');
+  const res = await fn({ action: 'memoria_start' });
+  return res.data;
+}
+
+export async function playMemoria(
+  sessionId: string,
+  levelsCompleted: number,
+  timeRemaining: number
+): Promise<MemoriaPlayResponse> {
   const fn = httpsCallable<
-    { action: string; levelsCompleted: number; timeRemaining: number },
+    { action: string; sessionId: string; levelsCompleted: number; timeRemaining: number },
     MemoriaPlayResponse
   >(functions, 'playMinigame');
-  const res = await fn({ action: 'memoria_play', levelsCompleted, timeRemaining });
+  const res = await fn({ action: 'memoria_play', sessionId, levelsCompleted, timeRemaining });
   return res.data;
 }
 
@@ -182,8 +218,12 @@ export interface SfidaPlayResponse {
   oppGoals: number;
   won: boolean;
   draw: boolean;
+  /** Gettoni accreditati davvero, dopo il tetto giornaliero delle sfide. */
   reward: number;
   serie?: SerieInfo;
+  /** Premio tagliato (o azzerato) dal tetto giornaliero. */
+  tettoRaggiunto?: boolean;
+  messaggio?: string;
 }
 
 export async function startSfida(opponentId: string): Promise<SfidaStartResponse> {
@@ -309,11 +349,8 @@ export interface PenaltyDuelState {
   mode: DuelMode;
   round: number;
   attacker: 1 | 2;
-  /** Zona scelta nel round: dove tira l'attaccante, dove si tuffa il portiere. */
-  p1Choice: PenaltyZone | null;
-  p2Choice: PenaltyZone | null;
-  p1Power?: number | null;
-  p2Power?: number | null;
+  // Le scelte del round in corso restano sul server finché entrambi non hanno
+  // mosso: il documento espone solo `lastRound`, a round risolto.
   phase: 'waiting' | 'playing' | 'finished';
   startedAt: number;
   deadlineAt: number;

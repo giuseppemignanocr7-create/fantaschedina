@@ -66,6 +66,19 @@ import { pickWeeklyWinner, rankWeeklyCandidates } from './settlement';
 import { computeRankings, type RankableProfile } from './rankings';
 import { attackerForRound, canFinishAtRound, type DuelMode } from './duels';
 import {
+  premioConTetto,
+  contaPerLaSerie,
+  generaCodiceDuello,
+  componiRound,
+  verificaDurata,
+  valutaMemoria,
+  quizScaduto,
+  QUIZ_DURATA_MAX_MS,
+  SESSIONE_MINIGIOCO_MAX_MS,
+  RIGORI_MINIMO_MS_PER_TIRO,
+  type MossaDuello,
+} from './minigiochi';
+import {
   fetchRealMatchdayOdds,
   bookmakerDisponibili,
   BOOKMAKER_PREDEFINITO,
@@ -2153,9 +2166,10 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
   /**
    * Segna che l'utente ha giocato oggi e accredita il bonus della serie.
    *
-   * Si chiama dopo ogni azione riuscita: quale minigioco sia non conta, conta
-   * essere tornato. Il documento del movimento ha per id il giorno, quindi due
-   * partite nello stesso giorno non possono accreditare due volte.
+   * Si chiama dopo ogni partita conclusa (vedi contaPerLaSerie): quale
+   * minigioco sia non conta, conta essere tornato. Il documento del movimento
+   * ha per id il giorno, quindi due partite nello stesso giorno non possono
+   * accreditare due volte.
    */
   async function registraGiornoAttivo(): Promise<{ giorni: number; bonus: number }> {
     return db.runTransaction(async tx => {
@@ -2227,75 +2241,198 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
     });
   }
 
+  // Sessioni di memoria e rigori: il server segna quando la partita comincia,
+  // cosi' alla fine sa quanto e' durata davvero invece di fidarsi del client.
+  // Una per gioco e per utente (collezione non leggibile dai client, vedi
+  // firestore.rules): avviarne una nuova annulla la precedente.
+  const sessioneRef = (gioco: 'memoria' | 'rigori') =>
+    db.collection('minigame_sessions').doc(`${uid}_${gioco}`);
+
+  async function avviaSessione(
+    gioco: 'memoria' | 'rigori'
+  ): Promise<{ sessionId: string; serverTime: number }> {
+    // Id automatico di Firestore: casuale e non indovinabile.
+    const sessionId = db.collection('minigame_sessions').doc().id;
+    const serverTime = Date.now();
+    await sessioneRef(gioco).set({
+      uid,
+      game: gioco,
+      sessionId,
+      startedAtMs: serverTime,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return { sessionId, serverTime };
+  }
+
+  /**
+   * Chiude la sessione indicata dal client e restituisce da quanti
+   * millisecondi era aperta. Vale una volta sola: la transazione la cancella,
+   * quindi due invii dello stesso risultato non pagano due volte.
+   */
+  async function consumaSessione(gioco: 'memoria' | 'rigori', minimoMs: number): Promise<number> {
+    const sessionId = request.data?.sessionId;
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new HttpsError('invalid-argument', 'Sessione di gioco mancante: ricomincia la partita');
+    }
+    const esito = await db.runTransaction(async tx => {
+      const ref = sessioneRef(gioco);
+      const snap = await tx.get(ref);
+      const dati = snap.data();
+      if (!snap.exists || dati?.uid !== uid || dati?.sessionId !== sessionId) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Partita non valida o già conclusa: ricominciane una nuova'
+        );
+      }
+      const trascorsoMs = Date.now() - Number(dati.startedAtMs);
+      const durata = verificaDurata(trascorsoMs, minimoMs, SESSIONE_MINIGIOCO_MAX_MS);
+      if (durata === 'troppo_presto') {
+        throw new HttpsError('failed-precondition', 'Partita troppo veloce per essere valida');
+      }
+      tx.delete(ref);
+      return { trascorsoMs, scaduta: durata === 'scaduta' };
+    });
+    if (esito.scaduta) {
+      throw new HttpsError('deadline-exceeded', 'Partita scaduta: ricominciane una nuova');
+    }
+    return esito.trascorsoMs;
+  }
+
+  /**
+   * Avversario di una sfida: deve esistere, non essere chi sfida e non essere
+   * sospeso (profilo con `isActive === false`, vedi adminToggleBan).
+   */
+  async function avversarioSfidabile(
+    opponentId: unknown
+  ): Promise<FirebaseFirestore.DocumentSnapshot> {
+    if (
+      typeof opponentId !== 'string' ||
+      opponentId.length === 0 ||
+      opponentId.includes('/') ||
+      opponentId === uid
+    ) {
+      throw new HttpsError('invalid-argument', 'Avversario non valido');
+    }
+    const snap = await db.collection('profiles').doc(opponentId).get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Avversario non trovato');
+    if (snap.data()?.isActive === false) {
+      throw new HttpsError('failed-precondition', 'Questo giocatore non può essere sfidato');
+    }
+    return snap;
+  }
+
   // L'azione vera e propria. Racchiusa qui dentro perche' dopo, qualunque
   // sia il minigioco, si registra la presenza del giorno per la serie.
   const esito = await (async (): Promise<Record<string, unknown>> => {
   switch (action) {
     // --- QUIZ ---
     case 'quiz_start': {
-      const pool = await db.collection('quiz_questions').get();
-      if (pool.empty) {
-        // Seeding va fatto solo dall'admin (vedi seedQuizQuestions): un
-        // auto-seed qui duplicherebbe quel percorso di scrittura senza il
-        // controllo di ruolo.
-        throw new HttpsError(
-          'failed-precondition',
-          'Quiz non ancora disponibile, riprova più tardi'
-        );
-      }
-      // Get user's seen questions to avoid repeats
-      const seenRef = db.collection('quiz_seen').doc(uid);
-      const seenDoc = await seenRef.get();
-      const seenIds = new Set<string>((seenDoc.data()?.questionIds ?? []) as string[]);
-      // Filter unseen, fallback to all if everything seen
-      const unseen = pool.docs.filter(d => !seenIds.has(d.id));
-      // Quando le domande non viste scendono sotto una partita intera il ciclo
-      // riparte dall'intero pool: il reset va PERSISTITO, altrimenti la lista
-      // "viste" cresce all'infinito, resta sempre sotto soglia e l'anti-ripetizione
-      // smette di filtrare per sempre.
-      const mustResetSeen = unseen.length < COINS.quizMaxQuestions;
-      const available = mustResetSeen ? [...pool.docs] : unseen;
-      const shuffled = fyShuffle(available);
-      const picked = shuffled.slice(0, COINS.quizMaxQuestions);
-      // Pre-shuffle options for each question and save mapping in session
-      const questionsData = picked.map(d => {
-        const opts = d.data()?.options as string[];
-        const ans = d.data()?.answerIndex as number;
-        const indexed = opts.map((opt, i) => ({ opt, correct: i === ans }));
-        const shuffledOpts = fyShuffle(indexed);
-        return {
-          id: d.id,
-          question: d.data()?.question as string,
-          options: shuffledOpts.map(o => o.opt),
-          answerIndex: shuffledOpts.findIndex(o => o.correct),
-        };
-      });
+      // Oltre al limite al minuto comune a tutte le azioni: ogni avvio nuovo
+      // legge l'intero pool di domande, e chi gioca davvero apre il quiz una
+      // volta al giorno.
+      await enforceRateLimit(uid, 'quiz_start_ora', 6, 60 * 60_000);
+      type DomandaQuiz = { id: string; question: string; options: string[]; answerIndex: number };
       const sessionRef = db.collection('quiz_sessions').doc(uid);
-      const savedQuestions = await db.runTransaction(async tx => {
+      const seenRef = db.collection('quiz_seen').doc(uid);
+      // Una sessione di oggi non ancora inviata si riprende cosi' com'e', con le
+      // stesse domande e lo stesso orologio: prima ogni avvio ne creava una
+      // nuova, e bastava ricaricare la pagina per scartare le domande difficili.
+      // Le sessioni senza `startedAtMs` sono di prima di questa regola.
+      const sessioneAperta = (d: FirebaseFirestore.DocumentData | undefined): boolean =>
+        !!d && d.date === today && d.submitted !== true && typeof d.startedAtMs === 'number';
+
+      let nuove: DomandaQuiz[] | null = null;
+      let mustResetSeen = false;
+      if (!sessioneAperta((await sessionRef.get()).data())) {
+        const pool = await db.collection('quiz_questions').get();
+        if (pool.empty) {
+          // Seeding va fatto solo dall'admin (vedi seedQuizQuestions): un
+          // auto-seed qui duplicherebbe quel percorso di scrittura senza il
+          // controllo di ruolo.
+          throw new HttpsError(
+            'failed-precondition',
+            'Quiz non ancora disponibile, riprova più tardi'
+          );
+        }
+        // Get user's seen questions to avoid repeats
+        const seenDoc = await seenRef.get();
+        const seenIds = new Set<string>((seenDoc.data()?.questionIds ?? []) as string[]);
+        // Filter unseen, fallback to all if everything seen
+        const unseen = pool.docs.filter(d => !seenIds.has(d.id));
+        // Quando le domande non viste scendono sotto una partita intera il ciclo
+        // riparte dall'intero pool: il reset va PERSISTITO, altrimenti la lista
+        // "viste" cresce all'infinito, resta sempre sotto soglia e l'anti-ripetizione
+        // smette di filtrare per sempre.
+        mustResetSeen = unseen.length < COINS.quizMaxQuestions;
+        const available = mustResetSeen ? [...pool.docs] : unseen;
+        const shuffled = fyShuffle(available);
+        const picked = shuffled.slice(0, COINS.quizMaxQuestions);
+        // Pre-shuffle options for each question and save mapping in session
+        nuove = picked.map(d => {
+          const opts = d.data()?.options as string[];
+          const ans = d.data()?.answerIndex as number;
+          const indexed = opts.map((opt, i) => ({ opt, correct: i === ans }));
+          const shuffledOpts = fyShuffle(indexed);
+          return {
+            id: d.id,
+            question: d.data()?.question as string,
+            options: shuffledOpts.map(o => o.opt),
+            answerIndex: shuffledOpts.findIndex(o => o.correct),
+          };
+        });
+      }
+      const avvio = await db.runTransaction(async tx => {
         const profile = await tx.get(profileRef);
+        const session = await tx.get(sessionRef);
         if (!profile.exists) throw new HttpsError('not-found', 'Profilo non trovato');
         const last = profile.data()?.lastPlayed?.quiz as string | undefined;
         if (last === today) {
           throw new HttpsError('failed-precondition', 'Hai già giocato oggi, torna domani!');
         }
-        // Always create a fresh session with new questions.
-        // Reusing old sessions caused the same questions to appear after refresh.
+        const dati = session.data();
+        if (sessioneAperta(dati)) {
+          // Tempo scaduto: la partita di oggi si chiude qui, senza premio.
+          if (quizScaduto(dati?.startedAtMs as number, Date.now())) {
+            tx.update(sessionRef, { submitted: true, correct: 0, scaduta: true });
+            tx.update(profileRef, {
+              'lastPlayed.quiz': today,
+              updatedAt: FieldValue.serverTimestamp(),
+            });
+            return { scaduta: true as const };
+          }
+          return {
+            domande: dati?.questions as DomandaQuiz[],
+            startedAtMs: dati?.startedAtMs as number,
+          };
+        }
+        // La sessione aperta vista prima della transazione non c'e' piu'
+        // (chiusa nel frattempo da un'altra richiesta): meglio ripartire.
+        if (!nuove) throw new HttpsError('aborted', 'Riprova ad aprire il quiz');
         if (mustResetSeen) {
           tx.set(seenRef, { questionIds: [], updatedAt: FieldValue.serverTimestamp() });
         }
+        const startedAtMs = Date.now();
         tx.set(sessionRef, {
           userId: uid,
-          questions: questionsData.map(q => ({ id: q.id, question: q.question, options: q.options, answerIndex: q.answerIndex })),
+          questions: nuove.map(q => ({ id: q.id, question: q.question, options: q.options, answerIndex: q.answerIndex })),
           date: today,
           submitted: false,
+          startedAtMs,
           createdAt: FieldValue.serverTimestamp(),
         });
-        return questionsData;
+        return { domande: nuove, startedAtMs };
       });
+      if ('scaduta' in avvio) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Tempo scaduto: il quiz di oggi si è chiuso senza premio. Torna domani!'
+        );
+      }
       // Non inviare mai answerIndex al client prima della submission: un utente
       // potrebbe leggerlo dalla risposta di rete e rispondere sempre corretto.
       return {
-        questions: savedQuestions.map(q => ({ id: q.id, question: q.question, options: q.options })),
+        questions: avvio.domande.map(q => ({ id: q.id, question: q.question, options: q.options })),
+        scadeAt: avvio.startedAtMs + QUIZ_DURATA_MAX_MS,
       };
     }
     case 'quiz_submit': {
@@ -2323,11 +2460,16 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
         const seenRef = db.collection('quiz_seen').doc(uid);
         const seenSnap = await tx.get(seenRef);
 
+        // Risposte arrivate oltre il tempo massimo dall'avvio: la partita conta
+        // come giocata ma non vale nulla. Il tempo lo misura il server.
+        const startedAtMs = session.data()?.startedAtMs;
+        const scaduta = typeof startedAtMs === 'number' && quizScaduto(startedAtMs, Date.now());
+
         let correct = 0;
         const corrections: Record<string, number> = {};
         for (const q of sessQuestions) {
           corrections[q.id] = q.answerIndex;
-          if (answers[q.id] === q.answerIndex) correct++;
+          if (!scaduta && answers[q.id] === q.answerIndex) correct++;
         }
         const reward = correct * COINS.quizPerCorrect;
         const updates: Record<string, unknown> = {
@@ -2352,7 +2494,13 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
             createdAt: FieldValue.serverTimestamp(),
           });
         }
-        return { correct, total: sessQuestions.length, reward, corrections };
+        return {
+          correct,
+          total: sessQuestions.length,
+          reward,
+          corrections,
+          ...(scaduta ? { scaduta: true, messaggio: 'Tempo scaduto: risposte arrivate troppo tardi, nessun premio.' } : {}),
+        };
       });
     }
 
@@ -2366,6 +2514,8 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
     }
 
     // --- RIGORI (no daily limit, daily coin cap) ---
+    case 'rigori_start':
+      return avviaSessione('rigori');
     case 'rigori_play': {
       const shots = (request.data?.shots ?? []) as { zone: unknown; power: unknown }[];
       if (
@@ -2375,6 +2525,9 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
       ) {
         throw new HttpsError('invalid-argument', `Tiri non validi (${COINS.rigoriMaxShots} tiri con zona e potenza)`);
       }
+      // Tiri validi solo dentro una partita avviata dal server e durata il
+      // tempo di tirarli davvero; l'esito di ogni tiro lo estrae il server.
+      await consumaSessione('rigori', COINS.rigoriMaxShots * RIGORI_MINIMO_MS_PER_TIRO);
       const results = shots.map(s => resolveShot(s.zone as Parameters<typeof resolveShot>[0], s.power as number));
       const goals = results.filter(r => r.goal).length;
       const reward = goals * COINS.rigoriPerGoal;
@@ -2384,10 +2537,8 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
 
     // --- SFIDE 1VS1 ---
     case 'sfida_start': {
-      const opponentId = request.data?.opponentId as string;
-      if (!opponentId || opponentId === uid) {
-        throw new HttpsError('invalid-argument', 'Avversario non valido');
-      }
+      const oppProfile = await avversarioSfidabile(request.data?.opponentId);
+      const opponentId = oppProfile.id;
       // Check cooldown: one challenge per pair per week
       const pairKey = [uid, opponentId].sort().join('_');
       const cooldownRef = db.collection('sfide_cooldowns').doc(pairKey);
@@ -2402,14 +2553,7 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
           );
         }
       }
-      // Get both profiles for the challenge
-      const [myProfile, oppProfile] = await Promise.all([
-        profileRef.get(),
-        db.collection('profiles').doc(opponentId).get(),
-      ]);
-      if (!oppProfile.exists) {
-        throw new HttpsError('not-found', 'Avversario non trovato');
-      }
+      const myProfile = await profileRef.get();
       return {
         opponent: {
           uid: opponentId,
@@ -2420,22 +2564,22 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
       };
     }
     case 'sfida_play': {
-      const opponentId = request.data?.opponentId as string;
       const myShots = (request.data?.shots ?? []) as { zone: unknown; power: unknown }[];
       if (
-        !opponentId ||
-        opponentId === uid ||
         !Array.isArray(myShots) ||
         myShots.length !== COINS.rigoriMaxShots ||
         myShots.some(s => !isValidZone(s?.zone) || !Number.isFinite(s?.power))
       ) {
         throw new HttpsError('invalid-argument', 'Dati sfida non validi');
       }
+      // Stessi controlli dell'avvio: il client puo' chiamare sfida_play
+      // direttamente, contro un profilo inesistente, se stesso o un sospeso.
+      const oppProfileSnap = await avversarioSfidabile(request.data?.opponentId);
+      const opponentId = oppProfileSnap.id;
       const pairKey = [uid, opponentId].sort().join('_');
       const cooldownRef = db.collection('sfide_cooldowns').doc(pairKey);
       // L'avversario "CPU" tira con una qualità legata alle sue statistiche reali
       // (pronostici corretti / giornate giocate), non più a puro random.
-      const oppProfileSnap = await db.collection('profiles').doc(opponentId).get();
       const oppSkill = estimateSkillFromProfile(
         (oppProfileSnap.data()?.correctPredictions as number) ?? 0,
         (oppProfileSnap.data()?.matchdaysPlayed as number) ?? 0
@@ -2459,9 +2603,15 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
       } else if (draw) {
         reward = Math.min(myGoals, COINS.sfidaMaxReward);
       }
-      // Set cooldown and award coins in transaction
-      await db.runTransaction(async tx => {
+      // Set cooldown and award coins in transaction. Il premio passa dal tetto
+      // giornaliero delle sfide: il cooldown e' per coppia, e con tanti
+      // avversari diversi non fermerebbe nulla. Lettura del profilo e scrittura
+      // del contatore nella stessa transazione: due sfide in parallelo non
+      // possono superare il tetto.
+      const accreditato = await db.runTransaction(async tx => {
         const cooldownSnap = await tx.get(cooldownRef);
+        const profile = await tx.get(profileRef);
+        if (!profile.exists) throw new HttpsError('not-found', 'Profilo non trovato');
         if (cooldownSnap.exists) {
           const lastDate = cooldownSnap.data()?.lastDate as string;
           const daysSince = (Date.now() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24);
@@ -2474,10 +2624,15 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
           lastDate: new Date().toISOString(),
           updatedAt: FieldValue.serverTimestamp(),
         });
-        if (reward > 0) {
+        const dati = profile.data() ?? {};
+        const giaOggi = dati.sfideDate === today ? Number(dati.sfideCoinsToday ?? 0) : 0;
+        const premio = premioConTetto(reward, COINS.sfideTettoGiornaliero, giaOggi);
+        if (premio > 0) {
           const updates: Record<string, unknown> = {
-            coins: FieldValue.increment(reward),
-            coinsEarned: FieldValue.increment(reward),
+            coins: FieldValue.increment(premio),
+            coinsEarned: FieldValue.increment(premio),
+            sfideDate: today,
+            sfideCoinsToday: giaOggi + premio,
             updatedAt: FieldValue.serverTimestamp(),
           };
           tx.update(profileRef, updates);
@@ -2485,13 +2640,15 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
             db.collection('wallet_transactions').doc(`${uid}_sfida_${pairKey}_${Date.now()}`),
             {
               userId: uid,
-              amount: reward,
+              amount: premio,
               reason: 'minigame_sfida',
               createdAt: FieldValue.serverTimestamp(),
             }
           );
         }
+        return premio;
       });
+      const tettoRaggiunto = accreditato < reward;
       return {
         myResults,
         oppResults,
@@ -2499,26 +2656,44 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
         oppGoals,
         won,
         draw,
-        reward,
+        reward: accreditato,
+        ...(tettoRaggiunto
+          ? {
+              tettoRaggiunto: true,
+              messaggio:
+                accreditato > 0
+                  ? `Premio ridotto a ${accreditato} gettoni: hai raggiunto il tetto di ${COINS.sfideTettoGiornaliero} gettoni al giorno dalle sfide.`
+                  : `Hai già raggiunto il tetto di ${COINS.sfideTettoGiornaliero} gettoni al giorno dalle sfide: questa partita non assegna premi. Torna domani!`,
+            }
+          : {}),
       };
     }
 
     // --- MEMORIA CALCIO (no daily limit, daily coin cap) ---
+    case 'memoria_start':
+      return avviaSessione('memoria');
     case 'memoria_play': {
-      const levelsCompleted = intInRange(
-        request.data?.levelsCompleted,
-        0,
-        COINS.memoriaLevelTimes.length
-      );
-      if (levelsCompleted < 1) {
+      if (intInRange(request.data?.levelsCompleted, 0, COINS.memoriaLevelTimes.length) < 1) {
         throw new HttpsError('invalid-argument', 'Devi completare almeno un livello');
       }
-      // Il tempo residuo non può superare quello messo a disposizione dai
-      // livelli dichiarati: è l'unico freno a un client che si inventa il bonus.
-      const tempoMassimo = COINS.memoriaLevelTimes
-        .slice(0, levelsCompleted)
-        .reduce((a, b) => a + b, 0);
-      const timeRemaining = intInRange(request.data?.timeRemaining, 0, tempoMassimo);
+      // Il risultato vale solo dentro una sessione avviata dal server: livelli
+      // e tempo residuo dichiarati vengono confrontati con il tempo trascorso
+      // davvero (vedi valutaMemoria), e la sessione non si riusa.
+      const trascorsoMs = await consumaSessione('memoria', 0);
+      const valutazione = valutaMemoria(
+        request.data?.levelsCompleted,
+        request.data?.timeRemaining,
+        trascorsoMs
+      );
+      if (!valutazione.ok) {
+        throw new HttpsError(
+          'failed-precondition',
+          valutazione.motivo === 'nessun_livello'
+            ? 'Devi completare almeno un livello'
+            : 'Risultato non compatibile con la durata della partita'
+        );
+      }
+      const { levelsCompleted, timeRemaining } = valutazione;
       const levelReward = levelsCompleted * COINS.memoriaPerLevel;
       const timeBonus = Math.floor(timeRemaining / 5) * COINS.memoriaTimeBonus;
       const totalReward = levelReward + timeBonus;
@@ -2541,6 +2716,9 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
   }
   })();
 
+  // La serie si aggiorna solo a partita finita: aprire un quiz, una sfida o
+  // una sessione e andarsene non e' aver giocato oggi.
+  if (!contaPerLaSerie(action)) return esito;
   const serie = await registraGiornoAttivo();
   return { ...esito, serie };
 });
@@ -3901,12 +4079,10 @@ interface PenaltyDuelDoc {
   mode: DuelMode;
   round: number;
   attacker: 1 | 2;
-  /** Zona scelta: dove tira l'attaccante, dove si tuffa il portiere. */
-  p1Choice: PenaltyZone | null;
-  p2Choice: PenaltyZone | null;
-  /** Potenza del tiro (0-100) di chi attacca; null per chi para. */
-  p1Power?: number | null;
-  p2Power?: number | null;
+  // Le scelte del round in corso NON stanno qui: il documento lo leggono
+  // entrambi i giocatori, e chi para vedrebbe dove sta per tirare l'altro.
+  // Restano in `penalty_duel_moves/{duelId}` (solo server) fino alla
+  // risoluzione; qui arriva soltanto `lastRound`, a round chiuso.
   phase: 'waiting' | 'playing' | 'finished';
   startedAt: number;
   deadlineAt: number;
@@ -3929,15 +4105,42 @@ interface PenaltyDuelDoc {
   } | null;
 }
 
+/** Mosse del round in corso, lette e scritte solo dal server. */
+interface MossePendentiDoc {
+  round: number;
+  p1: MossaDuello | null;
+  p2: MossaDuello | null;
+}
+
+/**
+ * Campi delle scelte che i duelli iniziati prima del 25/09/2026 tenevano sul
+ * documento pubblico: si tolgono alla prima risoluzione di un round.
+ */
+const CAMPI_SCELTA_LEGACY = {
+  p1Choice: FieldValue.delete(),
+  p2Choice: FieldValue.delete(),
+  p1Power: FieldValue.delete(),
+  p2Power: FieldValue.delete(),
+};
+
 function duelCode(): string {
-  return Array.from({ length: 6 }, () =>
-    'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[randomInt(34)]
-  ).join('');
+  return generaCodiceDuello();
 }
 
 /** Mossa a caso per chi non ha scelto in tempo: tiro affrettato o tuffo cieco. */
-function mossaCasuale(attacca: boolean): { zone: PenaltyZone; power: number } {
+function mossaCasuale(attacca: boolean): MossaDuello {
   return { zone: securePick(PENALTY_ZONES), power: attacca ? DUEL_TIMEOUT_POWER : 0 };
+}
+
+/**
+ * Mossa del bot: sceglie zona e potenza a modo suo, ma la mossa passa dalle
+ * stesse regole di quella di un giocatore (componiRound + resolveDuelShot,
+ * potenza vincolata a 0-100, zero per chi para).
+ */
+function mossaBot(attacca: boolean): MossaDuello {
+  if (!attacca) return { zone: botDuelKeeper(), power: 0 };
+  const tiro = botDuelShot();
+  return { zone: tiro.zone, power: tiro.power };
 }
 
 export const managePenaltyDuel = onCall(callableOpts, async request => {
@@ -3970,8 +4173,6 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
       mode: 'human',
       round: 1,
       attacker: 1,
-      p1Choice: null,
-      p2Choice: null,
       phase: 'waiting',
       startedAt: now,
       deadlineAt: now + 30000,
@@ -4029,8 +4230,6 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
       mode,
       round: 1,
       attacker: starting,
-      p1Choice: null,
-      p2Choice: null,
       phase: 'playing',
       startedAt: now,
       deadlineAt: now + DUEL_ROUND_MS,
@@ -4060,9 +4259,15 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
         ? Math.max(0, Math.min(100, Math.round(rawPower)))
         : null;
 
+    if (typeof duelId !== 'string' || duelId.includes('/')) {
+      throw new HttpsError('invalid-argument', 'duelId non valido');
+    }
+
     return db.runTransaction(async tx => {
       const duelRef = duelsRef.doc(duelId);
+      const movesRef = db.collection('penalty_duel_moves').doc(duelId);
       const duelSnap = await tx.get(duelRef);
+      const movesSnap = await tx.get(movesRef);
       if (!duelSnap.exists) throw new HttpsError('not-found', 'Partita non trovata');
       const duel = duelSnap.data() as PenaltyDuelDoc;
 
@@ -4080,55 +4285,48 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
       const now = Date.now();
       const deadlinePassed = now >= duel.deadlineAt;
 
+      // Mosse gia' registrate in questo round (documento solo server). Quelle
+      // di un round precedente non contano.
+      const pendenti = movesSnap.data() as MossePendentiDoc | undefined;
+      const delRound = pendenti?.round === duel.round ? pendenti : undefined;
+
       // La scelta di chi chiama: quella già registrata vince; altrimenti la
       // sua; senza nulla (o a tempo scaduto) una a caso.
-      let myChoice = isP1 ? duel.p1Choice : duel.p2Choice;
-      let myPower = (isP1 ? duel.p1Power : duel.p2Power) ?? null;
-      if (!myChoice) {
-        if (target && !timeout) {
-          myChoice = target;
-          myPower = iAmAttacker ? (power ?? DUEL_DEFAULT_POWER) : 0;
-        } else {
-          const m = mossaCasuale(iAmAttacker);
-          myChoice = m.zone;
-          myPower = m.power;
-        }
+      let mia: MossaDuello | null = (isP1 ? delRound?.p1 : delRound?.p2) ?? null;
+      if (!mia) {
+        mia =
+          target && !timeout
+            ? { zone: target, power: iAmAttacker ? (power ?? DUEL_DEFAULT_POWER) : 0 }
+            : mossaCasuale(iAmAttacker);
       }
 
-      let p1Choice = isP1 ? myChoice : duel.p1Choice;
-      let p2Choice = isP1 ? duel.p2Choice : myChoice;
-      const p1Power = isP1 ? myPower : (duel.p1Power ?? null);
-      let p2Power = isP1 ? (duel.p2Power ?? null) : myPower;
+      const mossaP1: MossaDuello | null = isP1 ? mia : (delRound?.p1 ?? null);
+      let mossaP2: MossaDuello | null = isP1 ? (delRound?.p2 ?? null) : mia;
 
-      // Il bot (sempre p2) risponde subito.
-      if (isBotGame && p2Choice === null) {
-        if (duel.attacker === 2) {
-          const tiro = botDuelShot();
-          p2Choice = tiro.zone;
-          p2Power = tiro.power;
-        } else {
-          p2Choice = botDuelKeeper();
-          p2Power = 0;
-        }
-      }
+      // Il bot (sempre p2) risponde subito, con le stesse regole di un giocatore.
+      if (isBotGame && mossaP2 === null) mossaP2 = mossaBot(duel.attacker === 2);
 
-      const bothChosen = p1Choice !== null && p2Choice !== null;
+      const bothChosen = mossaP1 !== null && mossaP2 !== null;
       const canResolve = bothChosen || deadlinePassed;
 
       if (!canResolve) {
-        tx.update(duelRef, { p1Choice, p2Choice, p1Power, p2Power });
+        const daSalvare: MossePendentiDoc = { round: duel.round, p1: mossaP1, p2: mossaP2 };
+        tx.set(movesRef, daSalvare);
         return { ok: true, resolved: false };
       }
 
       // Chi non ha scelto entro il tempo tira affrettato o si tuffa a caso.
-      const attackerIs1 = duel.attacker === 1;
-      const shotZone = (attackerIs1 ? p1Choice : p2Choice) ?? mossaCasuale(true).zone;
-      const shotPower = (attackerIs1 ? p1Power : p2Power) ?? DUEL_TIMEOUT_POWER;
-      const keeperZone = (attackerIs1 ? p2Choice : p1Choice) ?? mossaCasuale(false).zone;
-      const esito = resolveDuelShot(shotZone, shotPower, keeperZone);
+      const round = componiRound(duel.attacker, mossaP1, mossaP2, mossaCasuale);
+      const shotZone = round.shot;
+      const keeperZone = round.keeper;
+      const esito = resolveDuelShot(shotZone, round.power, keeperZone);
       const goal = esito.goal;
-      p1Choice = attackerIs1 ? shotZone : keeperZone;
-      p2Choice = attackerIs1 ? keeperZone : shotZone;
+      const { p1Choice, p2Choice } = round;
+      // Round chiuso: le mosse pendenti non servono piu'. La cancellazione va
+      // fatta dopo tutte le letture della transazione (profili dei vincitori).
+      const cancellaMosse = () => {
+        if (movesSnap.exists) tx.delete(movesRef);
+      };
 
       let p1Score = duel.p1.score;
       let p2Score = duel.p2.score;
@@ -4196,6 +4394,7 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
         const profiliBeneficiari = await Promise.all(
           beneficiari.map(b => tx.get(db.collection('profiles').doc(b.uid)))
         );
+        cancellaMosse();
 
         let rewardAccreditato = 0;
         // Il client mostra `duel.reward` dal documento, e solo a chi ha vinto o
@@ -4227,6 +4426,7 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
         });
 
         tx.update(duelRef, {
+          ...CAMPI_SCELTA_LEGACY,
           p1: { ...duel.p1, score: p1Score },
           p2: { ...duel.p2, score: p2Score },
           phase: 'finished',
@@ -4252,15 +4452,13 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
       const nextStart = now;
       const nextDeadline = now + DUEL_ROUND_MS;
 
+      cancellaMosse();
       tx.update(duelRef, {
+        ...CAMPI_SCELTA_LEGACY,
         p1: { ...duel.p1, score: p1Score },
         p2: { ...duel.p2, score: p2Score },
         round: nextRound,
         attacker: nextAttacker,
-        p1Choice: null,
-        p2Choice: null,
-        p1Power: null,
-        p2Power: null,
         phase: 'playing',
         startedAt: nextStart,
         deadlineAt: nextDeadline,
@@ -4326,6 +4524,8 @@ export const cleanupPenaltyDuels = onSchedule(
           abandoned: true,
           reward: 0,
         });
+        // Mosse rimaste in sospeso nel round mai risolto.
+        batch.delete(db.collection('penalty_duel_moves').doc(ref.id));
       }
       await batch.commit();
     }

@@ -346,8 +346,9 @@ export function SfidePage() {
                 </p>
               </div>
             ) : (
-              <p className="text-slate-500 text-sm">Nessun premio questa volta.</p>
+              !esito.messaggio && <p className="text-slate-500 text-sm">Nessun premio questa volta.</p>
             )}
+            {esito.messaggio && <p className="text-slate-500 text-sm">{esito.messaggio}</p>}
 
             <div className="flex gap-2">
               <button onClick={ricomincia} className="flex-1 btn-green text-sm font-black py-3 flex items-center justify-center gap-2">

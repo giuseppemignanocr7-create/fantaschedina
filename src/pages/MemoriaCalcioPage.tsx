@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Clock, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { playMemoria, callableErrorMessage, type MemoriaPlayResponse } from '@/lib/gameApi';
+import { startMemoria, playMemoria, callableErrorMessage, type MemoriaPlayResponse } from '@/lib/gameApi';
 import { COINS } from '@/lib/economy';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { burstConfetti, sideCannons, coinRain, vibrate } from '@/lib/juice';
@@ -70,6 +70,8 @@ export function MemoriaCalcioPage() {
   const timeRemainingRef = useRef(0);
   const timerRef = useRef(0);
   const levelIdxRef = useRef(0);
+  const sessionIdRef = useRef<string | null>(null);
+  const avvioRef = useRef(false);
 
   const level = LEVELS[levelIdx];
 
@@ -88,18 +90,30 @@ export function MemoriaCalcioPage() {
     setPhase('playing');
   }, []);
 
-  const begin = () => {
+  const begin = async () => {
+    if (avvioRef.current) return;
+    avvioRef.current = true;
     setError(null);
-    levelsDoneRef.current = 0;
-    timeRemainingRef.current = 0;
-    setResult(null);
-    startLevel(0);
+    try {
+      // La partita la apre il server: alla fine il risultato vale solo con
+      // questa sessione e se il tempo trascorso e' plausibile.
+      const { sessionId } = await startMemoria();
+      sessionIdRef.current = sessionId;
+      levelsDoneRef.current = 0;
+      timeRemainingRef.current = 0;
+      setResult(null);
+      startLevel(0);
+    } catch (e) {
+      setError(callableErrorMessage(e));
+    } finally {
+      avvioRef.current = false;
+    }
   };
 
   const finishGame = useCallback(async (completedLevels: number, totalTimeRemaining: number) => {
     setPhase('submitting');
     try {
-      const r = await playMemoria(completedLevels, totalTimeRemaining);
+      const r = await playMemoria(sessionIdRef.current ?? '', completedLevels, totalTimeRemaining);
       setResult(r);
       setPhase('done');
       refreshProfile();
