@@ -1026,13 +1026,16 @@ async function valutaGiornata(ref: DocumentReference, forza = false): Promise<Es
   // Aggiorna risultati da ESPN
   const results = await fetchResults(md.matches.map(perEspn));
 
-  const updatedMatches = md.matches.map(m => {
+  const modifiche = new Map<string, { status: string; result?: MatchResult }>();
+  for (const m of md.matches) {
     const r = results.get(m.id);
-    if (!r) return m;
-    const base = { ...m, status: r.status };
-    if (r.status !== 'finished') return base;
-    return {
-      ...base,
+    if (!r) continue;
+    if (r.status !== 'finished') {
+      modifiche.set(m.id, { status: r.status });
+      continue;
+    }
+    modifiche.set(m.id, {
+      status: r.status,
       result: {
         homeGoals: r.homeGoals,
         awayGoals: r.awayGoals,
@@ -1045,13 +1048,24 @@ async function valutaGiornata(ref: DocumentReference, forza = false): Promise<Es
           ? { htHomeGoals: r.htHomeGoals, htAwayGoals: r.htAwayGoals }
           : {}),
       },
-    };
-  });
+    });
+  }
 
-  await ref.update({
-    matches: updatedMatches,
-    status: 'locked',
-    updatedAt: FieldValue.serverTimestamp(),
+  // Come per il live: si fonde partita per partita sulla versione letta nella
+  // transazione, cosi' un aggiornamento live o una sincronizzazione arrivati
+  // nel frattempo non vengono cancellati da questa scrittura.
+  const updatedMatches = await db.runTransaction(async tx => {
+    const fresh = await tx.get(ref);
+    const partite = ((fresh.data() as MatchdayDoc | undefined)?.matches ?? md.matches).map(m => {
+      const agg = modifiche.get(m.id);
+      return agg ? applicaAggiornamento(m, agg) : m;
+    });
+    tx.update(ref, {
+      matches: partite,
+      status: 'locked',
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return partite;
   });
 
   // Partite finite, annullate (rinviate, cancellate, mai chiuse dopo 48 ore)
