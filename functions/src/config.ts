@@ -69,6 +69,9 @@ export const COINS = {
   sfidaBaseReward: 5, // premio base per vittoria
   sfidaMaxReward: 30, // premio massimo
   sfidaCooldownDays: 7, // una sfida per coppia per settimana
+  // Il cooldown vale per coppia: con tanti avversari diversi, senza tetto le
+  // sfide diventano una fonte di gettoni illimitata. Allineato ai duelli.
+  sfideTettoGiornaliero: 50,
   // Memoria Calcio
   memoriaPerLevel: 5, // gettoni per livello completato
   memoriaTimeBonus: 1, // gettoni per 5 secondi rimanenti

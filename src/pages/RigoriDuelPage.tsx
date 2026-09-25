@@ -505,10 +505,10 @@ export function RigoriDuelPage() {
         </div>
         <div className="grid grid-cols-3 gap-2">
           <button onClick={() => handleBot('botAttacker')} disabled={loading} className="btn-secondary px-2 py-3 text-[11px] font-black normal-case tracking-normal">
-            ⚽ Tu tiri
+            ⚽ Prima tiri tu
           </button>
           <button onClick={() => handleBot('botKeeper')} disabled={loading} className="btn-secondary px-2 py-3 text-[11px] font-black normal-case tracking-normal">
-            🧤 Tu pari
+            🧤 Prima pari tu
           </button>
           <button onClick={() => handleBot('botAlternate')} disabled={loading} className="btn-secondary px-2 py-3 text-[11px] font-black normal-case tracking-normal">
             🔄 Alternati

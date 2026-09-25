@@ -43,6 +43,7 @@ const {
   seedMatchday,
   seedProfile,
   seedDuelloQuasiFinito,
+  seedSessioneMinigioco,
   setDeadline,
   wipe,
 } = await import('./helpers');
@@ -214,14 +215,17 @@ beforeAll(async () => {
   // --- Minigiochi e duelli: la vita del gioco intorno alla schedina ---
   for (const [i, uid] of UTENTI.entries()) {
     if (i % 3 === 0) {
+      const sessionId = await seedSessioneMinigioco(uid, 'memoria');
       await playMinigame.run(
-        req(uid, { action: 'memoria_play', levelsCompleted: 2, timeRemaining: 20 })
+        req(uid, { action: 'memoria_play', sessionId, levelsCompleted: 2, timeRemaining: 20 })
       );
     }
     if (i % 3 === 1) {
+      const sessionId = await seedSessioneMinigioco(uid, 'rigori');
       await playMinigame.run(
         req(uid, {
           action: 'rigori_play',
+          sessionId,
           shots: Array.from({ length: COINS.rigoriMaxShots }, () => ({ zone: 'TL', power: 70 })),
         })
       );
