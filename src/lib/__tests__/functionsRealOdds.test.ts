@@ -3,7 +3,13 @@
 // e' mai abbinata ("Lazio" contro "Lazio Rome") e nessuno se n'era accorto:
 // questi test tengono l'elenco onesto.
 import { describe, it, expect } from 'vitest';
-import { canonicalName, teamsMatch } from '../../../functions/src/realOdds';
+import {
+  canonicalName,
+  teamsMatch,
+  trovaEvento,
+  SCARTO_MASSIMO_MS,
+  type OddsApiEvent,
+} from '../../../functions/src/realOdds';
 
 /**
  * Nomi come li scrivono le due fonti, verificati il 21/09/2026 chiedendo a
@@ -61,5 +67,77 @@ describe('abbinamento squadre ESPN ↔ fornitore quote', () => {
   it('non appiattisce squadre diverse sullo stesso identificativo', () => {
     const identificativi = COPPIE.map(([espn]) => canonicalName(espn));
     expect(new Set(identificativi).size).toBe(COPPIE.length);
+  });
+
+  it.each([
+    ['Pisa', 'AC Pisa 1909'],
+    ['Pisa', 'Pisa SC'],
+    ['Pisa', 'Pisa'],
+    ['Cremonese', 'US Cremonese'],
+    ['Cremonese', 'Cremonese'],
+    ['Hellas Verona', 'Hellas Verona FC'],
+    ['Hellas Verona', 'Verona'],
+    ['Verona', 'Hellas Verona'],
+  ])('neopromosse e Verona: %s si abbina a %s', (espn, fornitore) => {
+    expect(teamsMatch(espn, fornitore)).toBe(true);
+  });
+
+  it('Pisa, Cremonese e Verona restano squadre distinte', () => {
+    expect(teamsMatch('Pisa', 'US Cremonese')).toBe(false);
+    expect(teamsMatch('Hellas Verona', 'Venezia FC')).toBe(false);
+    expect(teamsMatch('Cremonese', 'Como 1907')).toBe(false);
+  });
+});
+
+describe('trovaEvento: stesse squadre, stesso giorno, ancora da giocare', () => {
+  const kickoff = new Date('2026-09-27T16:00:00Z');
+  const partita = {
+    homeTeam: { name: 'Lazio' },
+    awayTeam: { name: 'Hellas Verona' },
+    scheduledAt: kickoff,
+  };
+  const evento = (over: Partial<OddsApiEvent> = {}): OddsApiEvent => ({
+    id: 1,
+    home: 'Lazio Rome',
+    away: 'Hellas Verona FC',
+    homeId: 10,
+    awayId: 20,
+    date: '2026-09-27T16:00:00Z',
+    status: 'pending',
+    ...over,
+  });
+
+  it('abbina l evento con nomi e orario coerenti', () => {
+    expect(trovaEvento([evento()], partita)?.id).toBe(1);
+  });
+
+  it('tollera uno scarto di orario fino a 36 ore', () => {
+    const vicino = new Date(kickoff.getTime() + SCARTO_MASSIMO_MS).toISOString();
+    expect(trovaEvento([evento({ date: vicino })], partita)?.id).toBe(1);
+  });
+
+  it('scarta la stessa sfida in un altra data (ritorno, recupero, coppa)', () => {
+    const lontano = new Date(kickoff.getTime() + SCARTO_MASSIMO_MS + 60_000).toISOString();
+    expect(trovaEvento([evento({ date: lontano })], partita)).toBeUndefined();
+    expect(trovaEvento([evento({ date: '2027-02-14T19:45:00Z' })], partita)).toBeUndefined();
+  });
+
+  it('usa solo eventi ancora da giocare', () => {
+    for (const status of ['live', 'settled', 'postponed', 'cancelled']) {
+      expect(trovaEvento([evento({ status })], partita)).toBeUndefined();
+    }
+  });
+
+  it('fra piu eventi sceglie quello giusto', () => {
+    const eventi = [
+      evento({ id: 7, date: '2027-02-14T19:45:00Z' }),
+      evento({ id: 8, home: 'AS Roma' }),
+      evento({ id: 9 }),
+    ];
+    expect(trovaEvento(eventi, partita)?.id).toBe(9);
+  });
+
+  it('una data illeggibile non abbina', () => {
+    expect(trovaEvento([evento({ date: 'n/d' })], partita)).toBeUndefined();
   });
 });
