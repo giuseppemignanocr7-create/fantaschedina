@@ -143,7 +143,7 @@ describe('lega con agenzia richiesta', () => {
     // ripiego sulle quote dell'agenzia predefinita.
     await expect(
       submitSchedina.run(req(capo, { predictions: tenPredictions(), leagueId }) as never)
-    ).rejects.toThrow(/Mercato non valido/i);
+    ).rejects.toThrow(/Nessuna partita quotata|Partita senza quote/i);
 
     // Arrivate le quote dell'agenzia, la schedina di lega si puo' inviare.
     const { odds } = await leggiQuote();
@@ -175,7 +175,7 @@ describe('lega con agenzia richiesta', () => {
 
     await expect(
       submitSchedina.run(req(capo, { predictions: tenPredictions(), leagueId }) as never)
-    ).rejects.toThrow(/Mercato non valido/i);
+    ).rejects.toThrow(/Nessuna partita quotata|Partita senza quote/i);
   });
 
   it('non si riassegna l agenzia di una lega gia attiva', async () => {
