@@ -52,7 +52,9 @@ const BUDGETS = {
  */
 // 15/09/2026: 388 KB dopo il rifacimento dei minigiochi (stadio in SVG,
 // portiere articolato, ruota con i premi negli spicchi); tetto da 385 a 395.
-const TOTAL_JS_BUDGET = 395;
+// 26/09/2026: 395.6 KB dopo le correzioni dell'audit (conferme, invito,
+// sessioni dei minigiochi, react-router aggiornato); tetto da 395 a 400.
+const TOTAL_JS_BUDGET = 400;
 
 const KB = 1024;
 
