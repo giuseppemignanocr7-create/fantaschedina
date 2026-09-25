@@ -4,6 +4,8 @@
 // Tenere allineata a src/lib/economy.ts del client.
 // ============================================
 
+import type { MatchOdds } from './odds';
+
 export const TOURNAMENT = {
   minValidOdds: 1.3,
   oddsCap: 5.0,
@@ -49,6 +51,15 @@ export const DEFAULT_ACTIVE_COMPETITIONS: string[] = ['ita.1'];
 // Numero di partite che ogni utente sceglie (a scelta, dal pool dei campionati attivi)
 // per comporre la propria schedina.
 export const MAX_PICKS_PER_SCHEDINA = 10;
+
+/**
+ * Pronostici richiesti: dieci, o meno se l'agenzia ha quotato meno partite.
+ * Conta le partite con l'esito finale quotato. Mirror in src/lib/pickRichieste.ts.
+ */
+export function pickRichieste(quotate: Record<string, MatchOdds> | undefined): number {
+  const n = Object.values(quotate ?? {}).filter(o => !!o?.esito).length;
+  return Math.min(MAX_PICKS_PER_SCHEDINA, n);
+}
 
 
 // --- GETTONI ---

@@ -18,8 +18,9 @@ vi.mock('../espn', () => ({
   fetchActiveMatchdayPool: vi.fn(async () => null),
 }));
 
-const { adminForceSettle, submitSchedina } = await import('../index');
-const { COINS } = await import('../config');
+const { adminForceSettle, buyRaffleTicket, submitSchedina } = await import('../index');
+const { COINS, POWERUPS } = await import('../config');
+const { RAFFLE } = await import('../raffle');
 const {
   coinsOf,
   readProfile,
@@ -28,9 +29,12 @@ const {
   seedProfile,
   setDeadline,
   tenPredictions,
+  walletOf,
   wipe,
   db,
 } = await import('./helpers');
+
+const JOLLY = POWERUPS.jolly.cost;
 
 type CallableReq = Parameters<typeof adminForceSettle.run>[0];
 
@@ -153,7 +157,7 @@ describe('adminForceSettle — valutazione della giornata', () => {
     expect(md.data()?.settled).toBe(false);
   });
 
-  it('con force: true valuta comunque, contando come sbagliata la partita aperta', async () => {
+  it('con force: true valuta comunque, annullando la partita aperta', async () => {
     const utente = freshUid('forzata');
     await seedProfile(utente, 0);
     await submitSchedina.run(req(utente, { predictions: tenPredictions('1'), powerups: {} }));
@@ -168,6 +172,130 @@ describe('adminForceSettle — valutazione della giornata', () => {
     const profilo = await readProfile(utente);
     expect(profilo.correctPredictions).toBe(9);
     expect(profilo.perfectSchedine).toBe(0);
+
+    // Nessun risultato scritto per la partita non finita, pronostico annullato.
+    const md = await db.collection('matchdays').doc('1').get();
+    const m7 = (md.data()?.matches as { id: string; result?: unknown }[]).find(m => m.id === 'm7');
+    expect(m7?.result).toBeUndefined();
+    expect(md.data()).toMatchObject({ settled: true, status: 'completed' });
+    const schedina = await readSchedina(utente, 1);
+    const esiti = schedina?.predictionResults as { matchId: string; isVoid: boolean; isCorrect: boolean }[];
+    expect(esiti.find(p => p.matchId === 'm7')).toMatchObject({ isVoid: true, isCorrect: false });
+  });
+
+  it('partita rinviata: pronostico annullato, non esatto, e il Jolly sopra torna indietro', async () => {
+    const utente = freshUid('rinviata');
+    await seedProfile(utente, 1000);
+    await submitSchedina.run(
+      req(utente, { predictions: tenPredictions('1'), powerups: { jolly: 'm3' } })
+    );
+    await setDeadline(1, -60_000);
+    tuttePartiteFinite(2, 0);
+    risultati.set('m3', { status: 'postponed', homeGoals: 0, awayGoals: 0 });
+
+    await adminForceSettle.run(req(admin, { matchdayNumber: 1 }));
+
+    const profilo = await readProfile(utente);
+    // Nove esatti veri su dieci: vale il +5, non il +10.
+    expect(profilo.correctPredictions).toBe(9);
+    expect(profilo.perfectSchedine).toBe(0);
+    expect((await readSchedina(utente, 1))?.bonusPoints).toBe(5);
+    // Saldo: 1000 - Jolly + premi da 9 esatti + premio di giornata + Jolly restituito.
+    expect(profilo.coins).toBe(
+      1000 - JOLLY + 9 * COINS.perCorrectPrediction + COINS.bonus9Correct + COINS.weeklyWinner + JOLLY
+    );
+    const movimenti = await walletOf(utente);
+    expect(movimenti.map(m => m.reason)).toContain('powerup_jolly_refund_g1');
+    // Il registro torna col saldo.
+    expect(1000 + movimenti.reduce((s, m) => s + m.amount, 0)).toBe(profilo.coins);
+    // Il rimborso non e' un guadagno.
+    expect(profilo.coinsEarned).toBe(
+      9 * COINS.perCorrectPrediction + COINS.bonus9Correct + COINS.weeklyWinner
+    );
+  });
+
+  it('manca il parziale di primo tempo: la giornata aspetta, con force il pronostico e\' annullato', async () => {
+    const utente = freshUid('senzaparziale');
+    await seedProfile(utente, 0);
+    const predictions = tenPredictions('1').map((p, i) =>
+      i === 0 ? { ...p, betType: 'esito_1t', outcome: '1' } : p
+    );
+    await submitSchedina.run(req(utente, { predictions, powerups: {} }));
+    await setDeadline(1, -60_000);
+    tuttePartiteFinite(2, 0);
+    risultati.set('m0', { status: 'finished', homeGoals: 2, awayGoals: 0 });
+
+    await expect(
+      adminForceSettle.run(req(admin, { matchdayNumber: 1 }))
+    ).rejects.toMatchObject({ code: 'failed-precondition', message: expect.stringContaining('m0') });
+    expect((await readSchedina(utente, 1))?.settled).toBe(false);
+
+    await adminForceSettle.run(req(admin, { matchdayNumber: 1, force: true }));
+    const profilo = await readProfile(utente);
+    expect(profilo.correctPredictions).toBe(9);
+    expect(profilo.perfectSchedine).toBe(0);
+  });
+
+  it('estrazione: una sola volta, fra chi ha biglietti', async () => {
+    const a = freshUid('bigliettiA');
+    const b = freshUid('bigliettiB');
+    await seedProfile(a, 1000);
+    await seedProfile(b, 1000);
+    await buyRaffleTicket.run(req(a, { count: 2 }));
+    await buyRaffleTicket.run(req(b, { count: 1 }));
+    await submitSchedina.run(req(a, { predictions: tenPredictions('1'), powerups: {} }));
+    await setDeadline(1, -60_000);
+    tuttePartiteFinite(2, 0);
+
+    await adminForceSettle.run(req(admin, { matchdayNumber: 1 }));
+
+    const urna = (await db.collection('raffles').doc('1').get()).data();
+    expect(urna?.status).toBe('drawn');
+    expect([a, b]).toContain(urna?.winnerUid);
+    // Urna chiusa: niente altri biglietti.
+    await expect(buyRaffleTicket.run(req(b, { count: 1 }))).rejects.toMatchObject({
+      code: 'failed-precondition',
+    });
+  });
+
+  it('estrazione senza vincitori validi: annullata e biglietti rimborsati', async () => {
+    const sospeso = freshUid('bigliettiSospeso');
+    await seedProfile(sospeso, 1000);
+    await buyRaffleTicket.run(req(sospeso, { count: 3 }));
+    expect(await coinsOf(sospeso)).toBe(1000 - 3 * RAFFLE.ticketCost);
+    await db.collection('profiles').doc(sospeso).update({ isActive: false });
+    await setDeadline(1, -60_000);
+    tuttePartiteFinite(2, 0);
+
+    await adminForceSettle.run(req(admin, { matchdayNumber: 1 }));
+
+    const urna = (await db.collection('raffles').doc('1').get()).data();
+    expect(urna?.status).toBe('annullata');
+    expect(urna?.winnerUid).toBeNull();
+    expect(await coinsOf(sospeso)).toBe(1000);
+    expect((await walletOf(sospeso)).map(m => m.reason)).toContain('raffle_refund_g1');
+    // Il rimborso non e' un guadagno.
+    expect((await readProfile(sospeso)).coinsEarned).toBe(0);
+  });
+
+  it('un utente sospeso non incassa gettoni ne\' vince la giornata', async () => {
+    const sospeso = freshUid('sospeso');
+    const onesto = freshUid('onesto');
+    await seedProfile(sospeso, 0);
+    await seedProfile(onesto, 0);
+    await submitSchedina.run(req(sospeso, { predictions: tenPredictions('1'), powerups: {} }));
+    const cinque = tenPredictions('1').map((p, i) => (i < 5 ? p : { ...p, outcome: '2' }));
+    await submitSchedina.run(req(onesto, { predictions: cinque, powerups: {} }));
+    await db.collection('profiles').doc(sospeso).update({ isActive: false });
+    await setDeadline(1, -60_000);
+    tuttePartiteFinite(2, 0);
+
+    await adminForceSettle.run(req(admin, { matchdayNumber: 1 }));
+
+    expect(await coinsOf(sospeso)).toBe(0);
+    expect((await readProfile(sospeso)).weeklyWins).toBe(0);
+    const premio = await db.collection('prizes').doc('weekly_1').get();
+    expect(premio.data()?.winnerId).toBe(onesto);
   });
 
   it('a parità di punti il premio va a chi ha consegnato prima, non a caso', async () => {

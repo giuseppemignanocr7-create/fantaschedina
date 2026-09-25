@@ -44,15 +44,20 @@ import { secureIndex, securePick, secureShuffle } from './random';
 import {
   COINS, MISSIONS, POWERUPS, PowerUpSelection,
   DEFAULT_WEEKLY_PRIZES, MAX_WEEKLY_PRIZES, type WeeklyPrize,
-  COMPETITIONS, DEFAULT_ACTIVE_COMPETITIONS, MAX_PICKS_PER_SCHEDINA,
+  COMPETITIONS, DEFAULT_ACTIVE_COMPETITIONS,
+  pickRichieste,
 } from './config';
 import { ALL_QUIZ_QUESTIONS } from './quizData';
 import {
   evaluateBet,
   evaluateSchedina,
+  attendeParziale,
+  livelloBonus,
+  statoGiornata,
   MatchResult,
   Prediction,
 } from './scoring';
+import { partitaNonIniziata, quotaUfficiale, validaPronostici } from './validazione';
 import type { MatchOdds } from './odds';
 import { computePowerupCharge, isLastMinuteWindowOpen, powerupCost } from './powerups';
 import { calcolaSerie } from './streak';
@@ -210,6 +215,18 @@ async function requireCircuito(uid: string, leagueId: unknown): Promise<string |
     throw new HttpsError('failed-precondition', 'Lega in attesa di attivazione');
   }
   return leagueId;
+}
+
+/**
+ * Blocca chi e' stato sospeso dall'admin (`isActive: false` sul profilo):
+ * va chiamata in testa a ogni callable che cambia lo stato del gioco. Un
+ * profilo che non esiste ancora passa: ci pensa la callable a gestirlo.
+ */
+async function requireUtenteAttivo(uid: string): Promise<void> {
+  const snap = await db.collection('profiles').doc(uid).get();
+  if (snap.exists && snap.data()?.isActive === false) {
+    throw new HttpsError('permission-denied', 'Account sospeso: non puoi giocare');
+  }
 }
 
 /**
@@ -766,6 +783,21 @@ export const settleMatchdays = onSchedule(
       if (mdSnap.id === '_meta') continue;
       await valutaGiornata(mdSnap.ref);
     }
+
+    // Estrazioni rimaste indietro: urna ancora aperta su una giornata gia'
+    // valutata (errore durante l'estrazione) o annullata con i rimborsi a meta'.
+    const urne = await db.collection('raffles').where('status', 'in', ['open', 'annullata']).get();
+    for (const u of urne.docs) {
+      try {
+        const matchday = Number(u.id);
+        const md = await db.collection('matchdays').doc(u.id).get();
+        if (!md.exists || md.data()?.settled !== true) continue;
+        if (u.data().status === 'open') await estraiPremioGiornata(matchday);
+        else if (!u.data().refundedAt) await rimborsaBiglietti(matchday);
+      } catch (e) {
+        logger.error('[raffle] ripresa estrazione', { raffle: u.id, e });
+      }
+    }
   }
 );
 
@@ -775,15 +807,30 @@ export const settleMatchdays = onSchedule(
  * (rete di sicurezza) sia updateLiveScores appena l'ultima partita si
  * chiude, cosi' l'esito arriva entro un paio di minuti dal fischio finale
  * e non al giro orario successivo. Il claim su `settlingAt` evita che i
- * due arrivino insieme.
+ * due arrivino insieme. La usa anche adminForceSettle, con `forza`: le
+ * partite non finite vengono annullate invece di aspettarle.
  */
-async function valutaGiornata(ref: DocumentReference): Promise<void> {
+interface EsitoValutazione {
+  esito:
+    | 'assente'
+    | 'gia_valutata'
+    | 'prima_della_deadline'
+    | 'in_attesa'
+    | 'in_corso'
+    | 'incompleta'
+    | 'valutata';
+  valutate?: number;
+  /** Partite ancora da chiudere (esito 'in_attesa'). */
+  inAttesa?: string[];
+}
+
+async function valutaGiornata(ref: DocumentReference, forza = false): Promise<EsitoValutazione> {
   const now = Timestamp.now();
   const mdSnap = await ref.get();
-  if (!mdSnap.exists) return;
+  if (!mdSnap.exists) return { esito: 'assente' };
   const md = mdSnap.data() as MatchdayDoc;
-  if (md.settled) return;
-  if (md.deadline.toMillis() > now.toMillis()) return;
+  if (md.settled) return { esito: 'gia_valutata' };
+  if (md.deadline.toMillis() > now.toMillis()) return { esito: 'prima_della_deadline' };
 
   // Aggiorna risultati da ESPN
   const results = await fetchResults(
@@ -818,10 +865,52 @@ async function valutaGiornata(ref: DocumentReference): Promise<void> {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  const allFinished = updatedMatches.every(m => m.status === 'finished' && m.result);
-  if (!allFinished) {
-    logger.info(`Giornata ${md.number}: partite non concluse, skip settlement`);
-    return;
+  // Partite finite, annullate (rinviate, cancellate, mai chiuse dopo 48 ore)
+  // o ancora da aspettare. Nessun risultato viene inventato: una partita che
+  // non ha un risultato vero annulla i pronostici giocati sopra.
+  const stato = statoGiornata(
+    updatedMatches.map(m => ({
+      id: m.id,
+      status: m.status,
+      kickoffMs: m.scheduledAt.toMillis(),
+      result: m.result,
+      confermata: results.has(m.id),
+    })),
+    now.toMillis(),
+    forza
+  );
+  if (stato.inAttesa.length > 0) {
+    logger.info(`Giornata ${md.number}: partite non concluse, skip settlement`, {
+      partite: stato.inAttesa,
+    });
+    return { esito: 'in_attesa', inAttesa: stato.inAttesa };
+  }
+  if (stato.annullate.length > 0) {
+    logger.warn(`Giornata ${md.number}: partite annullate, pronostici sopra senza valore`, {
+      partite: stato.annullate,
+      forza,
+    });
+  }
+
+  // Parziale di primo tempo mancante (il summary ESPN non ha risposto): chi
+  // ci ha giocato un mercato di primo tempo aspetta il giro successivo,
+  // invece di vederselo annullato per un guasto di rete. Dopo 48 ore si
+  // valuta comunque e quel pronostico e' annullato (vedi statoGiornata).
+  if (stato.senzaParziale.length > 0) {
+    const schedine = await db
+      .collection('schedine')
+      .where('matchdayNumber', '==', md.number)
+      .select('predictions')
+      .get();
+    const bloccate = schedine.docs.some(d =>
+      attendeParziale((d.data().predictions as Prediction[] | undefined) ?? [], stato.senzaParziale)
+    );
+    if (bloccate) {
+      logger.info(`Giornata ${md.number}: manca il parziale di primo tempo, si riprova`, {
+        partite: stato.senzaParziale,
+      });
+      return { esito: 'in_attesa', inAttesa: stato.senzaParziale };
+    }
   }
 
   // Posizioni prima della valutazione: servono a dire "sei salito di
@@ -834,10 +923,18 @@ async function valutaGiornata(ref: DocumentReference): Promise<void> {
     tx.update(ref, { settlingAt: FieldValue.serverTimestamp() });
     return true;
   });
-  if (!preso) return;
+  if (!preso) return { esito: 'in_corso' };
 
   const posizioniPrima = await posizioniInClassifica();
-  const valutate = await settleSchedine(md.number, updatedMatches);
+  const { valutate, nonValutate } = await settleSchedine(md.number, stato.risultati);
+  // Una giornata non si chiude finche' resta una schedina da valutare: la
+  // chiusura e' irreversibile e le schedine rimaste non verrebbero piu'
+  // riprese. Si libera il claim e ci riprova il giro successivo.
+  if (nonValutate > 0) {
+    await ref.update({ settlingAt: FieldValue.delete() });
+    logger.error(`Giornata ${md.number}: ${nonValutate} schedine non valutate, giornata lasciata aperta`);
+    return { esito: 'incompleta', valutate };
+  }
   await db.runTransaction(async tx => {
     const fresh = await tx.get(ref);
     if ((fresh.data() as MatchdayDoc).settled) return;
@@ -884,6 +981,7 @@ async function valutaGiornata(ref: DocumentReference): Promise<void> {
   } catch (e) {
     logger.error('[push] esito giornata', e);
   }
+  return { esito: 'valutata', valutate };
 }
 
 // ---------- 2b. PUNTEGGI LIVE (scheduled ogni 2 min, solo in finestra partite) ----------
@@ -1097,13 +1195,8 @@ async function leggiPremiSettimanali(matchdayNumber: number): Promise<WeeklyPriz
 
 async function settleSchedine(
   matchdayNumber: number,
-  matches: StoredMatch[]
-): Promise<number> {
-  const resultsMap = new Map<string, MatchResult>();
-  for (const m of matches) {
-    if (m.result) resultsMap.set(m.id, m.result);
-  }
-
+  resultsMap: Map<string, MatchResult>
+): Promise<{ valutate: number; nonValutate: number }> {
   const schedineSnap = await db
     .collection('schedine')
     .where('matchdayNumber', '==', matchdayNumber)
@@ -1116,32 +1209,55 @@ async function settleSchedine(
     penalty: number;
     perfect: boolean;
     coins: number;
+    /** Gettoni del Jolly restituiti perche' la sua partita e' stata annullata. */
+    rimborsoJolly: number;
   }
 
   const evaluations = schedineSnap.docs.map(sSnap => {
     const schedina = sSnap.data() as SchedinaDoc;
-    const score = evaluateSchedina(
-      schedina.predictions,
-      resultsMap,
-      schedina.powerups ?? {}
-    );
+    const powerups = schedina.powerups ?? {};
+    // I pronostici richiesti sono quelli che la schedina ha: submitSchedina
+    // ne accetta esattamente pickRichieste(), dieci o meno se l'agenzia ha
+    // quotato meno partite.
+    const richieste = schedina.predictions.length;
+    const score = evaluateSchedina(schedina.predictions, resultsMap, powerups, richieste);
 
-    // Gettoni da performance
+    // Gettoni da performance: solo sugli esatti veri, gli annullati non contano.
+    const livello = livelloBonus(score.correctPredictions, richieste);
     let coins = score.correctPredictions * COINS.perCorrectPrediction;
-    if (score.correctPredictions === 9) coins += COINS.bonus9Correct;
-    if (score.correctPredictions >= 10) coins += COINS.bonus10Correct;
+    if (livello === 'quasi') coins += COINS.bonus9Correct;
+    if (livello === 'pieno') coins += COINS.bonus10Correct;
+
+    // Jolly su una partita annullata: non ha potuto raddoppiare nulla, si
+    // restituisce.
+    const jollyAnnullato =
+      !!powerups.jolly &&
+      score.predictionResults.some(p => p.matchId === powerups.jolly && p.isVoid);
 
     const outcome: UserOutcome = {
       finalPoints: score.finalPoints,
       correct: score.correctPredictions,
       bonus: score.bonusPoints,
       penalty: score.penaltyPoints,
-      perfect: score.correctPredictions >= 10,
+      perfect: livello === 'pieno',
       coins,
+      rimborsoJolly: jollyAnnullato ? POWERUPS.jolly.cost : 0,
     };
 
     return { sSnap, schedina, score, outcome };
   });
+
+  // Chi e' sospeso non vince premi: niente gettoni, niente vittoria di
+  // giornata. I rimborsi dei power-up invece gli spettano comunque. Fuori
+  // dalla corsa al premio anche chi non ha piu' il profilo (account cancellato).
+  const sospesi = new Set<string>();
+  const uids = [...new Set(evaluations.map(e => e.schedina.userId))];
+  for (let i = 0; i < uids.length; i += 300) {
+    const refs = uids.slice(i, i + 300).map(u => db.collection('profiles').doc(u));
+    for (const p of await db.getAll(...refs)) {
+      if (!p.exists || p.data()?.isActive === false) sospesi.add(p.id);
+    }
+  }
 
   // Due circuiti separati sulla stessa giornata: la schedina generale muove
   // profilo, gettoni e premio di giornata; quelle di lega restano dentro la
@@ -1152,7 +1268,7 @@ async function settleSchedine(
   // Classifica di giornata del circuito generale: serve sia il vincitore (per
   // i gettoni) sia il podio completo (per i premi settimanali dell'admin).
   const classificaGiornata = rankWeeklyCandidates(
-    generali.map(e => ({
+    generali.filter(e => !sospesi.has(e.schedina.userId)).map(e => ({
       userId: e.schedina.userId,
       finalPoints: e.score.finalPoints,
       correctPredictions: e.score.correctPredictions,
@@ -1168,7 +1284,7 @@ async function settleSchedine(
   for (const leagueId of new Set(diLega.map(e => e.schedina.leagueId as string))) {
     const migliore = pickWeeklyWinner(
       diLega
-        .filter(e => e.schedina.leagueId === leagueId)
+        .filter(e => e.schedina.leagueId === leagueId && !sospesi.has(e.schedina.userId))
         .map(e => ({
           userId: e.schedina.userId,
           finalPoints: e.score.finalPoints,
@@ -1195,30 +1311,7 @@ async function settleSchedine(
 
       const profileRef = db.collection('profiles').doc(schedina.userId);
       const freshProfile = await tx.get(profileRef);
-      if (!freshProfile.exists) {
-        throw new Error(`Profilo ${schedina.userId} mancante durante il settlement`);
-      }
-      const profile = freshProfile.data() as Record<string, number>;
-      const isWeeklyWinner = schedina.userId === bestUserId;
-      const coins = outcome.coins + (isWeeklyWinner ? COINS.weeklyWinner : 0);
-      const profileUpdates: Record<string, unknown> = {
-        totalPoints: FieldValue.increment(outcome.finalPoints),
-        weeklyPoints: outcome.finalPoints,
-        matchdaysPlayed: FieldValue.increment(1),
-        bonusPointsTotal: FieldValue.increment(outcome.bonus),
-        penaltyPointsTotal: FieldValue.increment(outcome.penalty),
-        perfectSchedine: FieldValue.increment(outcome.perfect ? 1 : 0),
-        bestMatchdayPoints: Math.max(profile.bestMatchdayPoints ?? 0, outcome.finalPoints),
-        correctPredictions: FieldValue.increment(outcome.correct),
-        weeklyWins: FieldValue.increment(isWeeklyWinner ? 1 : 0),
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-      if (coins > 0) {
-        profileUpdates.coins = FieldValue.increment(coins);
-        profileUpdates.coinsEarned = FieldValue.increment(coins);
-      }
-
-      tx.update(sSnap.ref, {
+      const esitoSchedina = {
         predictionResults: score.predictionResults,
         settled: true,
         totalPoints: score.totalPoints,
@@ -1227,7 +1320,46 @@ async function settleSchedine(
         finalPoints: score.finalPoints,
         correctPredictions: score.correctPredictions,
         settledAt: FieldValue.serverTimestamp(),
-      });
+      };
+      if (!freshProfile.exists) {
+        // Account cancellato dopo l'invio: la schedina si chiude senza
+        // accrediti, altrimenti la giornata resterebbe aperta per sempre.
+        logger.warn('settlement: profilo mancante, schedina chiusa senza accrediti', {
+          schedinaId: sSnap.id,
+          userId: schedina.userId,
+        });
+        tx.update(sSnap.ref, esitoSchedina);
+        return;
+      }
+      const profile = freshProfile.data() as Record<string, unknown>;
+      const sospeso = profile.isActive === false;
+      const isWeeklyWinner = schedina.userId === bestUserId;
+      // Chi e' sospeso non incassa i gettoni della giornata.
+      const coins = sospeso ? 0 : outcome.coins + (isWeeklyWinner ? COINS.weeklyWinner : 0);
+      const rimborso = outcome.rimborsoJolly;
+      const profileUpdates: Record<string, unknown> = {
+        totalPoints: FieldValue.increment(outcome.finalPoints),
+        weeklyPoints: outcome.finalPoints,
+        matchdaysPlayed: FieldValue.increment(1),
+        bonusPointsTotal: FieldValue.increment(outcome.bonus),
+        penaltyPointsTotal: FieldValue.increment(outcome.penalty),
+        perfectSchedine: FieldValue.increment(outcome.perfect ? 1 : 0),
+        bestMatchdayPoints: Math.max((profile.bestMatchdayPoints as number) ?? 0, outcome.finalPoints),
+        correctPredictions: FieldValue.increment(outcome.correct),
+        weeklyWins: FieldValue.increment(isWeeklyWinner && !sospeso ? 1 : 0),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      if (coins > 0) {
+        profileUpdates.coinsEarned = FieldValue.increment(coins);
+      }
+      // Un solo incremento del saldo: premio piu' rimborso, ciascuno col suo
+      // movimento nel registro, cosi' saldo e storico restano allineati. Il
+      // rimborso non e' un guadagno e non entra in coinsEarned.
+      if (coins + rimborso > 0) {
+        profileUpdates.coins = FieldValue.increment(coins + rimborso);
+      }
+
+      tx.update(sSnap.ref, esitoSchedina);
       tx.update(profileRef, profileUpdates);
       if (coins > 0) {
         tx.set(
@@ -1239,6 +1371,14 @@ async function settleSchedine(
             createdAt: FieldValue.serverTimestamp(),
           }
         );
+      }
+      if (rimborso > 0) {
+        tx.set(db.collection('wallet_transactions').doc(`jolly_refund_${sSnap.id}`), {
+          userId: schedina.userId,
+          amount: rimborso,
+          reason: `powerup_jolly_refund_g${matchdayNumber}`,
+          createdAt: FieldValue.serverTimestamp(),
+        });
       }
       });
     } catch (e) {
@@ -1254,7 +1394,7 @@ async function settleSchedine(
   // Schedine di lega: i punti restano nella classifica della lega. Niente
   // gettoni, niente statistiche di profilo, niente missioni: il circuito
   // generale è l'unica strada per i gettoni.
-  for (const { sSnap, schedina, score } of diLega) {
+  for (const { sSnap, schedina, score, outcome } of diLega) {
     const leagueId = schedina.leagueId as string;
     try {
       await db.runTransaction(async tx => {
@@ -1269,6 +1409,11 @@ async function settleSchedine(
       const standing = await tx.get(standingRef);
       const precedenti = (standing.data() ?? {}) as Record<string, number>;
       const isVincitoreLega = vincitoriLega.get(leagueId) === schedina.userId;
+      // I power-up di una schedina di lega si pagano come quelli della
+      // generale: anche qui il Jolly su una partita annullata torna indietro.
+      const profileRef = db.collection('profiles').doc(schedina.userId);
+      const rimborso =
+        outcome.rimborsoJolly > 0 && (await tx.get(profileRef)).exists ? outcome.rimborsoJolly : 0;
 
       tx.update(sSnap.ref, {
         predictionResults: score.predictionResults,
@@ -1290,7 +1435,7 @@ async function settleSchedine(
           weeklyPoints: score.finalPoints,
           matchdaysPlayed: FieldValue.increment(1),
           correctPredictions: FieldValue.increment(score.correctPredictions),
-          perfectSchedine: FieldValue.increment(score.correctPredictions >= 10 ? 1 : 0),
+          perfectSchedine: FieldValue.increment(outcome.perfect ? 1 : 0),
           bonusPointsTotal: FieldValue.increment(score.bonusPoints),
           penaltyPointsTotal: FieldValue.increment(score.penaltyPoints),
           bestMatchdayPoints: Math.max(precedenti.bestMatchdayPoints ?? 0, score.finalPoints),
@@ -1299,6 +1444,9 @@ async function settleSchedine(
         },
         { merge: true }
       );
+      if (rimborso > 0) {
+        await adjustCoins(schedina.userId, rimborso, `powerup_jolly_refund_g${matchdayNumber}`, tx, false);
+      }
       });
     } catch (e) {
       nonValutate.push({ schedinaId: sSnap.id, motivo: (e as Error).message });
@@ -1383,7 +1531,7 @@ async function settleSchedine(
     });
   }
 
-  return evaluations.length;
+  return { valutate: evaluations.length - nonValutate.length, nonValutate: nonValutate.length };
 }
 
 /**
@@ -1410,9 +1558,10 @@ export const submitSchedina = onCall(callableOpts, async request => {
   // circuiti un utente ne compila una per la generale e una per ogni lega: chi
   // sta in tre leghe veniva bloccato al quarto invio, cioè giocando normalmente.
   await enforceRateLimit(uid, 'submitSchedina', 15, 60_000);
+  await requireUtenteAttivo(uid);
   logger.info('submitSchedina:start', { uid });
 
-  const predictions = request.data?.predictions as Prediction[] | undefined;
+  const predictions: unknown = request.data?.predictions;
   const powerups = (request.data?.powerups ?? {}) as PowerUpSelection;
   if (!Array.isArray(predictions) || predictions.length === 0) {
     throw new HttpsError('invalid-argument', 'Pronostici mancanti');
@@ -1420,18 +1569,14 @@ export const submitSchedina = onCall(callableOpts, async request => {
 
   const leagueId = await requireCircuito(uid, request.data?.leagueId);
 
-  let md = await getCurrentMatchday();
-  if (!md) md = await syncMatchdayInternal();
+  // Niente sync da qui: l'invio di un utente non deve poter scatenare
+  // chiamate al fornitore di quote. La giornata la crea lo scheduler.
+  const md = await getCurrentMatchday();
   if (!md) throw new HttpsError('unavailable', 'Nessuna giornata disponibile');
 
-  if (Timestamp.now().toMillis() >= md.deadline.toMillis()) {
+  const nowMs = Timestamp.now().toMillis();
+  if (nowMs >= md.deadline.toMillis()) {
     throw new HttpsError('failed-precondition', 'Deadline superata: schedina chiusa');
-  }
-  if (predictions.length !== MAX_PICKS_PER_SCHEDINA) {
-    throw new HttpsError(
-      'invalid-argument',
-      `Devi scegliere esattamente ${MAX_PICKS_PER_SCHEDINA} partite`
-    );
   }
 
   // Quote ufficiali del circuito: una lega con la sua agenzia gioca su quelle,
@@ -1439,35 +1584,32 @@ export const submitSchedina = onCall(callableOpts, async request => {
   // quote che l'utente ha visto mentre compilava.
   const quoteCircuito = await quotePerCircuito(md, leagueId);
 
-  // Valida e sostituisce le quote con quelle ufficiali server-side
-  const matchIds = new Set(md.matches.map(m => m.id));
-  const validated: Prediction[] = predictions.map(p => {
-    if (!matchIds.has(p.matchId)) {
-      throw new HttpsError('invalid-argument', `Partita non valida: ${p.matchId}`);
+  // Pronostici richiesti: dieci, o meno se l'agenzia del circuito ha quotato
+  // meno partite fra quelle della giornata ancora da giocare.
+  const partite = md.matches.map(m => ({
+    id: m.id,
+    status: m.status,
+    kickoffMs: m.scheduledAt.toMillis(),
+  }));
+  const quoteGiocabili: Record<string, MatchOdds> = {};
+  for (const p of partite) {
+    if (partitaNonIniziata(p, nowMs) && Object.prototype.hasOwnProperty.call(quoteCircuito, p.id)) {
+      quoteGiocabili[p.id] = quoteCircuito[p.id];
     }
-    const marketOdds = (quoteCircuito[p.matchId] as unknown as Record<
-      string,
-      Record<string, number>
-    >)?.[p.betType];
-    const officialOdds = marketOdds?.[p.outcome];
-    if (officialOdds == null) {
-      throw new HttpsError(
-        'invalid-argument',
-        `Mercato non valido: ${p.betType}/${p.outcome}`
-      );
-    }
-    return { matchId: p.matchId, betType: p.betType, outcome: p.outcome, odds: officialOdds };
-  });
-  const uniqueMatches = new Set(validated.map(p => p.matchId));
-  if (uniqueMatches.size !== validated.length) {
-    throw new HttpsError('invalid-argument', 'Un solo pronostico per partita');
   }
+  const richieste = pickRichieste(quoteGiocabili);
+
+  // Valida e sostituisce le quote con quelle ufficiali server-side
+  const esito = validaPronostici(predictions, { partite, quote: quoteCircuito, richieste, nowMs });
+  if (!esito.ok) throw new HttpsError(esito.codice, esito.messaggio);
+  const validated = esito.valore;
 
   // Power-up richiesti: normalizzati qui, il costo lo calcola computePowerupCharge
   const cleanPowerups: PowerUpSelection = {};
   if (powerups.jolly) {
-    if (!matchIds.has(powerups.jolly)) {
-      throw new HttpsError('invalid-argument', 'Jolly su partita non valida');
+    // Il Jolly raddoppia un pronostico: deve stare su una delle partite giocate.
+    if (typeof powerups.jolly !== 'string' || !validated.some(p => p.matchId === powerups.jolly)) {
+      throw new HttpsError('invalid-argument', 'Il Jolly va messo su una delle partite della schedina');
     }
     cleanPowerups.jolly = powerups.jolly;
   }
@@ -1547,14 +1689,19 @@ export const changePrediction = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'changePrediction', 15, 60_000);
+  await requireUtenteAttivo(uid);
   logger.info('changePrediction:start', { uid });
 
   const { matchId, betType, outcome } = (request.data ?? {}) as {
-    matchId?: string;
-    betType?: string;
-    outcome?: string;
+    matchId?: unknown;
+    betType?: unknown;
+    outcome?: unknown;
   };
-  if (!matchId || !betType || !outcome) {
+  if (
+    typeof matchId !== 'string' || !matchId ||
+    typeof betType !== 'string' || !betType ||
+    typeof outcome !== 'string' || !outcome
+  ) {
     throw new HttpsError('invalid-argument', 'Parametri mancanti');
   }
 
@@ -1581,16 +1728,13 @@ export const changePrediction = onCall(callableOpts, async request => {
     throw new HttpsError('failed-precondition', 'Partita già iniziata: pronostico congelato');
   }
 
-  const marketOdds = (md.odds[matchId] as unknown as Record<
-    string,
-    Record<string, number>
-  >)?.[betType];
-  const officialOdds = marketOdds?.[outcome];
-  if (officialOdds == null) {
-    throw new HttpsError('invalid-argument', 'Mercato non valido');
-  }
-
+  // Quote del circuito della schedina: una lega con la sua agenzia cambia
+  // sulle quote di quell'agenzia, come quando ha inviato.
   const leagueId = await requireCircuito(uid, request.data?.leagueId);
+  const quote = await quotePerCircuito(md, leagueId);
+  const quota = quotaUfficiale(quote, matchId, betType, outcome);
+  if (!quota.ok) throw new HttpsError(quota.codice, quota.messaggio);
+  const officialOdds = quota.valore;
   const cost = POWERUPS.lastminute.cost;
   const schedinaRef = db.collection('schedine').doc(schedinaId(uid, md.number, leagueId));
   await db.runTransaction(async tx => {
@@ -1634,6 +1778,7 @@ export const cancelSchedina = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'cancelSchedina', 15, 60_000);
+  await requireUtenteAttivo(uid);
   logger.info('cancelSchedina:start', { uid });
 
   const md = await getCurrentMatchday();
@@ -1701,6 +1846,7 @@ export const seedQuizQuestions = onCall(callableOpts, async request => {
 export const playMinigame = onCall(callableOpts, async (request): Promise<Record<string, unknown>> => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireUtenteAttivo(uid);
 
   const action = request.data?.action as string;
   // Bucket per singola azione (non condiviso tra quiz/ruota/rigori/memoria/sfide):
@@ -2352,6 +2498,7 @@ export const sendTestPush = onCall(callableOpts, async request => {
 export const buyRaffleTicket = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireUtenteAttivo(uid);
   await enforceRateLimit(uid, 'buyRaffleTicket', 10, 60_000);
   const richiesti = Number(request.data?.count);
   if (!Number.isInteger(richiesti) || richiesti < 1 || richiesti > RAFFLE.maxTicketsPerUser) {
@@ -2369,7 +2516,8 @@ export const buyRaffleTicket = onCall(callableOpts, async request => {
   return db.runTransaction(async tx => {
     const [prof, tk, rf] = await Promise.all([tx.get(profileRef), tx.get(ticketRef), tx.get(raffleRef)]);
     if (!prof.exists) throw new HttpsError('not-found', 'Profilo non trovato');
-    if (rf.exists && rf.data()?.status === 'drawn') {
+    // Solo un'urna aperta accetta biglietti: estratta o annullata e' chiusa.
+    if (rf.exists && rf.data()?.status !== 'open') {
       throw new HttpsError('failed-precondition', 'Estrazione gia\' fatta per questa giornata');
     }
     const gia = tk.exists ? ((tk.data()?.count as number) ?? 0) : 0;
@@ -2402,29 +2550,61 @@ export const buyRaffleTicket = onCall(callableOpts, async request => {
   });
 });
 
-/** Sorteggio a giornata valutata: una sola volta, poi avvisa chi ha vinto. */
+/**
+ * Sorteggio a giornata valutata: una sola volta, poi avvisa chi ha vinto.
+ *
+ * Lettura dei biglietti, estrazione e chiusura dell'urna stanno nella stessa
+ * transazione: due valutatori concorrenti non possono estrarre due volte, e
+ * un biglietto comprato nel frattempo (buyRaffleTicket legge la stessa urna)
+ * o entra nell'estrazione o viene rifiutato. Chi e' sospeso non partecipa.
+ * Senza un vincitore valido l'urna si annulla e i biglietti si rimborsano.
+ */
 async function estraiPremioGiornata(matchday: number): Promise<void> {
   const raffleRef = db.collection('raffles').doc(String(matchday));
-  const rf = await raffleRef.get();
-  if (!rf.exists || rf.data()?.status === 'drawn') return;
-  const tickets = await db.collection('raffle_tickets').where('matchday', '==', matchday).get();
-  const entries = tickets.docs.map(d => ({
-    uid: d.data().uid as string,
-    count: (d.data().count as number) ?? 0,
-  }));
-  const vincitore = estraiVincitore(entries);
-  let username: string | null = null;
-  if (vincitore) {
-    const p = await db.collection('profiles').doc(vincitore).get();
-    username = (p.data()?.username as string) ?? null;
+  const ticketsQuery = db.collection('raffle_tickets').where('matchday', '==', matchday);
+  const esito = await db.runTransaction(async tx => {
+    const rf = await tx.get(raffleRef);
+    if (!rf.exists || rf.data()?.status !== 'open') return null;
+    const tickets = await tx.get(ticketsQuery);
+    const entries = tickets.docs.map(d => ({
+      uid: d.data().uid as string,
+      count: (d.data().count as number) ?? 0,
+    }));
+    const uids = [...new Set(entries.map(e => e.uid).filter(Boolean))];
+    const profili = uids.length
+      ? await tx.getAll(...uids.map(u => db.collection('profiles').doc(u)))
+      : [];
+    const ammessi = new Map(
+      profili
+        .filter(p => p.exists && p.data()?.isActive !== false)
+        .map(p => [p.id, (p.data()?.username as string) ?? null])
+    );
+    const vincitore = estraiVincitore(entries.filter(e => ammessi.has(e.uid)));
+    if (vincitore) {
+      tx.update(raffleRef, {
+        status: 'drawn',
+        winnerUid: vincitore,
+        winnerUsername: ammessi.get(vincitore) ?? null,
+        drawnAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      tx.update(raffleRef, {
+        status: 'annullata',
+        winnerUid: null,
+        winnerUsername: null,
+        drawnAt: FieldValue.serverTimestamp(),
+      });
+    }
+    return { vincitore, partecipanti: entries.length, prize: rf.data()?.prize };
+  });
+  if (!esito) return;
+  const vincitore = esito.vincitore;
+  logger.info(`Giornata ${matchday}: estrazione, vincitore ${vincitore ?? 'nessuno'} su ${esito.partecipanti} partecipanti`);
+  if (!vincitore) {
+    await rimborsaBiglietti(matchday);
+    return;
   }
-  await raffleRef.set(
-    { status: 'drawn', winnerUid: vincitore, winnerUsername: username, drawnAt: FieldValue.serverTimestamp() },
-    { merge: true }
-  );
-  logger.info(`Giornata ${matchday}: estrazione, vincitore ${vincitore ?? 'nessuno'} su ${entries.length} partecipanti`);
-  if (!vincitore) return;
-  const premio = (rf.data()?.prize ?? {}) as { label?: string; emoji?: string | null };
+  const premio = (esito.prize ?? {}) as { label?: string; emoji?: string | null };
   await notifica([vincitore], {
     title: '🎉 Hai vinto l\'estrazione!',
     body: `${premio.emoji ?? ''} ${premio.label ?? 'Il premio'} della giornata ${matchday} e' tuo. Ti contattiamo per la consegna.`.trim(),
@@ -2433,9 +2613,38 @@ async function estraiPremioGiornata(matchday: number): Promise<void> {
   }, 'social');
 }
 
+/**
+ * Estrazione annullata: ogni biglietto torna al suo proprietario. Un
+ * biglietto alla volta, in transazione, segnandolo come rimborsato: se la
+ * funzione si interrompe a meta' si riprende da dove era senza pagare due
+ * volte (vedi settleMatchdays).
+ */
+async function rimborsaBiglietti(matchday: number): Promise<void> {
+  const tickets = await db.collection('raffle_tickets').where('matchday', '==', matchday).get();
+  for (const t of tickets.docs) {
+    await db.runTransaction(async tx => {
+      const fresh = await tx.get(t.ref);
+      const d = fresh.data();
+      if (!d || d.refunded === true) return;
+      const count = (d.count as number) ?? 0;
+      const uid = d.uid as string;
+      const profilo = uid ? await tx.get(db.collection('profiles').doc(uid)) : null;
+      if (count > 0 && profilo?.exists) {
+        await adjustCoins(uid, count * RAFFLE.ticketCost, `raffle_refund_g${matchday}`, tx, false);
+      }
+      tx.update(t.ref, { refunded: true, updatedAt: FieldValue.serverTimestamp() });
+    });
+  }
+  await db.collection('raffles').doc(String(matchday)).update({
+    refundedAt: FieldValue.serverTimestamp(),
+  });
+  logger.info(`Giornata ${matchday}: estrazione annullata, ${tickets.size} biglietti rimborsati`);
+}
+
 export const manageLeague = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireUtenteAttivo(uid);
   await enforceRateLimit(uid, 'manageLeague', 10, 60_000);
   const action = request.data?.action as string;
   logger.info('manageLeague', { uid, action });
@@ -2819,6 +3028,7 @@ export const onLeagueWritten = onDocumentWritten(
 export const claimMission = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireUtenteAttivo(uid);
 
   const missionId = request.data?.missionId as string;
   const mission = MISSIONS.find(m => m.id === missionId);
@@ -3024,65 +3234,46 @@ export const adminForceSettle = onCall(callableOpts, async request => {
   const matchdayNumber = request.data?.matchdayNumber as number;
   if (!matchdayNumber) throw new HttpsError('invalid-argument', 'matchdayNumber richiesto');
 
-  const mdSnap = await db.collection('matchdays').doc(String(matchdayNumber)).get();
-  if (!mdSnap.exists) throw new HttpsError('not-found', 'Giornata non trovata');
-  const md = mdSnap.data() as MatchdayDoc;
-  if (md.settled) throw new HttpsError('failed-precondition', 'Giornata già settleata');
-
-  const results = await fetchResults(
-    md.matches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
-  );
-
-  const updatedMatches = md.matches.map(m => {
-    const r = results.get(m.id);
-    if (!r) return m;
-    const outcome = r.homeGoals > r.awayGoals ? '1' as const : r.awayGoals > r.homeGoals ? '2' as const : 'X' as const;
-    return {
-      ...m,
-      status: r.status,
-      result: {
-        homeGoals: r.homeGoals,
-        awayGoals: r.awayGoals,
-        outcome,
-        // Senza i gol del primo tempo i mercati 1T non sono valutabili e
-        // verrebbero annullati: la stessa giornata varrebbe punteggi diversi
-        // a seconda che la valuti lo scheduler o l'admin.
-        ...(r.htHomeGoals != null
-          ? { htHomeGoals: r.htHomeGoals, htAwayGoals: r.htAwayGoals }
-          : {}),
-      },
-    };
-  });
-  await mdSnap.ref.update({ matches: updatedMatches, updatedAt: FieldValue.serverTimestamp() });
-
-  // Lo scheduler salta le giornate con partite ancora in corso; qui il
-  // controllo mancava del tutto. Valutare adesso congelerebbe come sbagliati
-  // i pronostici su partite non ancora giocate, e `settled: true` rende la
-  // cosa irreversibile. Resta possibile forzare, ma va chiesto esplicitamente.
-  const nonConcluse = updatedMatches.filter(m => m.status !== 'finished' || !m.result);
-  if (nonConcluse.length > 0 && request.data?.force !== true) {
-    throw new HttpsError(
-      'failed-precondition',
-      `${nonConcluse.length} partite non concluse (${nonConcluse
-        .map(m => m.id)
-        .join(', ')}). Ripeti con force: true per valutare comunque.`
-    );
-  }
-  if (nonConcluse.length > 0) {
-    logger.warn('adminForceSettle: settlement forzato su partite non concluse', {
+  const ref = db.collection('matchdays').doc(String(matchdayNumber));
+  const forza = request.data?.force === true;
+  if (forza) {
+    logger.warn('adminForceSettle: valutazione forzata, le partite non finite saranno annullate', {
       uid,
       matchday: matchdayNumber,
-      partite: nonConcluse.map(m => m.id),
     });
   }
 
-  // Reuse the same settlement logic as the scheduled function (transactions + profile updates + prizes)
-  const valutate = await settleSchedine(matchdayNumber, updatedMatches as unknown as StoredMatch[]);
-
-  // Mark matchday as settled
-  await mdSnap.ref.update({ settled: true, updatedAt: FieldValue.serverTimestamp() });
-
-  return { ok: true, matchday: matchdayNumber, settled: valutate };
+  // Stessa strada dello scheduler: risultati veri da ESPN (mai un risultato
+  // scritto per una partita non finita), claim contro le valutazioni
+  // concorrenti, chiusura solo a schedine tutte valutate, estrazione e avvisi.
+  // Con `force` le partite non finite vengono annullate invece di aspettarle:
+  // i pronostici sopra valgono zero, non "sbagliati" ne' "indovinati".
+  const esito = await valutaGiornata(ref, forza);
+  switch (esito.esito) {
+    case 'assente':
+      throw new HttpsError('not-found', 'Giornata non trovata');
+    case 'gia_valutata':
+      throw new HttpsError('failed-precondition', 'Giornata già valutata');
+    case 'prima_della_deadline':
+      throw new HttpsError('failed-precondition', 'La giornata non è ancora chiusa: deadline non passata');
+    case 'in_attesa': {
+      const partite = esito.inAttesa ?? [];
+      throw new HttpsError(
+        'failed-precondition',
+        `${partite.length} partite non concluse o senza parziale del primo tempo (${partite.join(', ')}). ` +
+          'Ripeti con force: true per valutare comunque: i pronostici su queste partite saranno annullati.'
+      );
+    }
+    case 'in_corso':
+      throw new HttpsError('aborted', 'Valutazione già in corso: riprova tra qualche minuto');
+    case 'incompleta':
+      throw new HttpsError(
+        'internal',
+        `Valutate ${esito.valutate ?? 0} schedine, alcune no: la giornata resta aperta e si riprova al prossimo giro`
+      );
+    case 'valutata':
+      return { ok: true, matchday: matchdayNumber, settled: esito.valutate ?? 0 };
+  }
 });
 
 /** CRUD sponsor (admin). */
@@ -3439,6 +3630,19 @@ export const adminToggleBan = onCall(callableOpts, async request => {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
+  // Il ban vale anche per l'accesso: l'account Firebase viene disattivato (e
+  // riattivato allo sblocco), cosi' non si ottengono nuovi token. Le callable
+  // restano comunque protette da requireUtenteAttivo per i token gia' emessi.
+  try {
+    await getAuth().updateUser(targetUid, { disabled: currentActive });
+    if (currentActive) await getAuth().revokeRefreshTokens(targetUid);
+  } catch (e) {
+    logger.error('adminToggleBan: account di accesso non aggiornato', {
+      targetUid,
+      motivo: (e as Error).message,
+    });
+  }
+
   return { ok: true, isActive: !currentActive };
 });
 
@@ -3500,6 +3704,7 @@ function mossaCasuale(attacca: boolean): { zone: PenaltyZone; power: number } {
 export const managePenaltyDuel = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireUtenteAttivo(uid);
   await enforceRateLimit(uid, 'managePenaltyDuel', 15, 60_000);
 
   const action = request.data?.action as string;
