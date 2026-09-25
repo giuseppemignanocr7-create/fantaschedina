@@ -7,7 +7,10 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { burstConfetti, vibrate } from '@/lib/juice';
+import { ConfermaInvito } from '@/components/ui/ConfermaInvito';
 import {
+  AVVISO_GIOCATE_VISIBILI,
+  anteprimaInvito,
   createLeague,
   deleteLeague,
   getPublicLeagues,
@@ -15,6 +18,7 @@ import {
   joinLeague,
   joinLeagueByCode,
   leaveLeague,
+  type AnteprimaInvito,
   type LeagueDoc,
 } from '@/lib/leagues';
 
@@ -53,6 +57,7 @@ export function LeghePage() {
   const invito = searchParams.get('invito');
   const invitoGestito = useRef(false);
   const [statoInvito, setStatoInvito] = useState<'attesa' | 'errore' | null>(null);
+  const [anteprima, setAnteprima] = useState<AnteprimaInvito | null>(null);
 
   // Codice invito copiato o condiviso, per il riscontro visivo sulla card.
   const [codiceCondiviso, setCodiceCondiviso] = useState<string | null>(null);
@@ -77,10 +82,10 @@ export function LeghePage() {
   }, [refresh]);
 
   /**
-   * Link d'invito: `/leghe?invito=CODICE`. Entrare e' cio' che chi tocca il
-   * link vuole fare, quindi si fa subito e si porta l'utente nella lega; se
-   * e' gia' dentro (o il codice non vale piu') resta il modulo manuale con
-   * il codice gia' scritto.
+   * Link d'invito: `/leghe?invito=CODICE`. Il link non fa entrare da solo:
+   * prima si mostra quale lega e' e che il creatore vedra' le giocate, poi
+   * l'utente conferma. Se il codice non vale resta il modulo manuale con il
+   * codice gia' scritto.
    */
   useEffect(() => {
     if (!uid || !invito || invitoGestito.current) return;
@@ -92,15 +97,7 @@ export function LeghePage() {
 
     void (async () => {
       try {
-        await joinLeagueByCode(uid, codice);
-        vibrate([40, 30, 60]);
-        burstConfetti();
-        const mie = await getUserLeagues(uid);
-        setMyLeagues(mie);
-        const entrata = mie.find(l => l.inviteCode === codice);
-        setStatoInvito(null);
-        setSearchParams({}, { replace: true });
-        if (entrata) navigate(`/leghe/${entrata.id}`, { replace: true });
+        setAnteprima(await anteprimaInvito(codice));
       } catch (e) {
         setStatoInvito('errore');
         setError((e as Error).message);
@@ -108,7 +105,37 @@ export function LeghePage() {
         setSearchParams({}, { replace: true });
       }
     })();
-  }, [uid, invito, navigate, setSearchParams]);
+  }, [uid, invito, setSearchParams]);
+
+  const confermaInvito = async () => {
+    if (!anteprima || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (!anteprima.giaMembro) {
+        await joinLeagueByCode(uid, inviteCode);
+        vibrate([40, 30, 60]);
+        burstConfetti();
+      }
+      setStatoInvito(null);
+      setSearchParams({}, { replace: true });
+      navigate(`/leghe/${anteprima.leagueId}`, { replace: true });
+    } catch (e) {
+      setStatoInvito('errore');
+      setError((e as Error).message);
+      setActiveTab(2);
+      setSearchParams({}, { replace: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const annullaInvito = () => {
+    setStatoInvito(null);
+    setAnteprima(null);
+    setInviteCode('');
+    setSearchParams({}, { replace: true });
+  };
 
   /** Condivide il link d'invito: foglio di sistema se c'e', altrimenti copia. */
   const condividiLega = async (league: LeagueDoc) => {
@@ -265,13 +292,13 @@ export function LeghePage() {
 
         {/* TAB 0: Le mie leghe */}
         {statoInvito === 'attesa' && (
-          <div className="glass-card p-4 flex items-center gap-3">
-            <Loader2 size={18} className="animate-spin text-primary-700 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-bold text-slate-900">Ti stiamo facendo entrare…</p>
-              <p className="text-xs text-slate-500">Invito con codice {invito}</p>
-            </div>
-          </div>
+          <ConfermaInvito
+            codice={inviteCode}
+            anteprima={anteprima}
+            busy={busy}
+            onConferma={() => void confermaInvito()}
+            onAnnulla={annullaInvito}
+          />
         )}
 
         {activeTab === 0 && (
@@ -529,6 +556,7 @@ export function LeghePage() {
                   {busy ? <Loader2 size={14} className="animate-spin" /> : 'ENTRA'}
                 </button>
               </div>
+              <p className="text-[10px] text-slate-500">{AVVISO_GIOCATE_VISIBILI}</p>
             </div>
 
             {/* Leghe pubbliche */}

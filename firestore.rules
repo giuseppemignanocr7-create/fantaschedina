@@ -10,13 +10,46 @@ service cloud.firestore {
       return isAuth() && request.auth.uid == uid;
     }
 
+    // Stesso formato di src/lib/username.ts (USERNAME_RE).
     function validUsername(value) {
-      return value is string && value.size() >= 2 && value.size() <= 30;
+      return value is string && value.matches('^[A-Za-z0-9_.]{3,20}$');
     }
 
+    // Lo username e' prenotato a nome di questo utente in /usernames, con
+    // chiave in minuscolo: e' cio' che lo rende unico senza badare alle
+    // maiuscole. La prenotazione si scrive nello stesso batch del profilo.
+    function usernameRiservato(uid, value) {
+      return validUsername(value)
+        && existsAfter(/databases/$(database)/documents/usernames/$(value.lower()))
+        && getAfter(/databases/$(database)/documents/usernames/$(value.lower())).data.uid == uid;
+    }
+
+    // Cambiando nome, la prenotazione del vecchio (se era sua) va liberata
+    // nello stesso batch: niente accaparramento di nomi.
+    function vecchioUsernameLiberato(uid, vecchio, nuovo) {
+      return !validUsername(vecchio)
+        || vecchio.lower() == nuovo.lower()
+        || !exists(/databases/$(database)/documents/usernames/$(vecchio.lower()))
+        || get(/databases/$(database)/documents/usernames/$(vecchio.lower())).data.uid != uid
+        || !existsAfter(/databases/$(database)/documents/usernames/$(vecchio.lower()));
+    }
+
+    // L'app non carica avatar propri: al piu' la foto dell'account Google.
     function validAvatar(value) {
       return value == null
-        || (value is string && value.size() <= 2048 && value.matches('^https://.*'));
+        || (value is string && value.size() <= 2048
+            && value.matches('^https://lh[0-9]\\.googleusercontent\\.com/[A-Za-z0-9_\\-/=.]+$'));
+    }
+
+    // Solo le categorie note (functions/src/notify.ts), solo booleani.
+    function validNotifPrefs(p) {
+      return p is map
+        && p.keys().hasOnly(['schedina', 'giro', 'live', 'esito', 'social'])
+        && (!('schedina' in p) || p.schedina is bool)
+        && (!('giro' in p) || p.giro is bool)
+        && (!('live' in p) || p.live is bool)
+        && (!('esito' in p) || p.esito is bool)
+        && (!('social' in p) || p.social is bool);
     }
 
     // ============================================
@@ -40,7 +73,7 @@ service cloud.firestore {
         && request.resource.data.id == uid
         && request.auth.token.email is string
         && request.resource.data.email == request.auth.token.email
-        && validUsername(request.resource.data.username)
+        && usernameRiservato(uid, request.resource.data.username)
         && request.resource.data.avatarUrl == null
         && request.resource.data.totalPoints == 0
         && request.resource.data.weeklyPoints == 0
@@ -60,11 +93,19 @@ service cloud.firestore {
         && request.resource.data.leaguesJoined == 0
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
+      // Ogni campo si valida solo se cambia: i profili nati prima delle
+      // regole attuali (username con spazi, per esempio) devono poter ancora
+      // salvare le preferenze senza essere costretti a rinominarsi.
       allow update: if isOwner(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['username', 'avatarUrl', 'notifPrefs', 'updatedAt'])
-        && validUsername(request.resource.data.username)
-        && validAvatar(request.resource.data.avatarUrl)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['username'])
+            || (usernameRiservato(uid, request.resource.data.username)
+                && vecchioUsernameLiberato(uid, resource.data.username, request.resource.data.username)))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['avatarUrl'])
+            || validAvatar(request.resource.data.avatarUrl))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['notifPrefs'])
+            || validNotifPrefs(request.resource.data.notifPrefs))
         && request.resource.data.updatedAt == request.time;
       allow delete: if false;
     }
@@ -91,12 +132,40 @@ service cloud.firestore {
     match /push_tokens/{token} {
       allow get: if isAuth() && resource.data.uid == request.auth.uid;
       allow list: if false;
-      allow create, update: if isAuth()
+      // Il token di un altro non si riscrive a proprio nome: chi conosce
+      // l'id (il token) potrebbe altrimenti dirottare le sue notifiche.
+      allow create: if isAuth()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt', 'ua'])
+        && request.resource.data.ua is string
+        && request.resource.data.ua.size() <= 120;
+      allow update: if isAuth()
+        && resource.data.uid == request.auth.uid
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.keys().hasOnly(['uid', 'createdAt', 'ua'])
         && request.resource.data.ua is string
         && request.resource.data.ua.size() <= 120;
       allow delete: if isAuth() && resource.data.uid == request.auth.uid;
+    }
+
+    // ============================================
+    // USERNAMES — prenotazione dei nomi, id = username in minuscolo.
+    // Si crea e si libera solo insieme al profilo (stesso batch): e' cio' che
+    // rende lo username unico senza badare alle maiuscole.
+    // ============================================
+    match /usernames/{name} {
+      allow get: if isAuth();
+      allow list: if false;
+      allow create: if isAuth()
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && name.matches('^[a-z0-9_.]{3,20}$')
+        && getAfter(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.username.lower() == name;
+      allow update: if false;
+      allow delete: if isAuth()
+        && resource.data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.username.lower() != name;
     }
 
     match /schedine/{id} {

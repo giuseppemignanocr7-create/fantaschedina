@@ -19,12 +19,14 @@ import {
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import {
+  cambiaUsername,
   ensureProfile,
   getProfile,
   updateProfile as dbUpdateProfile,
   type ProfileDoc,
 } from '@/lib/db';
 import { identifyUser, reportError } from '@/lib/monitoring';
+import { normalizzaUsername } from '@/lib/username';
 
 interface AuthState {
   user: FbUser | null;
@@ -86,13 +88,12 @@ function mapFirebaseError(code?: string): string {
 }
 
 /**
- * Nome utente per chi arriva da Google: il displayName ("Mario Rossi") va
- * bene così com'è, ma le regole Firestore lo vogliono fra 2 e 30 caratteri.
+ * Nome utente per chi arriva da Google: il displayName ("Mario Rossi")
+ * diventa "Mario_Rossi", nel formato che le regole Firestore accettano.
  * Chi non ha un nome su Google prende la parte dell'email prima della @.
  */
 export function usernameFromAccount(displayName: string | null, email: string | null): string {
-  const base = (displayName?.trim() || email?.split('@')[0] || 'player').slice(0, 30);
-  return base.length >= 2 ? base : 'player';
+  return normalizzaUsername(displayName?.trim() || email?.split('@')[0] || 'player');
 }
 
 export function useFirebaseAuth(): UseFirebaseAuth {
@@ -197,7 +198,12 @@ export function useFirebaseAuth(): UseFirebaseAuth {
   const updateProfile: AuthApi['updateProfile'] = async updates => {
     if (!user) return { error: { message: 'Non autenticato' } };
     try {
-      await dbUpdateProfile(user.uid, updates);
+      // Lo username passa dalla prenotazione in `usernames` (unicita').
+      if ('username' in updates) {
+        await cambiaUsername(user.uid, profile?.username ?? '', updates.username);
+      } else {
+        await dbUpdateProfile(user.uid, updates);
+      }
       await refreshProfile();
       return { error: null };
     } catch (e) {

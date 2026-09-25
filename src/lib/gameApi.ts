@@ -283,15 +283,15 @@ export async function getPublicProfilesFn(
   return res.data;
 }
 
-type LeagueAction = 'create' | 'joinByCode' | 'joinPublic' | 'leave' | 'delete';
+type LeagueAction = 'create' | 'joinByCode' | 'joinPublic' | 'leave' | 'delete' | 'anteprimaInvito';
 
-export async function manageLeagueFn(
+export async function manageLeagueFn<R = { ok: boolean; leagueId: string }>(
   action: LeagueAction,
   data: Record<string, unknown> = {}
-): Promise<{ ok: boolean; leagueId: string }> {
+): Promise<R> {
   const fn = httpsCallable<
     { action: LeagueAction } & Record<string, unknown>,
-    { ok: boolean; leagueId: string }
+    R
   >(functions, 'manageLeague');
   const res = await fn({ action, ...data });
   return res.data;

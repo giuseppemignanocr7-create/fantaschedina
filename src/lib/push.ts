@@ -69,17 +69,30 @@ export async function attivaPush(): Promise<{ ok: true } | { ok: false; motivo: 
   }
 
   try {
-    const { getMessaging, getToken, isSupported } = await import('firebase/messaging');
+    const { getMessaging, getToken, deleteToken, isSupported } = await import('firebase/messaging');
     if (!(await isSupported())) return { ok: false, motivo: 'Notifiche non supportate su questo browser' };
     const reg = await registrazioneSW();
     const messaging = getMessaging(firebaseApp);
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    let token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
     if (!token) return { ok: false, motivo: 'Impossibile ottenere il token' };
-    await setDoc(doc(db, 'push_tokens', token), {
-      uid: user.uid,
-      createdAt: serverTimestamp(),
-      ua: navigator.userAgent.slice(0, 120),
-    });
+    const registra = (t: string) =>
+      setDoc(doc(db, 'push_tokens', t), {
+        uid: user.uid,
+        createdAt: serverTimestamp(),
+        ua: navigator.userAgent.slice(0, 120),
+      });
+    try {
+      await registra(token);
+    } catch (e) {
+      // Stesso browser, account diverso: il token e' ancora intestato a chi
+      // c'era prima e le regole non lasciano riscriverlo. Se ne chiede uno
+      // nuovo, che nasce a nome dell'utente attuale.
+      if ((e as { code?: string }).code !== 'permission-denied') throw e;
+      await deleteToken(messaging);
+      token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+      if (!token) return { ok: false, motivo: 'Impossibile ottenere il token' };
+      await registra(token);
+    }
     localStorage.setItem(chiave(user.uid), token);
     ascoltaInPrimoPiano(reg);
     return { ok: true };
