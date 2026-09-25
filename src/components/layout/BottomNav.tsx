@@ -31,7 +31,7 @@ export function BottomNav() {
             )}
           >
             <Icon size={21} strokeWidth={isActive ? 2.5 : 1.6} />
-            <span className="text-[9px] font-bold tracking-wider">{item.label}</span>
+            <span className="text-[10px] font-bold tracking-wider">{item.label}</span>
             {isActive && <span className="w-7 h-[3px] rounded-full bg-primary-400 mt-0.5" />}
           </Link>
         );
@@ -60,7 +60,7 @@ export function BottomNav() {
             </svg>
           </div>
         </div>
-        <span className="text-[9px] font-black tracking-wider text-primary-400 mt-1">GIOCA</span>
+        <span className="text-[10px] font-black tracking-wider text-primary-400 mt-1">GIOCA</span>
       </Link>
 
       {/* Last two items */}
@@ -77,7 +77,7 @@ export function BottomNav() {
             )}
           >
             <Icon size={21} strokeWidth={isActive ? 2.5 : 1.6} />
-            <span className="text-[9px] font-bold tracking-wider">{item.label}</span>
+            <span className="text-[10px] font-bold tracking-wider">{item.label}</span>
             {isActive && <span className="w-7 h-[3px] rounded-full bg-primary-400 mt-0.5" />}
           </Link>
         );

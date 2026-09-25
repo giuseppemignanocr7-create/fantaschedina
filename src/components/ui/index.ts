@@ -1,6 +1,5 @@
 export { Toast, ToastContainer, type ToastData, type ToastType } from './Toast';
 export { CountdownTimer } from './CountdownTimer';
-export { QuickBet } from './QuickBet';
 export { LiveTracker } from './LiveTracker';
 export { PowerUpSelector } from './PowerUpSelector';
 export { SerieBadge, SerieCard, SerieVinta } from './SerieBadge';
@@ -8,3 +7,4 @@ export { SponsorTicker, type Sponsor } from './SponsorTicker';
 export { TeamLogo } from './TeamLogo';
 export { Skeleton, SkeletonRow, SkeletonCard, SkeletonList } from './Skeleton';
 export { EmptyState, ErrorState } from './StateViews';
+export { ConfirmDialog, useConferma, type ConfermaOpzioni } from './ConfirmDialog';

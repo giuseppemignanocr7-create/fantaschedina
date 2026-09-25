@@ -1,19 +1,21 @@
 import { memo, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  Trophy, 
-  Medal,
+import {
+  Trophy,
   TrendingUp,
   Calendar,
   ChevronDown,
   User,
   Target,
-  Zap
+  Zap,
+  Coins,
 } from 'lucide-react';
-import { cn, formatCurrency } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
+import { COINS, DEFAULT_WEEKLY_PRIZES } from '@/lib/economy';
+import { getWeeklyPrizes, type WeeklyPrizeItem } from '@/lib/db';
 import type { RankingEntry } from '@/types';
 import { SkeletonList, EmptyState, ErrorState } from '@/components/ui';
 
@@ -154,23 +156,19 @@ export function ClassificaPage() {
   const {
     rankings,
     weeklyRankings,
-    prizePool,
     currentUser,
     currentMatchday,
     isLoadingRankings,
-    error,
-    clearError,
+    rankingsError,
     loadRankings,
     loadWeeklyRanking,
   } = useAppStore(useShallow(s => ({
       rankings: s.rankings,
       weeklyRankings: s.weeklyRankings,
-      prizePool: s.prizePool,
       currentUser: s.currentUser,
       currentMatchday: s.currentMatchday,
       isLoadingRankings: s.isLoadingRankings,
-      error: s.error,
-      clearError: s.clearError,
+      rankingsError: s.rankingsError,
       loadRankings: s.loadRankings,
       loadWeeklyRanking: s.loadWeeklyRanking,
     })));
@@ -182,9 +180,29 @@ export function ClassificaPage() {
     loadWeeklyRanking();
   }, [loadRankings, loadWeeklyRanking]);
 
+  // Premi veri della giornata: quelli scelti dall'admin, altrimenti quelli di
+  // partenza. Prima qui c'erano montepremi in euro che nel gioco non esistono.
+  const numeroGiornata = currentMatchday?.number ?? null;
+  const [premiScelti, setPremiScelti] = useState<{ giornata: number; premi: WeeklyPrizeItem[] } | null>(null);
+  useEffect(() => {
+    if (numeroGiornata == null) return;
+    let vivo = true;
+    getWeeklyPrizes(numeroGiornata)
+      .then(premi => {
+        if (vivo && premi) setPremiScelti({ giornata: numeroGiornata, premi });
+      })
+      .catch(e => console.warn('[Classifica] premi di giornata:', e));
+    return () => {
+      vivo = false;
+    };
+  }, [numeroGiornata]);
+  const premiGiornata =
+    premiScelti && premiScelti.giornata === numeroGiornata ? premiScelti.premi : DEFAULT_WEEKLY_PRIZES;
+
   const weekly = weeklyRankings[0];
   const cfg = DEFAULT_TOURNAMENT_CONFIG;
   const displayed = activeTab === 'settimanale' ? weekly?.entries ?? [] : rankings;
+  const erroreClassifica = activeTab === 'generale' ? rankingsError : null;
 
   // La propria riga, presa dalla classifica che si sta guardando. Prima la
   // posizione veniva calcolata nello store e non mostrata da nessuna parte:
@@ -216,19 +234,21 @@ export function ClassificaPage() {
             </div>
           </div>
 
-          {/* Prize Pool Summary */}
+          {/* Riepilogo: premio del vincitore di giornata e giocatori in gara */}
           <div className="grid grid-cols-3 gap-3">
             <div className="glass-card p-4 text-center border-t-2 border-accent-500 bg-surface/80">
-              <p className="text-xl sm:text-2xl font-mono font-bold text-accent-700">{formatCurrency(prizePool.finalPool)}</p>
-              <p className="text-[10px] sm:text-xs text-slate-600 font-bold uppercase tracking-wider mt-1">Montepremi Finale</p>
+              <p className="text-xl sm:text-2xl font-mono font-bold text-accent-700">
+                {premiGiornata[0]?.emoji ?? '🏆'} {premiGiornata[0]?.label ?? '—'}
+              </p>
+              <p className="text-[10px] sm:text-xs text-slate-600 font-bold uppercase tracking-wider mt-1">1° di giornata</p>
             </div>
             <div className="glass-card p-4 text-center border-t-2 border-primary-500 bg-surface/80">
-              <p className="text-xl sm:text-2xl font-mono font-bold text-slate-900">{formatCurrency(prizePool.weeklyPool)}</p>
-              <p className="text-[10px] sm:text-xs text-slate-600 font-bold uppercase tracking-wider mt-1">Vincita Settimanale</p>
+              <p className="text-xl sm:text-2xl font-mono font-bold text-slate-900">+{COINS.weeklyWinner}</p>
+              <p className="text-[10px] sm:text-xs text-slate-600 font-bold uppercase tracking-wider mt-1">Gettoni al vincitore</p>
             </div>
             <div className="glass-card p-4 text-center border-t-2 border-slate-500 bg-surface/80">
               <p className="text-xl sm:text-2xl font-mono font-bold text-slate-900">{rankings.length}</p>
-              <p className="text-[10px] sm:text-xs text-slate-600 font-bold uppercase tracking-wider mt-1">Tipsters</p>
+              <p className="text-[10px] sm:text-xs text-slate-600 font-bold uppercase tracking-wider mt-1">Giocatori</p>
             </div>
           </div>
         </div>
@@ -242,7 +262,7 @@ export function ClassificaPage() {
                   <span className="text-xl font-black text-primary-700 leading-none">
                     {mioPosto.rank}
                   </span>
-                  <span className="text-[9px] text-primary-700/80 font-bold uppercase">posto</span>
+                  <span className="text-[10px] text-primary-700/80 font-bold uppercase">posto</span>
                 </>
               ) : (
                 <User size={22} className="text-primary-700/70" />
@@ -370,16 +390,27 @@ export function ClassificaPage() {
 
           {/* Rows */}
           <div className="divide-y divide-slate-200">
-            {error && !isLoadingRankings && displayed.length === 0 && (
+            {erroreClassifica && !isLoadingRankings && displayed.length === 0 && (
               <ErrorState
-                message={error}
-                onRetry={() => { clearError(); loadRankings(); }}
+                message={erroreClassifica}
+                onRetry={() => void loadRankings()}
               />
+            )}
+            {erroreClassifica && displayed.length > 0 && (
+              <div className="px-4 py-3 text-xs text-red-700 bg-red-500/5 flex flex-wrap items-center justify-between gap-2" role="alert">
+                <span>Classifica non aggiornata: {erroreClassifica}</span>
+                <button
+                  onClick={() => void loadRankings()}
+                  className="min-h-[44px] px-3 rounded-lg border border-red-500/30 font-bold hover:bg-red-50"
+                >
+                  Riprova
+                </button>
+              </div>
             )}
             {isLoadingRankings && displayed.length === 0 && (
               <SkeletonList count={8} />
             )}
-            {displayed.length === 0 && !isLoadingRankings && (
+            {displayed.length === 0 && !isLoadingRankings && !erroreClassifica && (
               <EmptyState
                 icon={activeTab === 'settimanale' ? '⏳' : '🏁'}
                 title={activeTab === 'settimanale'
@@ -409,7 +440,7 @@ export function ClassificaPage() {
         <div className="mt-8 glass-card p-6 border-t-4 border-t-accent-500">
           <h4 className="font-bold text-lg mb-4 flex items-center gap-2 text-slate-900">
             <Zap size={20} className="text-accent-700" />
-            Struttura Premi
+            Premi di giornata
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             <div className="flex items-start gap-4 p-3 rounded-xl bg-surface/50 border border-slate-200">
@@ -417,19 +448,25 @@ export function ClassificaPage() {
                 <Trophy size={20} className="text-yellow-700" />
               </div>
               <div>
-                <p className="font-bold text-slate-900">1° Classificato</p>
-                <p className="text-sm text-slate-600 mt-1">{formatCurrency(cfg.firstPlacePrize)}</p>
-                <p className="text-[10px] text-slate-500 uppercase mt-1">Montepremi Finale</p>
+                <p className="font-bold text-slate-900">Podio della giornata</p>
+                <ul className="text-sm text-slate-600 mt-1 space-y-0.5">
+                  {premiGiornata.map(p => (
+                    <li key={p.position}>
+                      {p.position}° {p.emoji ?? ''} {p.label}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[10px] text-slate-500 uppercase mt-1">Ogni giornata</p>
               </div>
             </div>
             <div className="flex items-start gap-4 p-3 rounded-xl bg-surface/50 border border-slate-200">
               <div className="w-10 h-10 rounded-lg bg-slate-300/10 border border-slate-300/20 flex items-center justify-center shrink-0">
-                <Medal size={20} className="text-slate-600" />
+                <Coins size={20} className="text-yellow-700" />
               </div>
               <div>
-                <p className="font-bold text-slate-900">Campione Inverno</p>
-                <p className="text-sm text-slate-600 mt-1">{formatCurrency(cfg.firstHalfPrize)}</p>
-                <p className="text-[10px] text-slate-500 uppercase mt-1">Girone Andata</p>
+                <p className="font-bold text-slate-900">Vincitore di giornata</p>
+                <p className="text-sm text-slate-600 mt-1">+{COINS.weeklyWinner} gettoni</p>
+                <p className="text-[10px] text-slate-500 uppercase mt-1">Oltre al premio del podio</p>
               </div>
             </div>
             <div className="flex items-start gap-4 p-3 rounded-xl bg-surface/50 border border-slate-200">
@@ -437,12 +474,17 @@ export function ClassificaPage() {
                 <Target size={20} className="text-primary-700" />
               </div>
               <div>
-                <p className="font-bold text-slate-900">Vincitore Settimanale</p>
-                <p className="text-sm text-slate-600 mt-1">{cfg.weeklyWinnerShare * 100}% Pool</p>
-                <p className="text-[10px] text-slate-500 uppercase mt-1">Ogni Giornata</p>
+                <p className="font-bold text-slate-900">Pronostici esatti</p>
+                <p className="text-sm text-slate-600 mt-1">
+                  +{COINS.perCorrectPrediction} gettoni l'uno · tutti giusti +{COINS.bonus10Correct}
+                </p>
+                <p className="text-[10px] text-slate-500 uppercase mt-1">Schedina generale</p>
               </div>
             </div>
           </div>
+          <p className="text-[11px] text-slate-500 mt-4">
+            Nessuna quota d'iscrizione e nessun premio in denaro: si gioca con i gettoni.
+          </p>
         </div>
       </div>
     </div>
