@@ -1199,7 +1199,7 @@ export const updateLiveScores = onSchedule(
     // Finestra live: da 5 min prima del fischio a 4h dopo ogni partita.
     // Fuori dalle finestre usciamo subito senza chiamare ESPN (costo ~0).
     const now = Date.now();
-    const allFinished = md.matches.every(m => m.status === 'finished');
+    const allFinished = md.matches.every(m => m.status === 'finished' || eSospesa(m.status));
     if (allFinished) {
       // Partite tutte chiuse ma giornata non ancora valutata: si prova a ogni
       // giro, finche' non e' fatta. Prima l'aggancio scattava solo se questo
@@ -1312,7 +1312,7 @@ export const updateLiveScores = onSchedule(
     logger.info(`Giornata ${md.number}: punteggi live aggiornati`);
 
     // Ultima partita chiusa: la valutazione parte adesso, non al giro orario.
-    const tutteChiuse = finali.every(m => m.status === 'finished');
+    const tutteChiuse = finali.every(m => m.status === 'finished' || eSospesa(m.status));
 
     if (avvisaKickoff && primoFischio) {
       const pm = primoFischio as StoredMatch;
