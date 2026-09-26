@@ -13,6 +13,7 @@ import {
   db,
   readProfile,
   readDuello,
+  readMosseDuello,
   seedDuello,
   seedDuelloQuasiFinito,
   seedProfile,
@@ -182,6 +183,111 @@ describe('managePenaltyDuel — fine partita', () => {
     const duello = await readDuello(duelId);
     expect(duello?.phase).toBe('playing');
     expect(duello?.round).toBe(12);
+  });
+});
+
+describe('managePenaltyDuel — scelte nascoste fino alla risoluzione', () => {
+  beforeEach(async () => {
+    await wipe();
+  });
+
+  it('la mossa di chi tira non compare sul documento letto dall\'avversario', async () => {
+    const tiratore = freshUid('tiratore');
+    const portiere = freshUid('portiere');
+    await seedProfile(tiratore, 0);
+    await seedProfile(portiere, 0);
+    const duelId = await seedDuello({ phase: 'playing', p1Uid: tiratore, p2Uid: portiere });
+
+    const prima = (await managePenaltyDuel.run(
+      req(tiratore, { action: 'move', duelId, target: 'TL', power: 90 })
+    )) as { resolved: boolean };
+
+    expect(prima.resolved).toBe(false);
+    const pubblico = await readDuello(duelId);
+    // Niente zona né potenza del tiro sul documento pubblico.
+    expect(pubblico?.p1Choice ?? null).toBeNull();
+    expect(pubblico?.p1Power ?? null).toBeNull();
+    expect(pubblico?.lastRound).toBeNull();
+    // La mossa sta nel documento riservato al server.
+    expect(await readMosseDuello(duelId)).toMatchObject({
+      round: 1,
+      p1: { zone: 'TL', power: 90 },
+      p2: null,
+    });
+
+    const dopo = (await managePenaltyDuel.run(
+      req(portiere, { action: 'move', duelId, target: 'BR' })
+    )) as { resolved: boolean };
+
+    expect(dopo.resolved).toBe(true);
+    const risolto = await readDuello(duelId);
+    expect(risolto?.lastRound).toMatchObject({
+      round: 1,
+      attacker: 1,
+      shot: 'TL',
+      keeper: 'BR',
+      p1Choice: 'TL',
+      p2Choice: 'BR',
+      power: 90,
+    });
+    expect(risolto?.round).toBe(2);
+    expect(risolto).not.toHaveProperty('p1Choice');
+    expect(risolto).not.toHaveProperty('p2Choice');
+    // Round chiuso: le mosse pendenti spariscono.
+    expect(await readMosseDuello(duelId)).toBeNull();
+  });
+
+  it('una seconda mossa nello stesso round non cambia quella già data', async () => {
+    const a = freshUid('a');
+    const b = freshUid('b');
+    await seedProfile(a, 0);
+    await seedProfile(b, 0);
+    const duelId = await seedDuello({ phase: 'playing', p1Uid: a, p2Uid: b });
+
+    await managePenaltyDuel.run(req(a, { action: 'move', duelId, target: 'TL', power: 90 }));
+    await managePenaltyDuel.run(req(a, { action: 'move', duelId, target: 'BC', power: 10 }));
+
+    expect(await readMosseDuello(duelId)).toMatchObject({ p1: { zone: 'TL', power: 90 } });
+  });
+
+  it('il codice di una partita nuova ha sei caratteri validi, mai "undefined"', async () => {
+    const uid = freshUid('codice');
+    await seedProfile(uid, 0);
+
+    const res = (await managePenaltyDuel.run(req(uid, { action: 'create' }))) as { code: string };
+
+    expect(res.code).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/);
+  });
+});
+
+describe('managePenaltyDuel — contro il bot, stessi tiri per tutti', () => {
+  beforeEach(async () => {
+    await wipe();
+  });
+
+  it('REGRESSIONE: in "Prima tiri tu" il bot tira i suoi cinque prima della fine', async () => {
+    const uid = freshUid('primatiri');
+    await seedProfile(uid, 0);
+    const duelId = await seedDuello({ phase: 'playing', p2Uid: 'bot' });
+    // Round 6: il giocatore ha tirato i suoi cinque (3 gol), il bot ne ha
+    // tirato uno. Prima la partita si chiudeva qui, con il bot a un tiro solo.
+    await db.collection('penalty_duels').doc(duelId).update({
+      mode: 'botAttacker',
+      round: 6,
+      attacker: 2,
+      p1: { uid, username: 'Sfidante', score: 3 },
+      p2: { uid: 'bot', username: 'Bot', score: 0, isBot: true },
+      deadlineAt: Date.now() + 5000,
+    });
+
+    const res = (await managePenaltyDuel.run(
+      req(uid, { action: 'move', duelId, target: 'BL' })
+    )) as { finished?: boolean };
+
+    expect(res.finished).toBe(false);
+    const duello = await readDuello(duelId);
+    expect(duello?.round).toBe(7);
+    expect(duello?.attacker).toBe(2);
   });
 });
 

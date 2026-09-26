@@ -7,6 +7,8 @@
 // prova con i test unitari e senza emulatore.
 // ============================================
 
+import { secureUnit } from './random';
+
 export const RAFFLE = {
   /** Gettoni per un biglietto. */
   ticketCost: 100,
@@ -21,10 +23,11 @@ export interface RaffleEntry {
 
 /**
  * Sceglie il vincitore: ogni biglietto e' una pallina nell'urna.
- * `rnd` e' in [0, 1): iniettabile per i test, Math.random in produzione.
+ * `rnd` e' in [0, 1): iniettabile per i test; in produzione e' crittografico
+ * (crypto.randomInt, vedi random.ts), perche' Math.random e' prevedibile.
  * Con nessun biglietto valido non c'e' vincitore.
  */
-export function estraiVincitore(entries: RaffleEntry[], rnd: () => number = Math.random): string | null {
+export function estraiVincitore(entries: RaffleEntry[], rnd: () => number = secureUnit): string | null {
   const valide = entries.filter(e => Number.isInteger(e.count) && e.count > 0 && !!e.uid);
   const totale = valide.reduce((s, e) => s + e.count, 0);
   if (totale === 0) return null;

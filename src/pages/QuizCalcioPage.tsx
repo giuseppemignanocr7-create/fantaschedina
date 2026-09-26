@@ -36,6 +36,7 @@ export function QuizCalcioPage() {
     reward: number;
     corrections: Record<string, number>;
     serie?: { giorni: number; bonus: number };
+    messaggio?: string;
   } | null>(null);
   const celebrated = useRef(false);
 
@@ -147,6 +148,7 @@ export function QuizCalcioPage() {
             <p className="text-slate-500 font-bold text-sm">
               {correct}/{total} risposte corrette
             </p>
+            {result.messaggio && <p className="text-red-600 text-xs font-bold">{result.messaggio}</p>}
             <div className="bg-gradient-to-r from-yellow-500/15 via-yellow-500/25 to-yellow-500/15 border border-yellow-500/30 rounded-2xl p-4">
               <p className="text-yellow-800/80 text-[10px] uppercase tracking-widest mb-1 font-bold">Bottino</p>
               <p className="font-black text-5xl text-yellow-700 animate-coin-pop">

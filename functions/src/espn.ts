@@ -4,6 +4,7 @@
 // ============================================
 
 import { fetchJson } from './http';
+import type { StatoPartita } from './palinsesto';
 
 const ESPN_BASE = (slug: string) => `https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}`;
 
@@ -49,13 +50,60 @@ export function golPrimoTempo(linescores: ESPNLinescore[] | undefined): number |
   return Number.isFinite(n) ? n : null;
 }
 
+/** Stato di un evento come lo scrive ESPN (`name` es. "STATUS_POSTPONED"). */
+export interface ESPNStatusType {
+  state?: 'pre' | 'in' | 'post' | string;
+  completed?: boolean;
+  name?: string;
+}
+
 interface ESPNEvent {
   id: string;
   date: string;
   competitions: Array<{
-    status: { type: { state: 'pre' | 'in' | 'post'; completed: boolean } };
+    status: { type: ESPNStatusType };
     competitors: ESPNCompetitor[];
   }>;
+}
+
+/**
+ * Traduce lo stato ESPN in quello salvato sulla giornata. Rinvii,
+ * cancellazioni e sospensioni definitive arrivano come `state: 'post'` non
+ * completato: prima diventavano 'scheduled' e la partita restava in attesa
+ * per sempre, bloccando la valutazione della giornata. Ora si riconoscono dal
+ * nome dello stato e si salvano come 'postponed' / 'canceled' / 'abandoned'.
+ */
+export function statoEspn(t: ESPNStatusType | undefined): StatoPartita {
+  const nome = (t?.name ?? '').toUpperCase();
+  if (nome.includes('POSTPONED')) return 'postponed';
+  if (nome.includes('CANCELED') || nome.includes('CANCELLED')) return 'canceled';
+  if (nome.includes('ABANDONED')) return 'abandoned';
+  if (t?.state === 'post') return t.completed ? 'finished' : 'scheduled';
+  if (t?.state === 'in') return 'live';
+  return 'scheduled';
+}
+
+/** Giorno nel formato di ESPN (YYYYMMDD, UTC). */
+function giornoEspn(d: Date): string {
+  return d.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+/**
+ * Intervallo di giorni per il parametro `dates` di ESPN
+ * (`YYYYMMDD-YYYYMMDD`), dal primo all'ultimo orario, allargato di
+ * `margineGiorni` per lato: una sola richiesta copre tutta la giornata invece
+ * di una per giorno, e il margine assorbe il fuso (ESPN ragiona in ora
+ * americana, gli orari salvati sono UTC).
+ */
+export function intervalloDate(date: Date[], margineGiorni = 0): string | null {
+  const tempi = date.map(d => d.getTime()).filter(t => Number.isFinite(t));
+  if (tempi.length === 0) return null;
+  const giorno = 24 * 60 * 60 * 1000;
+  const inizio = new Date(Math.min(...tempi) - margineGiorni * giorno);
+  const fine = new Date(Math.max(...tempi) + margineGiorni * giorno);
+  const a = giornoEspn(inizio);
+  const b = giornoEspn(fine);
+  return a === b ? a : `${a}-${b}`;
 }
 
 interface ESPNScoreboard {
@@ -69,7 +117,7 @@ export interface EspnMatch {
   homeTeam: { id: string; name: string; shortName: string; logo?: string };
   awayTeam: { id: string; name: string; shortName: string; logo?: string };
   scheduledAt: Date;
-  status: 'scheduled' | 'live' | 'finished';
+  status: StatoPartita;
 }
 
 export interface EspnResult {
@@ -77,12 +125,16 @@ export interface EspnResult {
   awayGoals: number;
   htHomeGoals?: number;
   htAwayGoals?: number;
-  status: 'scheduled' | 'live' | 'finished';
+  status: StatoPartita;
+  /** Orario attuale secondo ESPN: cambia quando la partita viene spostata. */
+  scheduledAt?: Date;
 }
 
 async function fetchScoreboard(slug: string, dateStr?: string): Promise<ESPNScoreboard | null> {
+  // Con un intervallo di piu' giorni gli eventi sono molti di piu' che in un
+  // giorno solo: il limite deve starci largo.
   const url = dateStr
-    ? `${ESPN_BASE(slug)}/scoreboard?dates=${dateStr}&limit=50`
+    ? `${ESPN_BASE(slug)}/scoreboard?dates=${dateStr}&limit=200`
     : `${ESPN_BASE(slug)}/scoreboard?limit=50`;
   return fetchJson<ESPNScoreboard>(url, { label: `espn:${slug}` });
 }
@@ -120,28 +172,34 @@ async function fetchNextMatchdayForCompetition(
     d => d.getTime() - first.getTime() < 5 * 24 * 60 * 60 * 1000
   );
 
-  const days = block
-    .slice(0, 5)
-    .map(d => d.toISOString().slice(0, 10).replace(/-/g, ''));
-  const boards = await Promise.all(days.map(d => fetchScoreboard(slug, d)));
+  // Una sola richiesta per tutto il blocco (dates=YYYYMMDD-YYYYMMDD) invece
+  // di una per giorno.
+  const intervallo = intervalloDate(block.slice(0, 5));
+  const boards = intervallo ? [await fetchScoreboard(slug, intervallo)] : [];
 
   const matches: EspnMatch[] = [];
+  const visti = new Set<string>();
   for (const day of boards) {
     for (const ev of day?.events ?? []) {
       const comp = ev.competitions[0];
       if (!comp) continue;
-      const state = comp.status.type.state;
-      if (state !== 'pre' && state !== 'in') continue;
+      // Nel pool solo partite da giocare o in corso: rinviate e cancellate
+      // non si aggiungono (quelle gia' in giornata le aggiorna la sync).
+      const status = statoEspn(comp.status?.type);
+      if (status !== 'scheduled' && status !== 'live') continue;
       const home = comp.competitors.find(c => c.homeAway === 'home');
       const away = comp.competitors.find(c => c.homeAway === 'away');
       if (!home || !away) continue;
+      const id = `espn-${ev.id}`;
+      if (visti.has(id)) continue;
+      visti.add(id);
       matches.push({
-        id: `espn-${ev.id}`,
+        id,
         competition: code,
         homeTeam: teamOf(home),
         awayTeam: teamOf(away),
         scheduledAt: new Date(ev.date),
-        status: state === 'in' ? 'live' : 'scheduled',
+        status,
       });
     }
   }
@@ -186,7 +244,10 @@ export async function fetchActiveMatchdayPool(
     }
   }
 
-  if (matches.length < 5) return null;
+  // Basta una partita: la giornata si pubblica con quelle quotate, e le
+  // partite da scegliere diventano min(10, quotate). Prima sotto le cinque
+  // partite il pool si scartava del tutto.
+  if (matches.length === 0) return null;
 
   matches.sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
   const earliest = matches[0].scheduledAt.getTime();
@@ -199,24 +260,44 @@ export async function fetchActiveMatchdayPool(
   };
 }
 
+/** Partita di cui chiedere il risultato. */
+export interface PartitaDaLeggere {
+  id: string;
+  scheduledAt: Date;
+  competition: string;
+  /**
+   * Parziale di primo tempo gia' salvato: se c'e' non si richiede il summary
+   * della partita (una chiamata in meno a ogni giro) e il risultato lo riporta
+   * cosi' com'era.
+   */
+  ht?: { home: number; away: number };
+}
+
 /** Risultati per un set di partite multi-campionato (id interno = `espn-${eventId}`). */
 export async function fetchResults(
-  matches: { id: string; scheduledAt: Date; competition: string }[]
+  matches: PartitaDaLeggere[],
+  opzioni: { parziali?: boolean } = {}
 ): Promise<Map<string, EspnResult>> {
   const out = new Map<string, EspnResult>();
   if (matches.length === 0) return out;
 
-  // Raggruppa per campionato + giorno, per interrogare l'endpoint ESPN corretto
-  // (competition == slug ESPN, vedi COMPETITIONS in config.ts).
-  const groups = new Map<string, { slug: string; day: string }>();
+  // Una richiesta per campionato con l'intervallo di giorni che copre tutte le
+  // sue partite (competition == slug ESPN, vedi COMPETITIONS in config.ts).
+  // Il margine di un giorno per lato tiene dentro le partite serali che per
+  // ESPN cadono gia' nel giorno dopo, e quelle spostate di poco.
+  const perCampionato = new Map<string, Date[]>();
   for (const m of matches) {
-    const day = m.scheduledAt.toISOString().slice(0, 10).replace(/-/g, '');
-    groups.set(`${m.competition}_${day}`, { slug: m.competition, day });
+    const date = perCampionato.get(m.competition) ?? [];
+    date.push(m.scheduledAt);
+    perCampionato.set(m.competition, date);
   }
 
   const wanted = new Set(matches.map(m => m.id));
   const boards = await Promise.all(
-    [...groups.values()].map(({ slug, day }) => fetchScoreboard(slug, day))
+    [...perCampionato.entries()].map(([slug, date]) => {
+      const intervallo = intervalloDate(date, 1);
+      return intervallo ? fetchScoreboard(slug, intervallo) : Promise.resolve(null);
+    })
   );
 
   for (const sb of boards) {
@@ -228,24 +309,29 @@ export async function fetchResults(
       const home = comp.competitors.find(c => c.homeAway === 'home');
       const away = comp.competitors.find(c => c.homeAway === 'away');
       if (!home || !away) continue;
-      const state = comp.status.type.state;
       const htHome = golPrimoTempo(home.linescores);
       const htAway = golPrimoTempo(away.linescores);
+      const data = new Date(ev.date);
       out.set(internalId, {
         homeGoals: parseInt(home.score ?? '0', 10),
         awayGoals: parseInt(away.score ?? '0', 10),
         ...(htHome != null && htAway != null
           ? { htHomeGoals: htHome, htAwayGoals: htAway }
           : {}),
-        status:
-          state === 'post' && comp.status.type.completed
-            ? 'finished'
-            : state === 'in'
-            ? 'live'
-            : 'scheduled',
+        status: statoEspn(comp.status?.type),
+        ...(Number.isFinite(data.getTime()) ? { scheduledAt: data } : {}),
       });
     }
   }
+  // Parziale gia' salvato sulla giornata: si riporta quello, senza chiedere
+  // di nuovo il summary a ogni giro.
+  for (const m of matches) {
+    const r = out.get(m.id);
+    if (m.ht && r && r.htHomeGoals == null) {
+      out.set(m.id, { ...r, htHomeGoals: m.ht.home, htAwayGoals: m.ht.away });
+    }
+  }
+  if (opzioni.parziali === false) return out;
   // Il parziale di primo tempo nello scoreboard non c'e' proprio (verificato il
   // 21/09/2026: il campo linescores manca del tutto), mentre il summary della
   // singola partita ce l'ha. Senza, i mercati di primo tempo non sono MAI

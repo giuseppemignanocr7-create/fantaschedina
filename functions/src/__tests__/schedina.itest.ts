@@ -9,12 +9,15 @@
 // ============================================
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { FieldValue } from 'firebase-admin/firestore';
 import { submitSchedina, changePrediction, cancelSchedina } from '../index';
 import { POWERUPS } from '../config';
 import {
   coinsOf,
+  db,
   readProfile,
   readSchedina,
+  seedLega,
   seedMatchday,
   seedProfile,
   setDeadline,
@@ -163,6 +166,113 @@ describe('submitSchedina — invio e power-up', () => {
     );
   });
 
+  it('rifiuta mercati ed esiti pescati dal prototipo (constructor, __proto__)', async () => {
+    const uid = freshUid('prototipo');
+    await seedProfile(uid, 1000);
+
+    for (const truccato of [
+      { betType: 'constructor', outcome: 'name' },
+      { betType: 'esito', outcome: '__proto__' },
+      { betType: 'esito', outcome: 'constructor' },
+      { betType: 'esito', outcome: 'toString' },
+      { betType: '__proto__', outcome: '1' },
+    ]) {
+      const preds = tenPredictions();
+      preds[0] = { ...preds[0], ...truccato };
+      await expectRejection(
+        submitSchedina.run(req(uid, { predictions: preds, powerups: {} })),
+        'invalid-argument'
+      );
+    }
+    expect(await readSchedina(uid, 1)).toBeNull();
+  });
+
+  it('rifiuta pronostici non stringa, doppioni e quote sotto 1.25', async () => {
+    const uid = freshUid('malformati');
+    await seedProfile(uid, 1000);
+
+    const numerico = tenPredictions();
+    numerico[0] = { ...numerico[0], outcome: 1 };
+    await expectRejection(
+      submitSchedina.run(req(uid, { predictions: numerico, powerups: {} })),
+      'invalid-argument'
+    );
+
+    const doppione = tenPredictions();
+    doppione[1] = { ...doppione[1], matchId: 'm0' };
+    await expectRejection(
+      submitSchedina.run(req(uid, { predictions: doppione, powerups: {} })),
+      'invalid-argument'
+    );
+
+    // Multigoal O0.5 e' quotato 1.10 nel seed: sotto la soglia minima.
+    const bassa = tenPredictions();
+    bassa[0] = { ...bassa[0], betType: 'multigoal', outcome: 'O0.5' };
+    await expect(
+      submitSchedina.run(req(uid, { predictions: bassa, powerups: {} }))
+    ).rejects.toMatchObject({ code: 'invalid-argument', message: expect.stringContaining('1.25') });
+  });
+
+  it('rifiuta una partita gia\' iniziata', async () => {
+    const uid = freshUid('giainiziata');
+    await seedProfile(uid, 1000);
+    await updateMatch(1, 'm0', { kickoffOffsetMs: -60_000, status: 'live' });
+
+    await expectRejection(
+      submitSchedina.run(req(uid, { predictions: tenPredictions(), powerups: {} })),
+      'failed-precondition'
+    );
+  });
+
+  it('con meno di dieci partite quotate chiede un pronostico per ciascuna', async () => {
+    const uid = freshUid('pochequote');
+    await seedProfile(uid, 1000);
+    // L'agenzia non quota l'esito di m8 e m9: si giocano otto partite.
+    await db.collection('matchdays').doc('1').update({
+      'odds.m8.esito': FieldValue.delete(),
+      'odds.m9.esito': FieldValue.delete(),
+    });
+
+    // Dieci pronostici (su m8 e m9 un mercato ancora quotato) sono troppi.
+    const dieci = tenPredictions().map(p =>
+      p.matchId === 'm8' || p.matchId === 'm9' ? { ...p, betType: 'over_under', outcome: 'OVER' } : p
+    );
+    await expect(
+      submitSchedina.run(req(uid, { predictions: dieci, powerups: {} }))
+    ).rejects.toMatchObject({ code: 'invalid-argument', message: expect.stringContaining('8') });
+
+    const otto = tenPredictions().slice(0, 8);
+    await expect(
+      submitSchedina.run(req(uid, { predictions: otto, powerups: {} }))
+    ).resolves.toMatchObject({ ok: true });
+    expect((await readSchedina(uid, 1))?.predictions).toHaveLength(8);
+  });
+
+  it('il Jolly va su una delle partite giocate', async () => {
+    const uid = freshUid('jollyfuori');
+    await seedProfile(uid, 1000);
+    await db.collection('matchdays').doc('1').update({
+      'odds.m8.esito': FieldValue.delete(),
+    });
+    // m8 e' della giornata ma non e' nella schedina (solo nove quotate).
+    const nove = tenPredictions().filter(p => p.matchId !== 'm8');
+    await expectRejection(
+      submitSchedina.run(req(uid, { predictions: nove, powerups: { jolly: 'm8' } })),
+      'invalid-argument'
+    );
+    expect(await coinsOf(uid)).toBe(1000);
+  });
+
+  it('un utente sospeso non puo\' inviare', async () => {
+    const uid = freshUid('sospeso');
+    await seedProfile(uid, 1000, { isActive: false });
+
+    await expectRejection(
+      submitSchedina.run(req(uid, { predictions: tenPredictions(), powerups: {} })),
+      'permission-denied'
+    );
+  });
+
   it('cancelSchedina rimborsa i power-up ed elimina la schedina', async () => {
     const uid = freshUid('annulla');
     await seedProfile(uid, 1000);
@@ -267,6 +377,68 @@ describe('changePrediction — power-up Cambio Last-Minute', () => {
       'failed-precondition'
     );
     expect((await readSchedina(uid, 1))?.lastMinuteUsed).toBe(false);
+  });
+
+  it('rifiuta esiti pescati dal prototipo e quote sotto 1.25', async () => {
+    const uid = freshUid('cambiotruccato');
+    await schedinaDopoDeadline(uid);
+
+    await expectRejection(
+      changePrediction.run(req(uid, { matchId: 'm0', betType: 'esito', outcome: '__proto__' })),
+      'invalid-argument'
+    );
+    await expectRejection(
+      changePrediction.run(req(uid, { matchId: 'm0', betType: 'constructor', outcome: 'name' })),
+      'invalid-argument'
+    );
+    await expectRejection(
+      changePrediction.run(req(uid, { matchId: 'm0', betType: 'multigoal', outcome: 'O0.5' })),
+      'invalid-argument'
+    );
+    expect(await coinsOf(uid)).toBe(1000);
+    expect((await readSchedina(uid, 1))?.lastMinuteUsed).toBe(false);
+  });
+
+  it('in una lega con la sua agenzia cambia sulle quote di quell\'agenzia', async () => {
+    const uid = freshUid('cambiolega');
+    await seedProfile(uid, 1000);
+    await seedLega('lega_agenzia', [uid]);
+    await db.collection('leagues').doc('lega_agenzia').update({ bookmaker: 'Agenzia Test' });
+    const odds = (await db.collection('matchdays').doc('1').get()).data()?.odds as Record<
+      string,
+      Record<string, Record<string, number>>
+    >;
+    const agenzia = JSON.parse(JSON.stringify(odds)) as typeof odds;
+    agenzia.m0.over_under.OVER = 2.2;
+    await db.collection('matchdays').doc('1').update({
+      oddsPerBookmaker: { 'Agenzia Test': agenzia },
+    });
+
+    await submitSchedina.run(
+      req(uid, { predictions: tenPredictions(), powerups: {}, leagueId: 'lega_agenzia' })
+    );
+    await setDeadline(1, -60_000);
+
+    await changePrediction.run(
+      req(uid, { matchId: 'm0', betType: 'over_under', outcome: 'OVER', leagueId: 'lega_agenzia' })
+    );
+    const s = await db.collection('schedine').doc(`${uid}_1_lega_agenzia`).get();
+    const m0 = (s.data()?.predictions as { matchId: string; odds: number }[]).find(
+      p => p.matchId === 'm0'
+    );
+    expect(m0?.odds).toBe(2.2);
+  });
+
+  it('un utente sospeso non puo\' usare il Cambio Last-Minute', async () => {
+    const uid = freshUid('cambiosospeso');
+    await schedinaDopoDeadline(uid);
+    await db.collection('profiles').doc(uid).update({ isActive: false });
+
+    await expectRejection(
+      changePrediction.run(req(uid, { matchId: 'm0', betType: 'esito', outcome: 'X' })),
+      'permission-denied'
+    );
+    expect(await coinsOf(uid)).toBe(1000);
   });
 
   it('rifiuta un mercato inesistente senza addebitare nulla', async () => {

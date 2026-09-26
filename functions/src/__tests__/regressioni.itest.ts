@@ -157,7 +157,10 @@ describe('settlement — una schedina rotta non deve fermare le altre', () => {
     expect((await readProfile('reg_vivo2')).totalPoints).toBeGreaterThan(0);
   });
 
-  it('la schedina che non si è potuta valutare resta non valutata, senza punti finti', async () => {
+  // La giornata non si chiude finche' resta una schedina da valutare: una
+  // schedina senza profilo si chiude quindi senza accrediti, altrimenti un
+  // account cancellato terrebbe aperta la giornata per sempre.
+  it('la schedina senza profilo si chiude senza punti finti e non blocca la giornata', async () => {
     await seedProfile('reg_fantasma3', 1000);
     await submitSchedina.run(
       req('reg_fantasma3', { predictions: tenPredictions('1'), powerups: {} })
@@ -169,7 +172,10 @@ describe('settlement — una schedina rotta non deve fermare le altre', () => {
     await adminForceSettle.run(req(admin, { matchdayNumber: 1 }));
 
     const s = await db.collection('schedine').doc('reg_fantasma3_1').get();
-    expect(s.data()!.settled).toBe(false);
+    expect(s.data()!.settled).toBe(true);
+    // Nessun profilo ricreato con i punti della schedina.
+    expect((await db.collection('profiles').doc('reg_fantasma3').get()).exists).toBe(false);
+    expect((await db.collection('matchdays').doc('1').get()).data()?.settled).toBe(true);
   });
 });
 

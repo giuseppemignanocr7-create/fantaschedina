@@ -16,6 +16,7 @@ import {
   Save
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { USERNAME_REGOLA, usernameValido } from '@/lib/username';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
@@ -75,8 +76,8 @@ export function ProfiloPage() {
 
   const handleProfileSave = async () => {
     const username = editUsername.trim();
-    if (username.length < 2 || username.length > 30) {
-      setFormError('Lo username deve contenere da 2 a 30 caratteri');
+    if (!usernameValido(username)) {
+      setFormError(`Username non valido. ${USERNAME_REGOLA}`);
       return;
     }
     setSavingProfile(true);
@@ -155,7 +156,7 @@ export function ProfiloPage() {
                 <input
                   value={editUsername}
                   onChange={e => setEditUsername(e.target.value)}
-                  maxLength={30}
+                  maxLength={20}
                   className="w-full max-w-xs input-field bg-surface text-center sm:text-left mb-2"
                   aria-label="Username"
                 />

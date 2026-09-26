@@ -30,6 +30,7 @@ import {
   getFirestore,
   Timestamp,
   DocumentReference,
+  FieldPath,
   FieldValue,
   Transaction,
 } from 'firebase-admin/firestore';
@@ -44,15 +45,20 @@ import { secureIndex, securePick, secureShuffle } from './random';
 import {
   COINS, MISSIONS, POWERUPS, PowerUpSelection,
   DEFAULT_WEEKLY_PRIZES, MAX_WEEKLY_PRIZES, type WeeklyPrize,
-  COMPETITIONS, DEFAULT_ACTIVE_COMPETITIONS, MAX_PICKS_PER_SCHEDINA,
+  COMPETITIONS, DEFAULT_ACTIVE_COMPETITIONS,
+  pickRichieste,
 } from './config';
 import { ALL_QUIZ_QUESTIONS } from './quizData';
 import {
   evaluateBet,
   evaluateSchedina,
+  attendeParziale,
+  livelloBonus,
+  statoGiornata,
   MatchResult,
   Prediction,
 } from './scoring';
+import { partitaNonIniziata, quotaUfficiale, validaPronostici } from './validazione';
 import type { MatchOdds } from './odds';
 import { computePowerupCharge, isLastMinuteWindowOpen, powerupCost } from './powerups';
 import { calcolaSerie } from './streak';
@@ -61,11 +67,40 @@ import { pickWeeklyWinner, rankWeeklyCandidates } from './settlement';
 import { computeRankings, type RankableProfile } from './rankings';
 import { attackerForRound, canFinishAtRound, type DuelMode } from './duels';
 import {
+  premioConTetto,
+  contaPerLaSerie,
+  generaCodiceDuello,
+  componiRound,
+  verificaDurata,
+  valutaMemoria,
+  quizScaduto,
+  QUIZ_DURATA_MAX_MS,
+  SESSIONE_MINIGIOCO_MAX_MS,
+  RIGORI_MINIMO_MS_PER_TIRO,
+  type MossaDuello,
+} from './minigiochi';
+import {
   fetchRealMatchdayOdds,
   bookmakerDisponibili,
   BOOKMAKER_PREDEFINITO,
 } from './realOdds';
-import { fetchActiveMatchdayPool, fetchResults } from './espn';
+import {
+  fetchActiveMatchdayPool,
+  fetchResults,
+  type EspnResult,
+  type PartitaDaLeggere,
+} from './espn';
+import {
+  applicaAggiornamento,
+  contaQuotate,
+  eSospesa,
+  haEsito,
+  partitaIniziata,
+  partitaQuotabile,
+  slugFornitore,
+  statoDaSync,
+  unisciQuote,
+} from './palinsesto';
 import {
   resolveShot,
   simulateOpponentShot,
@@ -158,6 +193,12 @@ interface MatchdayDoc {
    * dell'agenzia predefinita, che vale per il circuito generale.
    */
   oddsPerBookmaker?: Record<string, Record<string, MatchOdds>>;
+  /**
+   * Partite della giornata con l'1X2 di ciascuna agenzia
+   * (`{ 'Goldbet IT': 10, 'Eurobet IT': 7 }`): l'app lo usa per avvisare chi
+   * gioca in una lega che la sua agenzia ne quota meno delle altre.
+   */
+  quotateConteggio?: Record<string, number>;
   settled: boolean;
   /** Notifiche gia' inviate per questa giornata (una sola volta ciascuna). */
   reminderSentAt?: Timestamp;
@@ -210,6 +251,18 @@ async function requireCircuito(uid: string, leagueId: unknown): Promise<string |
     throw new HttpsError('failed-precondition', 'Lega in attesa di attivazione');
   }
   return leagueId;
+}
+
+/**
+ * Blocca chi e' stato sospeso dall'admin (`isActive: false` sul profilo):
+ * va chiamata in testa a ogni callable che cambia lo stato del gioco. Un
+ * profilo che non esiste ancora passa: ci pensa la callable a gestirlo.
+ */
+async function requireUtenteAttivo(uid: string): Promise<void> {
+  const snap = await db.collection('profiles').doc(uid).get();
+  if (snap.exists && snap.data()?.isActive === false) {
+    throw new HttpsError('permission-denied', 'Account sospeso: non puoi giocare');
+  }
 }
 
 /**
@@ -303,6 +356,26 @@ async function getActiveCompetitions(): Promise<{ code: string; slug: string }[]
     .map(c => ({ code: c.code, slug: c.slug }));
 }
 
+/**
+ * Partita salvata → richiesta dei risultati ESPN. Il parziale di primo tempo
+ * gia' salvato viaggia con la richiesta, cosi' non si richiede il summary a
+ * ogni giro.
+ */
+function perEspn(m: StoredMatch): PartitaDaLeggere {
+  const r = m.result;
+  return {
+    id: m.id,
+    scheduledAt: m.scheduledAt.toDate(),
+    competition: m.competition,
+    ...(r?.htHomeGoals != null && r.htAwayGoals != null
+      ? { ht: { home: r.htHomeGoals, away: r.htAwayGoals } }
+      : {}),
+  };
+}
+
+/** Anticipo della deadline sul primo fischio d'inizio della giornata. */
+const ANTICIPO_DEADLINE_MS = 2 * 60 * 60 * 1000;
+
 /** Crea/aggiorna il doc della prossima giornata con quote server-side (pool multi-campionato). */
 async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | null> {
   const competitions = await getActiveCompetitions();
@@ -338,122 +411,255 @@ async function syncMatchdayInternal(forceOdds = false): Promise<MatchdayDoc | nu
     number = all.empty ? 1 : (all.docs[0].data() as MatchdayDoc).number + 1;
   }
 
-  const ref = db.collection('matchdays').doc(String(number));
+  const numero: number = number;
+  const ref = db.collection('matchdays').doc(String(numero));
+  const metaRef = db.collection('matchdays').doc('_meta');
   const snap = await ref.get();
   const prev = snap.exists ? (snap.data() as MatchdayDoc) : null;
+  const adesso = Date.now();
 
-  const matches: StoredMatch[] = api.matches.map(m => ({
-    id: m.id,
-    matchday: number as number,
-    competition: m.competition,
-    homeTeam: m.homeTeam,
-    awayTeam: m.awayTeam,
-    scheduledAt: Timestamp.fromDate(m.scheduledAt),
-    status: m.status,
-  }));
+  // Rinvii e orari spostati delle partite gia' in giornata. Il pool vede solo
+  // quelle ancora da giocare, lo scoreboard ESPN anche le rinviate e le
+  // cancellate: senza questa lettura una partita rinviata restava
+  // 'scheduled' al suo vecchio orario e la giornata non si chiudeva mai.
+  const esistenti = prev?.matches ?? [];
+  const dalPool = new Map(api.matches.map(m => [m.id, m]));
+  const letti: Map<string, EspnResult> = esistenti.length > 0
+    ? await fetchResults(esistenti.map(perEspn), { parziali: false }).catch(err => {
+        logger.warn('syncMatchday: stato partite da ESPN non letto', err);
+        return new Map<string, EspnResult>();
+      })
+    : new Map<string, EspnResult>();
+  const daEspn = new Map<string, { status?: string; scheduledAt?: Date }>();
+  for (const m of esistenti) {
+    const r = letti.get(m.id);
+    const p = dalPool.get(m.id);
+    const status = r?.status ?? p?.status;
+    const scheduledAt = p?.scheduledAt ?? r?.scheduledAt;
+    if (status || scheduledAt) daEspn.set(m.id, { status, scheduledAt });
+  }
+  const aggiorna = (m: StoredMatch, bloccata: boolean): StoredMatch => {
+    const e = daEspn.get(m.id);
+    if (!e) return m;
+    const status = statoDaSync(m.status, e.status, bloccata);
+    // L'orario si segue finche' la partita e' da giocare; un rinvio dopo la
+    // deadline resta fermo com'e' (vedi statoDaSync).
+    const spostabile = status === 'scheduled' || (eSospesa(status) && !bloccata);
+    const orario =
+      spostabile && e.scheduledAt && e.scheduledAt.getTime() !== m.scheduledAt.toMillis()
+        ? Timestamp.fromDate(e.scheduledAt)
+        : m.scheduledAt;
+    if (status === m.status && orario === m.scheduledAt) return m;
+    return { ...m, status, scheduledAt: orario };
+  };
 
-  // Le partite già pubblicate non si rimuovono mai (i pronostici già fatti le
-  // referenziano), ma le partite di un campionato appena attivato dall'admin
-  // vengono aggiunte al pool della giornata già aperta invece di essere ignorate.
-  const prevMatches = prev?.matches ?? [];
-  const prevIds = new Set(prevMatches.map(m => m.id));
-  const newMatches = matches.filter(m => !prevIds.has(m.id));
-  const mergedMatches = prevMatches.length ? [...prevMatches, ...newMatches] : matches;
+  // Partite nuove: solo da giocare, e solo se la giornata e' ancora aperta.
+  // Dopo la deadline (o a giornata chiusa/valutata) il pool non aggiunge
+  // nulla: chi ha gia' giocato non potrebbe sceglierle, e la giornata dopo le
+  // prendera' per conto suo.
+  const presentiPrima = new Set(esistenti.map(m => m.id));
+  const nuove = giornataAperta(prev, adesso)
+    ? api.matches.filter(
+        m =>
+          !presentiPrima.has(m.id) &&
+          partitaQuotabile(m.status, m.scheduledAt.getTime(), adesso) &&
+          (!prev || m.scheduledAt.getTime() > prev.deadline.toMillis())
+      )
+    : [];
 
-  // Le quote non si rigenerano mai una volta pubblicate (a meno di forceOdds),
-  // ma le partite nuove aggiunte al pool hanno comunque bisogno delle loro quote.
+  // Si chiedono al fornitore tutte le partite ancora da giocare, non solo le
+  // nuove: serve a recuperare quelle rimaste senza quote al giro prima e ad
+  // accorgersi di quelle ritirate. Le quote gia' pubblicate restano quelle
+  // (salvo forceOdds), le partite cominciate non si toccano.
+  const daQuotare = [
+    ...esistenti
+      .map(m => aggiorna(m, prev ? prev.deadline.toMillis() <= adesso : false))
+      .filter(m => partitaQuotabile(m.status, m.scheduledAt.toMillis(), adesso))
+      .map(m => ({
+        id: m.id,
+        competition: m.competition,
+        homeTeam: m.homeTeam,
+        awayTeam: m.awayTeam,
+        scheduledAt: m.scheduledAt.toDate(),
+      })),
+    ...nuove,
+  ];
+
   const apiKey = ODDS_API_KEY.value();
   // Agenzie da scaricare: la predefinita piu' quelle assegnate alle leghe
   // attive. Vengono chieste in un'unica richiesta per partita, quindi due
   // agenzie non costano il doppio.
-  const agenzie = await agenzieInUso(apiKey);
+  const { scaricabili: agenzie, richieste } = await agenzieInUso(apiKey);
 
   // Le quote arrivano solo dal fornitore. Dove non ci sono, non ci sono: una
   // partita senza quote non entra in giornata e un mercato non quotato non si
   // gioca. Prima un motore di calcolo riempiva i buchi, e chi giocava quelle
   // partite lo faceva su numeri inventati (23/09/2026).
-  let odds = (!forceOdds ? prev?.odds ?? null : null);
-  let oddsPerBookmaker = (!forceOdds ? prev?.oddsPerBookmaker ?? null : null);
-
-  const daQuotare = odds
-    ? api.matches.filter(m => !prevIds.has(m.id))
-    : api.matches;
-
-  if (daQuotare.length > 0) {
-    const reali = await fetchRealMatchdayOdds(daQuotare, apiKey, agenzie);
-    if (!reali) {
-      logger.error('syncMatchday: nessuna quota dal fornitore, giornata non aggiornata', {
-        partite: daQuotare.length,
-        agenzie,
-      });
-      // Meglio una giornata ferma che una giornata con quote inventate: si
-      // tiene quello che c'era e si riprova al giro successivo.
-      if (!odds) return prev ?? null;
-    } else {
-      const predefinite = reali[BOOKMAKER_PREDEFINITO] ?? {};
-      odds = { ...(odds ?? {}), ...predefinite };
-      const unione: Record<string, Record<string, MatchOdds>> = { ...(oddsPerBookmaker ?? {}) };
-      for (const agenzia of agenzie) {
-        unione[agenzia] = { ...(unione[agenzia] ?? {}), ...(reali[agenzia] ?? {}) };
-      }
-      oddsPerBookmaker = unione;
-    }
+  const reali = daQuotare.length > 0
+    ? await fetchRealMatchdayOdds(daQuotare, apiKey, agenzie)
+    : null;
+  if (daQuotare.length > 0 && !reali) {
+    // Meglio una giornata ferma che una giornata con quote inventate: si
+    // tiene quello che c'era e si riprova al giro successivo.
+    logger.error('syncMatchday: nessuna risposta dal fornitore, quote invariate', {
+      partite: daQuotare.length,
+      agenzie,
+    });
+    if (!prev) return null;
   }
-
-  // Un'agenzia assegnata dopo la pubblicazione non ha ancora le sue quote.
-  const senzaQuote = agenzie.filter(a => !(oddsPerBookmaker ?? {})[a]);
-  if (senzaQuote.length > 0) {
-    const reali = await fetchRealMatchdayOdds(api.matches, apiKey, senzaQuote);
-    if (reali) {
-      const base: Record<string, Record<string, MatchOdds>> = { ...(oddsPerBookmaker ?? {}) };
-      for (const agenzia of senzaQuote) base[agenzia] = reali[agenzia] ?? {};
-      oddsPerBookmaker = base;
-    }
-  }
+  const quoteNuove = reali?.quote ?? {};
+  const verificate = reali?.verificate ?? [];
 
   // In giornata entrano solo le partite quotate dall'agenzia predefinita: sono
   // quelle che il circuito generale puo' giocare davvero.
-  const quotate = odds ?? {};
-  const scartate = mergedMatches.filter(m => !quotate[m.id]);
-  const matchesGiocabili = mergedMatches.filter(m => !!quotate[m.id]);
+  const nuoveQuotate = nuove.filter(m => haEsito(quoteNuove[BOOKMAKER_PREDEFINITO]?.[m.id]));
+  const scartate = nuove.filter(m => !haEsito(quoteNuove[BOOKMAKER_PREDEFINITO]?.[m.id]));
   if (scartate.length > 0) {
     logger.warn('syncMatchday: partite senza quote, escluse dalla giornata', {
       quante: scartate.length,
       partite: scartate.map(m => `${m.homeTeam.name}-${m.awayTeam.name}`),
     });
   }
-  if (matchesGiocabili.length === 0) {
-    logger.error('syncMatchday: nessuna partita quotata, giornata non aggiornata');
+
+  // Scrittura in transazione sulla versione piu' recente del documento: gli
+  // aggiornamenti live e la valutazione scrivono le stesse partite, e una
+  // scrittura costruita su una lettura vecchia cancellerebbe i loro risultati.
+  // Le mappe delle quote si riscrivono intere (update, non merge): con il
+  // merge le partite tolte e le agenzie non piu' usate restavano per sempre.
+  const docData = await db.runTransaction(async tx => {
+    const [freshSnap, metaSnap] = await Promise.all([tx.get(ref), tx.get(metaRef)]);
+    const fresh = freshSnap.exists ? (freshSnap.data() as MatchdayDoc) : null;
+    const ora = Date.now();
+    const bloccata = fresh ? fresh.deadline.toMillis() <= ora : false;
+
+    const aggiornate = (fresh?.matches ?? []).map(m => aggiorna(m, bloccata));
+    const presenti = new Set(aggiornate.map(m => m.id));
+    const aggiunte: StoredMatch[] = giornataAperta(fresh, ora)
+      ? nuoveQuotate
+          .filter(m => !presenti.has(m.id))
+          .filter(m => !fresh || m.scheduledAt.getTime() > fresh.deadline.toMillis())
+          .map(m => ({
+            id: m.id,
+            matchday: numero,
+            competition: m.competition,
+            homeTeam: m.homeTeam,
+            awayTeam: m.awayTeam,
+            scheduledAt: Timestamp.fromDate(m.scheduledAt),
+            status: m.status,
+          }))
+      : [];
+    const matches = [...aggiornate, ...aggiunte];
+    if (matches.length === 0) return null;
+
+    const iniziate = matches
+      .filter(m => partitaIniziata(m.status, m.scheduledAt.toMillis(), ora))
+      .map(m => m.id);
+    const ferme = new Set(iniziate);
+    const partite = matches
+      .filter(m => ferme.has(m.id) || partitaQuotabile(m.status, m.scheduledAt.toMillis(), ora))
+      .map(m => m.id);
+    const unisci = (agenzia: string, prima: Record<string, MatchOdds> | undefined) => {
+      const scaricata = agenzie.includes(agenzia);
+      return unisciQuote(prima, scaricata ? quoteNuove[agenzia] : undefined, iniziate, {
+        partite,
+        verificate: scaricata ? verificate : [],
+        riquota: forceOdds,
+      });
+    };
+    const odds = unisci(BOOKMAKER_PREDEFINITO, fresh?.odds);
+    // Un'agenzia che nessuna lega usa piu' esce dalla mappa; una richiesta
+    // ma non scaricabile adesso tiene quello che aveva.
+    const oddsPerBookmaker: Record<string, Record<string, MatchOdds>> = {};
+    for (const agenzia of new Set([...agenzie, ...richieste])) {
+      oddsPerBookmaker[agenzia] = unisci(agenzia, fresh?.oddsPerBookmaker?.[agenzia]);
+    }
+    const ids = matches.map(m => m.id);
+    const quotateConteggio: Record<string, number> = {
+      [BOOKMAKER_PREDEFINITO]: contaQuotate(odds, ids),
+    };
+    for (const [agenzia, mappa] of Object.entries(oddsPerBookmaker)) {
+      quotateConteggio[agenzia] = contaQuotate(mappa, ids);
+    }
+
+    // Deadline: due ore prima del primo fischio. Finche' non e' passata puo'
+    // solo anticipare (una partita spostata prima); poi non si muove piu'.
+    const primoFischio = Math.min(
+      ...matches.filter(m => m.status === 'scheduled').map(m => m.scheduledAt.toMillis())
+    );
+    let deadline: Timestamp;
+    if (!fresh) {
+      deadline = Timestamp.fromMillis(primoFischio - ANTICIPO_DEADLINE_MS);
+    } else if (
+      !bloccata &&
+      Number.isFinite(primoFischio) &&
+      primoFischio - ANTICIPO_DEADLINE_MS < fresh.deadline.toMillis()
+    ) {
+      deadline = Timestamp.fromMillis(primoFischio - ANTICIPO_DEADLINE_MS);
+    } else {
+      deadline = fresh.deadline;
+    }
+
+    const campi = {
+      matches,
+      odds,
+      oddsPerBookmaker,
+      quotateConteggio,
+      deadline,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (fresh) {
+      tx.update(ref, campi);
+    } else {
+      tx.set(ref, { number: numero, season: api.season, status: 'open', settled: false, ...campi });
+    }
+
+    // Il puntatore alla giornata corrente va solo avanti: una giornata piu'
+    // vecchia ancora aperta (rinvio, recupero) non deve riportarlo indietro.
+    const corrente = metaSnap.exists ? (metaSnap.data()?.currentNumber as number | undefined) : undefined;
+    if (corrente == null || numero > corrente) {
+      tx.set(
+        metaRef,
+        { currentNumber: numero, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+    }
+
+    const risultato: MatchdayDoc = {
+      number: numero,
+      season: fresh?.season ?? api.season,
+      status: fresh?.status ?? 'open',
+      deadline,
+      matches,
+      odds,
+      oddsPerBookmaker,
+      quotateConteggio,
+      settled: fresh?.settled ?? false,
+    };
+    return risultato;
+  });
+
+  if (!docData) {
+    logger.error('syncMatchday: nessuna partita quotata, giornata non creata');
     return prev ?? null;
   }
-
-  const docData: MatchdayDoc = {
-    number,
-    season: api.season,
-    status: prev?.status ?? 'open',
-    deadline: prev?.deadline ?? Timestamp.fromDate(api.deadline),
-    matches: matchesGiocabili,
-    odds: quotate,
-    ...(oddsPerBookmaker ? { oddsPerBookmaker } : {}),
-    settled: prev?.settled ?? false,
-  };
-  await ref.set(
-    { ...docData, updatedAt: FieldValue.serverTimestamp() },
-    { merge: true }
-  );
-  await db.collection('matchdays').doc('_meta').set(
-    { currentNumber: number, updatedAt: FieldValue.serverTimestamp() },
-    { merge: true }
-  );
   return docData;
+}
+
+/** Una giornata accetta partite nuove solo se aperta e prima della deadline. */
+function giornataAperta(md: MatchdayDoc | null, oraMs: number): boolean {
+  if (!md) return true;
+  return !md.settled && md.status === 'open' && md.deadline.toMillis() > oraMs;
 }
 
 /**
  * Agenzie di cui servono le quote: la predefinita piu' quelle assegnate alle
  * leghe attive, tenute solo se il piano le consente davvero (il fornitore
  * rifiuta la richiesta se si sfora, e si perderebbero tutte le quote).
+ * `richieste` sono tutte quelle che le leghe usano, anche se oggi non
+ * scaricabili: le loro quote gia' pubblicate non vanno cancellate per un
+ * disguido del fornitore.
  */
-async function agenzieInUso(apiKey: string): Promise<string[]> {
+async function agenzieInUso(apiKey: string): Promise<{ scaricabili: string[]; richieste: string[] }> {
   const consentite = await bookmakerDisponibili(apiKey);
   const leghe = await db.collection('leagues').where('bookmaker', '!=', null).get();
   const richieste = leghe.docs
@@ -465,7 +671,10 @@ async function agenzieInUso(apiKey: string): Promise<string[]> {
   if (scartate.length > 0) {
     logger.warn('agenzie non disponibili sul piano, ignorate', { scartate, consentite });
   }
-  return ammesse.length > 0 ? ammesse : [BOOKMAKER_PREDEFINITO];
+  return {
+    scaricabili: ammesse.length > 0 ? ammesse : [BOOKMAKER_PREDEFINITO],
+    richieste: volute,
+  };
 }
 
 // ---------- Notifiche push ----------
@@ -766,6 +975,21 @@ export const settleMatchdays = onSchedule(
       if (mdSnap.id === '_meta') continue;
       await valutaGiornata(mdSnap.ref);
     }
+
+    // Estrazioni rimaste indietro: urna ancora aperta su una giornata gia'
+    // valutata (errore durante l'estrazione) o annullata con i rimborsi a meta'.
+    const urne = await db.collection('raffles').where('status', 'in', ['open', 'annullata']).get();
+    for (const u of urne.docs) {
+      try {
+        const matchday = Number(u.id);
+        const md = await db.collection('matchdays').doc(u.id).get();
+        if (!md.exists || md.data()?.settled !== true) continue;
+        if (u.data().status === 'open') await estraiPremioGiornata(matchday);
+        else if (!u.data().refundedAt) await rimborsaBiglietti(matchday);
+      } catch (e) {
+        logger.error('[raffle] ripresa estrazione', { raffle: u.id, e });
+      }
+    }
   }
 );
 
@@ -775,28 +999,44 @@ export const settleMatchdays = onSchedule(
  * (rete di sicurezza) sia updateLiveScores appena l'ultima partita si
  * chiude, cosi' l'esito arriva entro un paio di minuti dal fischio finale
  * e non al giro orario successivo. Il claim su `settlingAt` evita che i
- * due arrivino insieme.
+ * due arrivino insieme. La usa anche adminForceSettle, con `forza`: le
+ * partite non finite vengono annullate invece di aspettarle.
  */
-async function valutaGiornata(ref: DocumentReference): Promise<void> {
+interface EsitoValutazione {
+  esito:
+    | 'assente'
+    | 'gia_valutata'
+    | 'prima_della_deadline'
+    | 'in_attesa'
+    | 'in_corso'
+    | 'incompleta'
+    | 'valutata';
+  valutate?: number;
+  /** Partite ancora da chiudere (esito 'in_attesa'). */
+  inAttesa?: string[];
+}
+
+async function valutaGiornata(ref: DocumentReference, forza = false): Promise<EsitoValutazione> {
   const now = Timestamp.now();
   const mdSnap = await ref.get();
-  if (!mdSnap.exists) return;
+  if (!mdSnap.exists) return { esito: 'assente' };
   const md = mdSnap.data() as MatchdayDoc;
-  if (md.settled) return;
-  if (md.deadline.toMillis() > now.toMillis()) return;
+  if (md.settled) return { esito: 'gia_valutata' };
+  if (md.deadline.toMillis() > now.toMillis()) return { esito: 'prima_della_deadline' };
 
   // Aggiorna risultati da ESPN
-  const results = await fetchResults(
-    md.matches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
-  );
+  const results = await fetchResults(md.matches.map(perEspn));
 
-  const updatedMatches = md.matches.map(m => {
+  const modifiche = new Map<string, { status: string; result?: MatchResult }>();
+  for (const m of md.matches) {
     const r = results.get(m.id);
-    if (!r) return m;
-    const base = { ...m, status: r.status };
-    if (r.status !== 'finished') return base;
-    return {
-      ...base,
+    if (!r) continue;
+    if (r.status !== 'finished') {
+      modifiche.set(m.id, { status: r.status });
+      continue;
+    }
+    modifiche.set(m.id, {
+      status: r.status,
       result: {
         homeGoals: r.homeGoals,
         awayGoals: r.awayGoals,
@@ -809,19 +1049,72 @@ async function valutaGiornata(ref: DocumentReference): Promise<void> {
           ? { htHomeGoals: r.htHomeGoals, htAwayGoals: r.htAwayGoals }
           : {}),
       },
-    };
+    });
+  }
+
+  // Come per il live: si fonde partita per partita sulla versione letta nella
+  // transazione, cosi' un aggiornamento live o una sincronizzazione arrivati
+  // nel frattempo non vengono cancellati da questa scrittura.
+  const updatedMatches = await db.runTransaction(async tx => {
+    const fresh = await tx.get(ref);
+    const partite = ((fresh.data() as MatchdayDoc | undefined)?.matches ?? md.matches).map(m => {
+      const agg = modifiche.get(m.id);
+      return agg ? applicaAggiornamento(m, agg) : m;
+    });
+    tx.update(ref, {
+      matches: partite,
+      status: 'locked',
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return partite;
   });
 
-  await ref.update({
-    matches: updatedMatches,
-    status: 'locked',
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  // Partite finite, annullate (rinviate, cancellate, mai chiuse dopo 48 ore)
+  // o ancora da aspettare. Nessun risultato viene inventato: una partita che
+  // non ha un risultato vero annulla i pronostici giocati sopra.
+  const stato = statoGiornata(
+    updatedMatches.map(m => ({
+      id: m.id,
+      status: m.status,
+      kickoffMs: m.scheduledAt.toMillis(),
+      result: m.result,
+      confermata: results.has(m.id),
+    })),
+    now.toMillis(),
+    forza
+  );
+  if (stato.inAttesa.length > 0) {
+    logger.info(`Giornata ${md.number}: partite non concluse, skip settlement`, {
+      partite: stato.inAttesa,
+    });
+    return { esito: 'in_attesa', inAttesa: stato.inAttesa };
+  }
+  if (stato.annullate.length > 0) {
+    logger.warn(`Giornata ${md.number}: partite annullate, pronostici sopra senza valore`, {
+      partite: stato.annullate,
+      forza,
+    });
+  }
 
-  const allFinished = updatedMatches.every(m => m.status === 'finished' && m.result);
-  if (!allFinished) {
-    logger.info(`Giornata ${md.number}: partite non concluse, skip settlement`);
-    return;
+  // Parziale di primo tempo mancante (il summary ESPN non ha risposto): chi
+  // ci ha giocato un mercato di primo tempo aspetta il giro successivo,
+  // invece di vederselo annullato per un guasto di rete. Dopo 48 ore si
+  // valuta comunque e quel pronostico e' annullato (vedi statoGiornata).
+  if (stato.senzaParziale.length > 0) {
+    const schedine = await db
+      .collection('schedine')
+      .where('matchdayNumber', '==', md.number)
+      .select('predictions')
+      .get();
+    const bloccate = schedine.docs.some(d =>
+      attendeParziale((d.data().predictions as Prediction[] | undefined) ?? [], stato.senzaParziale)
+    );
+    if (bloccate) {
+      logger.info(`Giornata ${md.number}: manca il parziale di primo tempo, si riprova`, {
+        partite: stato.senzaParziale,
+      });
+      return { esito: 'in_attesa', inAttesa: stato.senzaParziale };
+    }
   }
 
   // Posizioni prima della valutazione: servono a dire "sei salito di
@@ -834,10 +1127,18 @@ async function valutaGiornata(ref: DocumentReference): Promise<void> {
     tx.update(ref, { settlingAt: FieldValue.serverTimestamp() });
     return true;
   });
-  if (!preso) return;
+  if (!preso) return { esito: 'in_corso' };
 
   const posizioniPrima = await posizioniInClassifica();
-  const valutate = await settleSchedine(md.number, updatedMatches);
+  const { valutate, nonValutate } = await settleSchedine(md.number, stato.risultati);
+  // Una giornata non si chiude finche' resta una schedina da valutare: la
+  // chiusura e' irreversibile e le schedine rimaste non verrebbero piu'
+  // riprese. Si libera il claim e ci riprova il giro successivo.
+  if (nonValutate > 0) {
+    await ref.update({ settlingAt: FieldValue.delete() });
+    logger.error(`Giornata ${md.number}: ${nonValutate} schedine non valutate, giornata lasciata aperta`);
+    return { esito: 'incompleta', valutate };
+  }
   await db.runTransaction(async tx => {
     const fresh = await tx.get(ref);
     if ((fresh.data() as MatchdayDoc).settled) return;
@@ -884,6 +1185,7 @@ async function valutaGiornata(ref: DocumentReference): Promise<void> {
   } catch (e) {
     logger.error('[push] esito giornata', e);
   }
+  return { esito: 'valutata', valutate };
 }
 
 // ---------- 2b. PUNTEGGI LIVE (scheduled ogni 2 min, solo in finestra partite) ----------
@@ -897,7 +1199,7 @@ export const updateLiveScores = onSchedule(
     // Finestra live: da 5 min prima del fischio a 4h dopo ogni partita.
     // Fuori dalle finestre usciamo subito senza chiamare ESPN (costo ~0).
     const now = Date.now();
-    const allFinished = md.matches.every(m => m.status === 'finished');
+    const allFinished = md.matches.every(m => m.status === 'finished' || eSospesa(m.status));
     if (allFinished) {
       // Partite tutte chiuse ma giornata non ancora valutata: si prova a ogni
       // giro, finche' non e' fatta. Prima l'aggancio scattava solo se questo
@@ -920,9 +1222,9 @@ export const updateLiveScores = onSchedule(
     });
     if (activeMatches.length === 0) return;
 
-    const results = await fetchResults(
-      activeMatches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
-    );
+    // Il parziale gia' salvato viaggia con la richiesta: niente summary ESPN
+    // per le partite che lo hanno gia'.
+    const results = await fetchResults(activeMatches.map(perEspn));
     if (results.size === 0) return;
 
     let changed = false;
@@ -931,9 +1233,20 @@ export const updateLiveScores = onSchedule(
     // cose che vale la pena raccontare mentre si gioca.
     const appenaFinite: { match: StoredMatch; result: MatchResult }[] = [];
     const esitoCambiato: { match: StoredMatch; prima: MatchResult; dopo: MatchResult }[] = [];
-    const updatedMatches = md.matches.map(m => {
+    // Solo le modifiche, partita per partita: si applicano dentro una
+    // transazione alla versione piu' recente del documento.
+    const modifiche = new Map<string, { status: string; result?: MatchResult }>();
+    md.matches.forEach(m => {
       const r = results.get(m.id);
       if (!r || r.status === 'scheduled') return m;
+      // Rinviata, cancellata o sospesa: si registra lo stato e basta, senza
+      // un punteggio che non vale (la valutazione annulla quei pronostici).
+      if (eSospesa(r.status)) {
+        if (m.status === r.status || m.status === 'finished') return m;
+        changed = true;
+        modifiche.set(m.id, { status: r.status });
+        return { ...m, status: r.status };
+      }
       if (m.status === 'scheduled' && r.status === 'live' && !primoFischio) primoFischio = m;
       const result: MatchResult = {
         homeGoals: r.homeGoals,
@@ -953,7 +1266,9 @@ export const updateLiveScores = onSchedule(
         m.status === r.status &&
         prev &&
         prev.homeGoals === result.homeGoals &&
-        prev.awayGoals === result.awayGoals
+        prev.awayGoals === result.awayGoals &&
+        // Il parziale arrivato dopo il fischio finale va salvato comunque.
+        (prev.htHomeGoals != null || result.htHomeGoals == null)
       ) {
         return m;
       }
@@ -963,20 +1278,41 @@ export const updateLiveScores = onSchedule(
       } else if (r.status === 'live' && prev && prev.outcome !== result.outcome) {
         esitoCambiato.push({ match: m, prima: prev, dopo: result });
       }
-      return { ...m, status: r.status, result };
+      modifiche.set(m.id, { status: r.status, result });
+      return applicaAggiornamento(m, { status: r.status, result });
     });
 
     if (!changed) return;
-    const avvisaKickoff = primoFischio !== null && !md.kickoffNotifiedAt;
-    await db.collection('matchdays').doc(String(md.number)).update({
-      matches: updatedMatches,
-      updatedAt: FieldValue.serverTimestamp(),
-      ...(avvisaKickoff ? { kickoffNotifiedAt: FieldValue.serverTimestamp() } : {}),
+    // Lettura e scrittura nella stessa transazione, fondendo partita per
+    // partita: la valutazione e la sincronizzazione scrivono lo stesso array,
+    // e riscriverlo da una lettura di due secondi prima cancellava i loro
+    // aggiornamenti (o loro i nostri).
+    const mdRef = db.collection('matchdays').doc(String(md.number));
+    const conPrimoFischio = primoFischio !== null;
+    const scritto = await db.runTransaction(async tx => {
+      const freshSnap = await tx.get(mdRef);
+      if (!freshSnap.exists) return null;
+      const fresh = freshSnap.data() as MatchdayDoc;
+      if (fresh.settled) return null;
+      const unite = fresh.matches.map(m => {
+        const agg = modifiche.get(m.id);
+        return agg ? applicaAggiornamento(m, agg) : m;
+      });
+      const avvisa = conPrimoFischio && !fresh.kickoffNotifiedAt;
+      tx.update(mdRef, {
+        matches: unite,
+        updatedAt: FieldValue.serverTimestamp(),
+        ...(avvisa ? { kickoffNotifiedAt: FieldValue.serverTimestamp() } : {}),
+      });
+      return { unite, avvisa };
     });
+    if (!scritto) return;
+    const avvisaKickoff = scritto.avvisa;
+    const finali = scritto.unite;
     logger.info(`Giornata ${md.number}: punteggi live aggiornati`);
 
     // Ultima partita chiusa: la valutazione parte adesso, non al giro orario.
-    const tutteChiuse = updatedMatches.every(m => m.status === 'finished');
+    const tutteChiuse = finali.every(m => m.status === 'finished' || eSospesa(m.status));
 
     if (avvisaKickoff && primoFischio) {
       const pm = primoFischio as StoredMatch;
@@ -1097,13 +1433,8 @@ async function leggiPremiSettimanali(matchdayNumber: number): Promise<WeeklyPriz
 
 async function settleSchedine(
   matchdayNumber: number,
-  matches: StoredMatch[]
-): Promise<number> {
-  const resultsMap = new Map<string, MatchResult>();
-  for (const m of matches) {
-    if (m.result) resultsMap.set(m.id, m.result);
-  }
-
+  resultsMap: Map<string, MatchResult>
+): Promise<{ valutate: number; nonValutate: number }> {
   const schedineSnap = await db
     .collection('schedine')
     .where('matchdayNumber', '==', matchdayNumber)
@@ -1116,32 +1447,55 @@ async function settleSchedine(
     penalty: number;
     perfect: boolean;
     coins: number;
+    /** Gettoni del Jolly restituiti perche' la sua partita e' stata annullata. */
+    rimborsoJolly: number;
   }
 
   const evaluations = schedineSnap.docs.map(sSnap => {
     const schedina = sSnap.data() as SchedinaDoc;
-    const score = evaluateSchedina(
-      schedina.predictions,
-      resultsMap,
-      schedina.powerups ?? {}
-    );
+    const powerups = schedina.powerups ?? {};
+    // I pronostici richiesti sono quelli che la schedina ha: submitSchedina
+    // ne accetta esattamente pickRichieste(), dieci o meno se l'agenzia ha
+    // quotato meno partite.
+    const richieste = schedina.predictions.length;
+    const score = evaluateSchedina(schedina.predictions, resultsMap, powerups, richieste);
 
-    // Gettoni da performance
+    // Gettoni da performance: solo sugli esatti veri, gli annullati non contano.
+    const livello = livelloBonus(score.correctPredictions, richieste);
     let coins = score.correctPredictions * COINS.perCorrectPrediction;
-    if (score.correctPredictions === 9) coins += COINS.bonus9Correct;
-    if (score.correctPredictions >= 10) coins += COINS.bonus10Correct;
+    if (livello === 'quasi') coins += COINS.bonus9Correct;
+    if (livello === 'pieno') coins += COINS.bonus10Correct;
+
+    // Jolly su una partita annullata: non ha potuto raddoppiare nulla, si
+    // restituisce.
+    const jollyAnnullato =
+      !!powerups.jolly &&
+      score.predictionResults.some(p => p.matchId === powerups.jolly && p.isVoid);
 
     const outcome: UserOutcome = {
       finalPoints: score.finalPoints,
       correct: score.correctPredictions,
       bonus: score.bonusPoints,
       penalty: score.penaltyPoints,
-      perfect: score.correctPredictions >= 10,
+      perfect: livello === 'pieno',
       coins,
+      rimborsoJolly: jollyAnnullato ? POWERUPS.jolly.cost : 0,
     };
 
     return { sSnap, schedina, score, outcome };
   });
+
+  // Chi e' sospeso non vince premi: niente gettoni, niente vittoria di
+  // giornata. I rimborsi dei power-up invece gli spettano comunque. Fuori
+  // dalla corsa al premio anche chi non ha piu' il profilo (account cancellato).
+  const sospesi = new Set<string>();
+  const uids = [...new Set(evaluations.map(e => e.schedina.userId))];
+  for (let i = 0; i < uids.length; i += 300) {
+    const refs = uids.slice(i, i + 300).map(u => db.collection('profiles').doc(u));
+    for (const p of await db.getAll(...refs)) {
+      if (!p.exists || p.data()?.isActive === false) sospesi.add(p.id);
+    }
+  }
 
   // Due circuiti separati sulla stessa giornata: la schedina generale muove
   // profilo, gettoni e premio di giornata; quelle di lega restano dentro la
@@ -1152,7 +1506,7 @@ async function settleSchedine(
   // Classifica di giornata del circuito generale: serve sia il vincitore (per
   // i gettoni) sia il podio completo (per i premi settimanali dell'admin).
   const classificaGiornata = rankWeeklyCandidates(
-    generali.map(e => ({
+    generali.filter(e => !sospesi.has(e.schedina.userId)).map(e => ({
       userId: e.schedina.userId,
       finalPoints: e.score.finalPoints,
       correctPredictions: e.score.correctPredictions,
@@ -1168,7 +1522,7 @@ async function settleSchedine(
   for (const leagueId of new Set(diLega.map(e => e.schedina.leagueId as string))) {
     const migliore = pickWeeklyWinner(
       diLega
-        .filter(e => e.schedina.leagueId === leagueId)
+        .filter(e => e.schedina.leagueId === leagueId && !sospesi.has(e.schedina.userId))
         .map(e => ({
           userId: e.schedina.userId,
           finalPoints: e.score.finalPoints,
@@ -1195,30 +1549,7 @@ async function settleSchedine(
 
       const profileRef = db.collection('profiles').doc(schedina.userId);
       const freshProfile = await tx.get(profileRef);
-      if (!freshProfile.exists) {
-        throw new Error(`Profilo ${schedina.userId} mancante durante il settlement`);
-      }
-      const profile = freshProfile.data() as Record<string, number>;
-      const isWeeklyWinner = schedina.userId === bestUserId;
-      const coins = outcome.coins + (isWeeklyWinner ? COINS.weeklyWinner : 0);
-      const profileUpdates: Record<string, unknown> = {
-        totalPoints: FieldValue.increment(outcome.finalPoints),
-        weeklyPoints: outcome.finalPoints,
-        matchdaysPlayed: FieldValue.increment(1),
-        bonusPointsTotal: FieldValue.increment(outcome.bonus),
-        penaltyPointsTotal: FieldValue.increment(outcome.penalty),
-        perfectSchedine: FieldValue.increment(outcome.perfect ? 1 : 0),
-        bestMatchdayPoints: Math.max(profile.bestMatchdayPoints ?? 0, outcome.finalPoints),
-        correctPredictions: FieldValue.increment(outcome.correct),
-        weeklyWins: FieldValue.increment(isWeeklyWinner ? 1 : 0),
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-      if (coins > 0) {
-        profileUpdates.coins = FieldValue.increment(coins);
-        profileUpdates.coinsEarned = FieldValue.increment(coins);
-      }
-
-      tx.update(sSnap.ref, {
+      const esitoSchedina = {
         predictionResults: score.predictionResults,
         settled: true,
         totalPoints: score.totalPoints,
@@ -1227,7 +1558,46 @@ async function settleSchedine(
         finalPoints: score.finalPoints,
         correctPredictions: score.correctPredictions,
         settledAt: FieldValue.serverTimestamp(),
-      });
+      };
+      if (!freshProfile.exists) {
+        // Account cancellato dopo l'invio: la schedina si chiude senza
+        // accrediti, altrimenti la giornata resterebbe aperta per sempre.
+        logger.warn('settlement: profilo mancante, schedina chiusa senza accrediti', {
+          schedinaId: sSnap.id,
+          userId: schedina.userId,
+        });
+        tx.update(sSnap.ref, esitoSchedina);
+        return;
+      }
+      const profile = freshProfile.data() as Record<string, unknown>;
+      const sospeso = profile.isActive === false;
+      const isWeeklyWinner = schedina.userId === bestUserId;
+      // Chi e' sospeso non incassa i gettoni della giornata.
+      const coins = sospeso ? 0 : outcome.coins + (isWeeklyWinner ? COINS.weeklyWinner : 0);
+      const rimborso = outcome.rimborsoJolly;
+      const profileUpdates: Record<string, unknown> = {
+        totalPoints: FieldValue.increment(outcome.finalPoints),
+        weeklyPoints: outcome.finalPoints,
+        matchdaysPlayed: FieldValue.increment(1),
+        bonusPointsTotal: FieldValue.increment(outcome.bonus),
+        penaltyPointsTotal: FieldValue.increment(outcome.penalty),
+        perfectSchedine: FieldValue.increment(outcome.perfect ? 1 : 0),
+        bestMatchdayPoints: Math.max((profile.bestMatchdayPoints as number) ?? 0, outcome.finalPoints),
+        correctPredictions: FieldValue.increment(outcome.correct),
+        weeklyWins: FieldValue.increment(isWeeklyWinner && !sospeso ? 1 : 0),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      if (coins > 0) {
+        profileUpdates.coinsEarned = FieldValue.increment(coins);
+      }
+      // Un solo incremento del saldo: premio piu' rimborso, ciascuno col suo
+      // movimento nel registro, cosi' saldo e storico restano allineati. Il
+      // rimborso non e' un guadagno e non entra in coinsEarned.
+      if (coins + rimborso > 0) {
+        profileUpdates.coins = FieldValue.increment(coins + rimborso);
+      }
+
+      tx.update(sSnap.ref, esitoSchedina);
       tx.update(profileRef, profileUpdates);
       if (coins > 0) {
         tx.set(
@@ -1239,6 +1609,14 @@ async function settleSchedine(
             createdAt: FieldValue.serverTimestamp(),
           }
         );
+      }
+      if (rimborso > 0) {
+        tx.set(db.collection('wallet_transactions').doc(`jolly_refund_${sSnap.id}`), {
+          userId: schedina.userId,
+          amount: rimborso,
+          reason: `powerup_jolly_refund_g${matchdayNumber}`,
+          createdAt: FieldValue.serverTimestamp(),
+        });
       }
       });
     } catch (e) {
@@ -1254,7 +1632,7 @@ async function settleSchedine(
   // Schedine di lega: i punti restano nella classifica della lega. Niente
   // gettoni, niente statistiche di profilo, niente missioni: il circuito
   // generale è l'unica strada per i gettoni.
-  for (const { sSnap, schedina, score } of diLega) {
+  for (const { sSnap, schedina, score, outcome } of diLega) {
     const leagueId = schedina.leagueId as string;
     try {
       await db.runTransaction(async tx => {
@@ -1269,6 +1647,11 @@ async function settleSchedine(
       const standing = await tx.get(standingRef);
       const precedenti = (standing.data() ?? {}) as Record<string, number>;
       const isVincitoreLega = vincitoriLega.get(leagueId) === schedina.userId;
+      // I power-up di una schedina di lega si pagano come quelli della
+      // generale: anche qui il Jolly su una partita annullata torna indietro.
+      const profileRef = db.collection('profiles').doc(schedina.userId);
+      const rimborso =
+        outcome.rimborsoJolly > 0 && (await tx.get(profileRef)).exists ? outcome.rimborsoJolly : 0;
 
       tx.update(sSnap.ref, {
         predictionResults: score.predictionResults,
@@ -1290,7 +1673,7 @@ async function settleSchedine(
           weeklyPoints: score.finalPoints,
           matchdaysPlayed: FieldValue.increment(1),
           correctPredictions: FieldValue.increment(score.correctPredictions),
-          perfectSchedine: FieldValue.increment(score.correctPredictions >= 10 ? 1 : 0),
+          perfectSchedine: FieldValue.increment(outcome.perfect ? 1 : 0),
           bonusPointsTotal: FieldValue.increment(score.bonusPoints),
           penaltyPointsTotal: FieldValue.increment(score.penaltyPoints),
           bestMatchdayPoints: Math.max(precedenti.bestMatchdayPoints ?? 0, score.finalPoints),
@@ -1299,6 +1682,9 @@ async function settleSchedine(
         },
         { merge: true }
       );
+      if (rimborso > 0) {
+        await adjustCoins(schedina.userId, rimborso, `powerup_jolly_refund_g${matchdayNumber}`, tx, false);
+      }
       });
     } catch (e) {
       nonValutate.push({ schedinaId: sSnap.id, motivo: (e as Error).message });
@@ -1383,12 +1769,18 @@ async function settleSchedine(
     });
   }
 
-  return evaluations.length;
+  return { valutate: evaluations.length - nonValutate.length, nonValutate: nonValutate.length };
 }
 
 /**
- * Quote valide per un circuito: quelle dell'agenzia della lega se ne ha una
- * e se sono state scaricate, altrimenti quelle predefinite della giornata.
+ * Quote valide per un circuito: il generale e le leghe senza agenzia propria
+ * giocano su quelle predefinite, una lega con la sua agenzia solo su quelle
+ * dell'agenzia. Le agenzie non si mescolano mai: una partita che l'agenzia
+ * della lega non quota in quella lega non si gioca, e se il suo palinsesto
+ * non e' ancora stato scaricato la lega non ha partite giocabili (mappa
+ * vuota) finche' la sincronizzazione non lo porta. Prima si ripiegava sulle
+ * quote predefinite, e la lega giocava su un'agenzia diversa da quella
+ * promessa senza saperlo.
  */
 async function quotePerCircuito(
   md: MatchdayDoc,
@@ -1398,7 +1790,9 @@ async function quotePerCircuito(
   const lega = await db.collection('leagues').doc(leagueId).get();
   const agenzia = lega.data()?.bookmaker as string | undefined;
   if (!agenzia) return md.odds;
-  return md.oddsPerBookmaker?.[agenzia] ?? md.odds;
+  const proprie = md.oddsPerBookmaker?.[agenzia];
+  if (proprie) return proprie;
+  return agenzia === BOOKMAKER_PREDEFINITO ? md.odds : {};
 }
 
 // ---------- 3. SUBMIT SCHEDINA (callable) ----------
@@ -1410,9 +1804,10 @@ export const submitSchedina = onCall(callableOpts, async request => {
   // circuiti un utente ne compila una per la generale e una per ogni lega: chi
   // sta in tre leghe veniva bloccato al quarto invio, cioè giocando normalmente.
   await enforceRateLimit(uid, 'submitSchedina', 15, 60_000);
+  await requireUtenteAttivo(uid);
   logger.info('submitSchedina:start', { uid });
 
-  const predictions = request.data?.predictions as Prediction[] | undefined;
+  const predictions: unknown = request.data?.predictions;
   const powerups = (request.data?.powerups ?? {}) as PowerUpSelection;
   if (!Array.isArray(predictions) || predictions.length === 0) {
     throw new HttpsError('invalid-argument', 'Pronostici mancanti');
@@ -1420,18 +1815,14 @@ export const submitSchedina = onCall(callableOpts, async request => {
 
   const leagueId = await requireCircuito(uid, request.data?.leagueId);
 
-  let md = await getCurrentMatchday();
-  if (!md) md = await syncMatchdayInternal();
+  // Niente sync da qui: l'invio di un utente non deve poter scatenare
+  // chiamate al fornitore di quote. La giornata la crea lo scheduler.
+  const md = await getCurrentMatchday();
   if (!md) throw new HttpsError('unavailable', 'Nessuna giornata disponibile');
 
-  if (Timestamp.now().toMillis() >= md.deadline.toMillis()) {
+  const nowMs = Timestamp.now().toMillis();
+  if (nowMs >= md.deadline.toMillis()) {
     throw new HttpsError('failed-precondition', 'Deadline superata: schedina chiusa');
-  }
-  if (predictions.length !== MAX_PICKS_PER_SCHEDINA) {
-    throw new HttpsError(
-      'invalid-argument',
-      `Devi scegliere esattamente ${MAX_PICKS_PER_SCHEDINA} partite`
-    );
   }
 
   // Quote ufficiali del circuito: una lega con la sua agenzia gioca su quelle,
@@ -1439,35 +1830,32 @@ export const submitSchedina = onCall(callableOpts, async request => {
   // quote che l'utente ha visto mentre compilava.
   const quoteCircuito = await quotePerCircuito(md, leagueId);
 
-  // Valida e sostituisce le quote con quelle ufficiali server-side
-  const matchIds = new Set(md.matches.map(m => m.id));
-  const validated: Prediction[] = predictions.map(p => {
-    if (!matchIds.has(p.matchId)) {
-      throw new HttpsError('invalid-argument', `Partita non valida: ${p.matchId}`);
+  // Pronostici richiesti: dieci, o meno se l'agenzia del circuito ha quotato
+  // meno partite fra quelle della giornata ancora da giocare.
+  const partite = md.matches.map(m => ({
+    id: m.id,
+    status: m.status,
+    kickoffMs: m.scheduledAt.toMillis(),
+  }));
+  const quoteGiocabili: Record<string, MatchOdds> = {};
+  for (const p of partite) {
+    if (partitaNonIniziata(p, nowMs) && Object.prototype.hasOwnProperty.call(quoteCircuito, p.id)) {
+      quoteGiocabili[p.id] = quoteCircuito[p.id];
     }
-    const marketOdds = (quoteCircuito[p.matchId] as unknown as Record<
-      string,
-      Record<string, number>
-    >)?.[p.betType];
-    const officialOdds = marketOdds?.[p.outcome];
-    if (officialOdds == null) {
-      throw new HttpsError(
-        'invalid-argument',
-        `Mercato non valido: ${p.betType}/${p.outcome}`
-      );
-    }
-    return { matchId: p.matchId, betType: p.betType, outcome: p.outcome, odds: officialOdds };
-  });
-  const uniqueMatches = new Set(validated.map(p => p.matchId));
-  if (uniqueMatches.size !== validated.length) {
-    throw new HttpsError('invalid-argument', 'Un solo pronostico per partita');
   }
+  const richieste = pickRichieste(quoteGiocabili);
+
+  // Valida e sostituisce le quote con quelle ufficiali server-side
+  const esito = validaPronostici(predictions, { partite, quote: quoteCircuito, richieste, nowMs });
+  if (!esito.ok) throw new HttpsError(esito.codice, esito.messaggio);
+  const validated = esito.valore;
 
   // Power-up richiesti: normalizzati qui, il costo lo calcola computePowerupCharge
   const cleanPowerups: PowerUpSelection = {};
   if (powerups.jolly) {
-    if (!matchIds.has(powerups.jolly)) {
-      throw new HttpsError('invalid-argument', 'Jolly su partita non valida');
+    // Il Jolly raddoppia un pronostico: deve stare su una delle partite giocate.
+    if (typeof powerups.jolly !== 'string' || !validated.some(p => p.matchId === powerups.jolly)) {
+      throw new HttpsError('invalid-argument', 'Il Jolly va messo su una delle partite della schedina');
     }
     cleanPowerups.jolly = powerups.jolly;
   }
@@ -1547,14 +1935,19 @@ export const changePrediction = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'changePrediction', 15, 60_000);
+  await requireUtenteAttivo(uid);
   logger.info('changePrediction:start', { uid });
 
   const { matchId, betType, outcome } = (request.data ?? {}) as {
-    matchId?: string;
-    betType?: string;
-    outcome?: string;
+    matchId?: unknown;
+    betType?: unknown;
+    outcome?: unknown;
   };
-  if (!matchId || !betType || !outcome) {
+  if (
+    typeof matchId !== 'string' || !matchId ||
+    typeof betType !== 'string' || !betType ||
+    typeof outcome !== 'string' || !outcome
+  ) {
     throw new HttpsError('invalid-argument', 'Parametri mancanti');
   }
 
@@ -1581,16 +1974,13 @@ export const changePrediction = onCall(callableOpts, async request => {
     throw new HttpsError('failed-precondition', 'Partita già iniziata: pronostico congelato');
   }
 
-  const marketOdds = (md.odds[matchId] as unknown as Record<
-    string,
-    Record<string, number>
-  >)?.[betType];
-  const officialOdds = marketOdds?.[outcome];
-  if (officialOdds == null) {
-    throw new HttpsError('invalid-argument', 'Mercato non valido');
-  }
-
+  // Quote del circuito della schedina: una lega con la sua agenzia cambia
+  // sulle quote di quell'agenzia, come quando ha inviato.
   const leagueId = await requireCircuito(uid, request.data?.leagueId);
+  const quote = await quotePerCircuito(md, leagueId);
+  const quota = quotaUfficiale(quote, matchId, betType, outcome);
+  if (!quota.ok) throw new HttpsError(quota.codice, quota.messaggio);
+  const officialOdds = quota.valore;
   const cost = POWERUPS.lastminute.cost;
   const schedinaRef = db.collection('schedine').doc(schedinaId(uid, md.number, leagueId));
   await db.runTransaction(async tx => {
@@ -1634,6 +2024,7 @@ export const cancelSchedina = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   await enforceRateLimit(uid, 'cancelSchedina', 15, 60_000);
+  await requireUtenteAttivo(uid);
   logger.info('cancelSchedina:start', { uid });
 
   const md = await getCurrentMatchday();
@@ -1701,6 +2092,7 @@ export const seedQuizQuestions = onCall(callableOpts, async request => {
 export const playMinigame = onCall(callableOpts, async (request): Promise<Record<string, unknown>> => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireUtenteAttivo(uid);
 
   const action = request.data?.action as string;
   // Bucket per singola azione (non condiviso tra quiz/ruota/rigori/memoria/sfide):
@@ -1789,9 +2181,10 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
   /**
    * Segna che l'utente ha giocato oggi e accredita il bonus della serie.
    *
-   * Si chiama dopo ogni azione riuscita: quale minigioco sia non conta, conta
-   * essere tornato. Il documento del movimento ha per id il giorno, quindi due
-   * partite nello stesso giorno non possono accreditare due volte.
+   * Si chiama dopo ogni partita conclusa (vedi contaPerLaSerie): quale
+   * minigioco sia non conta, conta essere tornato. Il documento del movimento
+   * ha per id il giorno, quindi due partite nello stesso giorno non possono
+   * accreditare due volte.
    */
   async function registraGiornoAttivo(): Promise<{ giorni: number; bonus: number }> {
     return db.runTransaction(async tx => {
@@ -1863,75 +2256,198 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
     });
   }
 
+  // Sessioni di memoria e rigori: il server segna quando la partita comincia,
+  // cosi' alla fine sa quanto e' durata davvero invece di fidarsi del client.
+  // Una per gioco e per utente (collezione non leggibile dai client, vedi
+  // firestore.rules): avviarne una nuova annulla la precedente.
+  const sessioneRef = (gioco: 'memoria' | 'rigori') =>
+    db.collection('minigame_sessions').doc(`${uid}_${gioco}`);
+
+  async function avviaSessione(
+    gioco: 'memoria' | 'rigori'
+  ): Promise<{ sessionId: string; serverTime: number }> {
+    // Id automatico di Firestore: casuale e non indovinabile.
+    const sessionId = db.collection('minigame_sessions').doc().id;
+    const serverTime = Date.now();
+    await sessioneRef(gioco).set({
+      uid,
+      game: gioco,
+      sessionId,
+      startedAtMs: serverTime,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    return { sessionId, serverTime };
+  }
+
+  /**
+   * Chiude la sessione indicata dal client e restituisce da quanti
+   * millisecondi era aperta. Vale una volta sola: la transazione la cancella,
+   * quindi due invii dello stesso risultato non pagano due volte.
+   */
+  async function consumaSessione(gioco: 'memoria' | 'rigori', minimoMs: number): Promise<number> {
+    const sessionId = request.data?.sessionId;
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      throw new HttpsError('invalid-argument', 'Sessione di gioco mancante: ricomincia la partita');
+    }
+    const esito = await db.runTransaction(async tx => {
+      const ref = sessioneRef(gioco);
+      const snap = await tx.get(ref);
+      const dati = snap.data();
+      if (!snap.exists || dati?.uid !== uid || dati?.sessionId !== sessionId) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Partita non valida o già conclusa: ricominciane una nuova'
+        );
+      }
+      const trascorsoMs = Date.now() - Number(dati.startedAtMs);
+      const durata = verificaDurata(trascorsoMs, minimoMs, SESSIONE_MINIGIOCO_MAX_MS);
+      if (durata === 'troppo_presto') {
+        throw new HttpsError('failed-precondition', 'Partita troppo veloce per essere valida');
+      }
+      tx.delete(ref);
+      return { trascorsoMs, scaduta: durata === 'scaduta' };
+    });
+    if (esito.scaduta) {
+      throw new HttpsError('deadline-exceeded', 'Partita scaduta: ricominciane una nuova');
+    }
+    return esito.trascorsoMs;
+  }
+
+  /**
+   * Avversario di una sfida: deve esistere, non essere chi sfida e non essere
+   * sospeso (profilo con `isActive === false`, vedi adminToggleBan).
+   */
+  async function avversarioSfidabile(
+    opponentId: unknown
+  ): Promise<FirebaseFirestore.DocumentSnapshot> {
+    if (
+      typeof opponentId !== 'string' ||
+      opponentId.length === 0 ||
+      opponentId.includes('/') ||
+      opponentId === uid
+    ) {
+      throw new HttpsError('invalid-argument', 'Avversario non valido');
+    }
+    const snap = await db.collection('profiles').doc(opponentId).get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Avversario non trovato');
+    if (snap.data()?.isActive === false) {
+      throw new HttpsError('failed-precondition', 'Questo giocatore non può essere sfidato');
+    }
+    return snap;
+  }
+
   // L'azione vera e propria. Racchiusa qui dentro perche' dopo, qualunque
   // sia il minigioco, si registra la presenza del giorno per la serie.
   const esito = await (async (): Promise<Record<string, unknown>> => {
   switch (action) {
     // --- QUIZ ---
     case 'quiz_start': {
-      const pool = await db.collection('quiz_questions').get();
-      if (pool.empty) {
-        // Seeding va fatto solo dall'admin (vedi seedQuizQuestions): un
-        // auto-seed qui duplicherebbe quel percorso di scrittura senza il
-        // controllo di ruolo.
-        throw new HttpsError(
-          'failed-precondition',
-          'Quiz non ancora disponibile, riprova più tardi'
-        );
-      }
-      // Get user's seen questions to avoid repeats
-      const seenRef = db.collection('quiz_seen').doc(uid);
-      const seenDoc = await seenRef.get();
-      const seenIds = new Set<string>((seenDoc.data()?.questionIds ?? []) as string[]);
-      // Filter unseen, fallback to all if everything seen
-      const unseen = pool.docs.filter(d => !seenIds.has(d.id));
-      // Quando le domande non viste scendono sotto una partita intera il ciclo
-      // riparte dall'intero pool: il reset va PERSISTITO, altrimenti la lista
-      // "viste" cresce all'infinito, resta sempre sotto soglia e l'anti-ripetizione
-      // smette di filtrare per sempre.
-      const mustResetSeen = unseen.length < COINS.quizMaxQuestions;
-      const available = mustResetSeen ? [...pool.docs] : unseen;
-      const shuffled = fyShuffle(available);
-      const picked = shuffled.slice(0, COINS.quizMaxQuestions);
-      // Pre-shuffle options for each question and save mapping in session
-      const questionsData = picked.map(d => {
-        const opts = d.data()?.options as string[];
-        const ans = d.data()?.answerIndex as number;
-        const indexed = opts.map((opt, i) => ({ opt, correct: i === ans }));
-        const shuffledOpts = fyShuffle(indexed);
-        return {
-          id: d.id,
-          question: d.data()?.question as string,
-          options: shuffledOpts.map(o => o.opt),
-          answerIndex: shuffledOpts.findIndex(o => o.correct),
-        };
-      });
+      // Oltre al limite al minuto comune a tutte le azioni: ogni avvio nuovo
+      // legge l'intero pool di domande, e chi gioca davvero apre il quiz una
+      // volta al giorno.
+      await enforceRateLimit(uid, 'quiz_start_ora', 6, 60 * 60_000);
+      type DomandaQuiz = { id: string; question: string; options: string[]; answerIndex: number };
       const sessionRef = db.collection('quiz_sessions').doc(uid);
-      const savedQuestions = await db.runTransaction(async tx => {
+      const seenRef = db.collection('quiz_seen').doc(uid);
+      // Una sessione di oggi non ancora inviata si riprende cosi' com'e', con le
+      // stesse domande e lo stesso orologio: prima ogni avvio ne creava una
+      // nuova, e bastava ricaricare la pagina per scartare le domande difficili.
+      // Le sessioni senza `startedAtMs` sono di prima di questa regola.
+      const sessioneAperta = (d: FirebaseFirestore.DocumentData | undefined): boolean =>
+        !!d && d.date === today && d.submitted !== true && typeof d.startedAtMs === 'number';
+
+      let nuove: DomandaQuiz[] | null = null;
+      let mustResetSeen = false;
+      if (!sessioneAperta((await sessionRef.get()).data())) {
+        const pool = await db.collection('quiz_questions').get();
+        if (pool.empty) {
+          // Seeding va fatto solo dall'admin (vedi seedQuizQuestions): un
+          // auto-seed qui duplicherebbe quel percorso di scrittura senza il
+          // controllo di ruolo.
+          throw new HttpsError(
+            'failed-precondition',
+            'Quiz non ancora disponibile, riprova più tardi'
+          );
+        }
+        // Get user's seen questions to avoid repeats
+        const seenDoc = await seenRef.get();
+        const seenIds = new Set<string>((seenDoc.data()?.questionIds ?? []) as string[]);
+        // Filter unseen, fallback to all if everything seen
+        const unseen = pool.docs.filter(d => !seenIds.has(d.id));
+        // Quando le domande non viste scendono sotto una partita intera il ciclo
+        // riparte dall'intero pool: il reset va PERSISTITO, altrimenti la lista
+        // "viste" cresce all'infinito, resta sempre sotto soglia e l'anti-ripetizione
+        // smette di filtrare per sempre.
+        mustResetSeen = unseen.length < COINS.quizMaxQuestions;
+        const available = mustResetSeen ? [...pool.docs] : unseen;
+        const shuffled = fyShuffle(available);
+        const picked = shuffled.slice(0, COINS.quizMaxQuestions);
+        // Pre-shuffle options for each question and save mapping in session
+        nuove = picked.map(d => {
+          const opts = d.data()?.options as string[];
+          const ans = d.data()?.answerIndex as number;
+          const indexed = opts.map((opt, i) => ({ opt, correct: i === ans }));
+          const shuffledOpts = fyShuffle(indexed);
+          return {
+            id: d.id,
+            question: d.data()?.question as string,
+            options: shuffledOpts.map(o => o.opt),
+            answerIndex: shuffledOpts.findIndex(o => o.correct),
+          };
+        });
+      }
+      const avvio = await db.runTransaction(async tx => {
         const profile = await tx.get(profileRef);
+        const session = await tx.get(sessionRef);
         if (!profile.exists) throw new HttpsError('not-found', 'Profilo non trovato');
         const last = profile.data()?.lastPlayed?.quiz as string | undefined;
         if (last === today) {
           throw new HttpsError('failed-precondition', 'Hai già giocato oggi, torna domani!');
         }
-        // Always create a fresh session with new questions.
-        // Reusing old sessions caused the same questions to appear after refresh.
+        const dati = session.data();
+        if (sessioneAperta(dati)) {
+          // Tempo scaduto: la partita di oggi si chiude qui, senza premio.
+          if (quizScaduto(dati?.startedAtMs as number, Date.now())) {
+            tx.update(sessionRef, { submitted: true, correct: 0, scaduta: true });
+            tx.update(profileRef, {
+              'lastPlayed.quiz': today,
+              updatedAt: FieldValue.serverTimestamp(),
+            });
+            return { scaduta: true as const };
+          }
+          return {
+            domande: dati?.questions as DomandaQuiz[],
+            startedAtMs: dati?.startedAtMs as number,
+          };
+        }
+        // La sessione aperta vista prima della transazione non c'e' piu'
+        // (chiusa nel frattempo da un'altra richiesta): meglio ripartire.
+        if (!nuove) throw new HttpsError('aborted', 'Riprova ad aprire il quiz');
         if (mustResetSeen) {
           tx.set(seenRef, { questionIds: [], updatedAt: FieldValue.serverTimestamp() });
         }
+        const startedAtMs = Date.now();
         tx.set(sessionRef, {
           userId: uid,
-          questions: questionsData.map(q => ({ id: q.id, question: q.question, options: q.options, answerIndex: q.answerIndex })),
+          questions: nuove.map(q => ({ id: q.id, question: q.question, options: q.options, answerIndex: q.answerIndex })),
           date: today,
           submitted: false,
+          startedAtMs,
           createdAt: FieldValue.serverTimestamp(),
         });
-        return questionsData;
+        return { domande: nuove, startedAtMs };
       });
+      if ('scaduta' in avvio) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Tempo scaduto: il quiz di oggi si è chiuso senza premio. Torna domani!'
+        );
+      }
       // Non inviare mai answerIndex al client prima della submission: un utente
       // potrebbe leggerlo dalla risposta di rete e rispondere sempre corretto.
       return {
-        questions: savedQuestions.map(q => ({ id: q.id, question: q.question, options: q.options })),
+        questions: avvio.domande.map(q => ({ id: q.id, question: q.question, options: q.options })),
+        scadeAt: avvio.startedAtMs + QUIZ_DURATA_MAX_MS,
       };
     }
     case 'quiz_submit': {
@@ -1959,11 +2475,16 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
         const seenRef = db.collection('quiz_seen').doc(uid);
         const seenSnap = await tx.get(seenRef);
 
+        // Risposte arrivate oltre il tempo massimo dall'avvio: la partita conta
+        // come giocata ma non vale nulla. Il tempo lo misura il server.
+        const startedAtMs = session.data()?.startedAtMs;
+        const scaduta = typeof startedAtMs === 'number' && quizScaduto(startedAtMs, Date.now());
+
         let correct = 0;
         const corrections: Record<string, number> = {};
         for (const q of sessQuestions) {
           corrections[q.id] = q.answerIndex;
-          if (answers[q.id] === q.answerIndex) correct++;
+          if (!scaduta && answers[q.id] === q.answerIndex) correct++;
         }
         const reward = correct * COINS.quizPerCorrect;
         const updates: Record<string, unknown> = {
@@ -1988,7 +2509,13 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
             createdAt: FieldValue.serverTimestamp(),
           });
         }
-        return { correct, total: sessQuestions.length, reward, corrections };
+        return {
+          correct,
+          total: sessQuestions.length,
+          reward,
+          corrections,
+          ...(scaduta ? { scaduta: true, messaggio: 'Tempo scaduto: risposte arrivate troppo tardi, nessun premio.' } : {}),
+        };
       });
     }
 
@@ -2002,6 +2529,8 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
     }
 
     // --- RIGORI (no daily limit, daily coin cap) ---
+    case 'rigori_start':
+      return avviaSessione('rigori');
     case 'rigori_play': {
       const shots = (request.data?.shots ?? []) as { zone: unknown; power: unknown }[];
       if (
@@ -2011,6 +2540,9 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
       ) {
         throw new HttpsError('invalid-argument', `Tiri non validi (${COINS.rigoriMaxShots} tiri con zona e potenza)`);
       }
+      // Tiri validi solo dentro una partita avviata dal server e durata il
+      // tempo di tirarli davvero; l'esito di ogni tiro lo estrae il server.
+      await consumaSessione('rigori', COINS.rigoriMaxShots * RIGORI_MINIMO_MS_PER_TIRO);
       const results = shots.map(s => resolveShot(s.zone as Parameters<typeof resolveShot>[0], s.power as number));
       const goals = results.filter(r => r.goal).length;
       const reward = goals * COINS.rigoriPerGoal;
@@ -2020,10 +2552,8 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
 
     // --- SFIDE 1VS1 ---
     case 'sfida_start': {
-      const opponentId = request.data?.opponentId as string;
-      if (!opponentId || opponentId === uid) {
-        throw new HttpsError('invalid-argument', 'Avversario non valido');
-      }
+      const oppProfile = await avversarioSfidabile(request.data?.opponentId);
+      const opponentId = oppProfile.id;
       // Check cooldown: one challenge per pair per week
       const pairKey = [uid, opponentId].sort().join('_');
       const cooldownRef = db.collection('sfide_cooldowns').doc(pairKey);
@@ -2038,14 +2568,7 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
           );
         }
       }
-      // Get both profiles for the challenge
-      const [myProfile, oppProfile] = await Promise.all([
-        profileRef.get(),
-        db.collection('profiles').doc(opponentId).get(),
-      ]);
-      if (!oppProfile.exists) {
-        throw new HttpsError('not-found', 'Avversario non trovato');
-      }
+      const myProfile = await profileRef.get();
       return {
         opponent: {
           uid: opponentId,
@@ -2056,22 +2579,22 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
       };
     }
     case 'sfida_play': {
-      const opponentId = request.data?.opponentId as string;
       const myShots = (request.data?.shots ?? []) as { zone: unknown; power: unknown }[];
       if (
-        !opponentId ||
-        opponentId === uid ||
         !Array.isArray(myShots) ||
         myShots.length !== COINS.rigoriMaxShots ||
         myShots.some(s => !isValidZone(s?.zone) || !Number.isFinite(s?.power))
       ) {
         throw new HttpsError('invalid-argument', 'Dati sfida non validi');
       }
+      // Stessi controlli dell'avvio: il client puo' chiamare sfida_play
+      // direttamente, contro un profilo inesistente, se stesso o un sospeso.
+      const oppProfileSnap = await avversarioSfidabile(request.data?.opponentId);
+      const opponentId = oppProfileSnap.id;
       const pairKey = [uid, opponentId].sort().join('_');
       const cooldownRef = db.collection('sfide_cooldowns').doc(pairKey);
       // L'avversario "CPU" tira con una qualità legata alle sue statistiche reali
       // (pronostici corretti / giornate giocate), non più a puro random.
-      const oppProfileSnap = await db.collection('profiles').doc(opponentId).get();
       const oppSkill = estimateSkillFromProfile(
         (oppProfileSnap.data()?.correctPredictions as number) ?? 0,
         (oppProfileSnap.data()?.matchdaysPlayed as number) ?? 0
@@ -2095,9 +2618,15 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
       } else if (draw) {
         reward = Math.min(myGoals, COINS.sfidaMaxReward);
       }
-      // Set cooldown and award coins in transaction
-      await db.runTransaction(async tx => {
+      // Set cooldown and award coins in transaction. Il premio passa dal tetto
+      // giornaliero delle sfide: il cooldown e' per coppia, e con tanti
+      // avversari diversi non fermerebbe nulla. Lettura del profilo e scrittura
+      // del contatore nella stessa transazione: due sfide in parallelo non
+      // possono superare il tetto.
+      const accreditato = await db.runTransaction(async tx => {
         const cooldownSnap = await tx.get(cooldownRef);
+        const profile = await tx.get(profileRef);
+        if (!profile.exists) throw new HttpsError('not-found', 'Profilo non trovato');
         if (cooldownSnap.exists) {
           const lastDate = cooldownSnap.data()?.lastDate as string;
           const daysSince = (Date.now() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24);
@@ -2110,10 +2639,15 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
           lastDate: new Date().toISOString(),
           updatedAt: FieldValue.serverTimestamp(),
         });
-        if (reward > 0) {
+        const dati = profile.data() ?? {};
+        const giaOggi = dati.sfideDate === today ? Number(dati.sfideCoinsToday ?? 0) : 0;
+        const premio = premioConTetto(reward, COINS.sfideTettoGiornaliero, giaOggi);
+        if (premio > 0) {
           const updates: Record<string, unknown> = {
-            coins: FieldValue.increment(reward),
-            coinsEarned: FieldValue.increment(reward),
+            coins: FieldValue.increment(premio),
+            coinsEarned: FieldValue.increment(premio),
+            sfideDate: today,
+            sfideCoinsToday: giaOggi + premio,
             updatedAt: FieldValue.serverTimestamp(),
           };
           tx.update(profileRef, updates);
@@ -2121,13 +2655,15 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
             db.collection('wallet_transactions').doc(`${uid}_sfida_${pairKey}_${Date.now()}`),
             {
               userId: uid,
-              amount: reward,
+              amount: premio,
               reason: 'minigame_sfida',
               createdAt: FieldValue.serverTimestamp(),
             }
           );
         }
+        return premio;
       });
+      const tettoRaggiunto = accreditato < reward;
       return {
         myResults,
         oppResults,
@@ -2135,26 +2671,44 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
         oppGoals,
         won,
         draw,
-        reward,
+        reward: accreditato,
+        ...(tettoRaggiunto
+          ? {
+              tettoRaggiunto: true,
+              messaggio:
+                accreditato > 0
+                  ? `Premio ridotto a ${accreditato} gettoni: hai raggiunto il tetto di ${COINS.sfideTettoGiornaliero} gettoni al giorno dalle sfide.`
+                  : `Hai già raggiunto il tetto di ${COINS.sfideTettoGiornaliero} gettoni al giorno dalle sfide: questa partita non assegna premi. Torna domani!`,
+            }
+          : {}),
       };
     }
 
     // --- MEMORIA CALCIO (no daily limit, daily coin cap) ---
+    case 'memoria_start':
+      return avviaSessione('memoria');
     case 'memoria_play': {
-      const levelsCompleted = intInRange(
-        request.data?.levelsCompleted,
-        0,
-        COINS.memoriaLevelTimes.length
-      );
-      if (levelsCompleted < 1) {
+      if (intInRange(request.data?.levelsCompleted, 0, COINS.memoriaLevelTimes.length) < 1) {
         throw new HttpsError('invalid-argument', 'Devi completare almeno un livello');
       }
-      // Il tempo residuo non può superare quello messo a disposizione dai
-      // livelli dichiarati: è l'unico freno a un client che si inventa il bonus.
-      const tempoMassimo = COINS.memoriaLevelTimes
-        .slice(0, levelsCompleted)
-        .reduce((a, b) => a + b, 0);
-      const timeRemaining = intInRange(request.data?.timeRemaining, 0, tempoMassimo);
+      // Il risultato vale solo dentro una sessione avviata dal server: livelli
+      // e tempo residuo dichiarati vengono confrontati con il tempo trascorso
+      // davvero (vedi valutaMemoria), e la sessione non si riusa.
+      const trascorsoMs = await consumaSessione('memoria', 0);
+      const valutazione = valutaMemoria(
+        request.data?.levelsCompleted,
+        request.data?.timeRemaining,
+        trascorsoMs
+      );
+      if (!valutazione.ok) {
+        throw new HttpsError(
+          'failed-precondition',
+          valutazione.motivo === 'nessun_livello'
+            ? 'Devi completare almeno un livello'
+            : 'Risultato non compatibile con la durata della partita'
+        );
+      }
+      const { levelsCompleted, timeRemaining } = valutazione;
       const levelReward = levelsCompleted * COINS.memoriaPerLevel;
       const timeBonus = Math.floor(timeRemaining / 5) * COINS.memoriaTimeBonus;
       const totalReward = levelReward + timeBonus;
@@ -2177,6 +2731,9 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
   }
   })();
 
+  // La serie si aggiorna solo a partita finita: aprire un quiz, una sfida o
+  // una sessione e andarsene non e' aver giocato oggi.
+  if (!contaPerLaSerie(action)) return esito;
   const serie = await registraGiornoAttivo();
   return { ...esito, serie };
 });
@@ -2195,6 +2752,9 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
 export const getRankings = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  // La classifica generale legge tutti i profili: senza un tetto una raffica
+  // di chiamate diventa una raffica di letture pagate.
+  await enforceRateLimit(uid, 'getRankings', 30, 60_000);
 
   const leagueId = request.data?.leagueId as string | undefined;
   if (leagueId) {
@@ -2280,7 +2840,9 @@ export const getPublicProfiles = onCall(callableOpts, async request => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'Devi essere autenticato');
   }
-  const pageSize = Math.min(100, Math.max(10, Number(request.data?.pageSize ?? 100)));
+  // Tetto largo: il client scorre tutte le pagine (100 profili l'una) in fila.
+  await enforceRateLimit(request.auth.uid, 'getPublicProfiles', 100, 60_000);
+  const pageSize =Math.min(100, Math.max(10, Number(request.data?.pageSize ?? 100)));
   const cursor = request.data?.cursor as string | undefined;
 
   let query = db.collection('profiles').orderBy('totalPoints', 'desc').limit(pageSize);
@@ -2352,6 +2914,7 @@ export const sendTestPush = onCall(callableOpts, async request => {
 export const buyRaffleTicket = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireUtenteAttivo(uid);
   await enforceRateLimit(uid, 'buyRaffleTicket', 10, 60_000);
   const richiesti = Number(request.data?.count);
   if (!Number.isInteger(richiesti) || richiesti < 1 || richiesti > RAFFLE.maxTicketsPerUser) {
@@ -2369,7 +2932,8 @@ export const buyRaffleTicket = onCall(callableOpts, async request => {
   return db.runTransaction(async tx => {
     const [prof, tk, rf] = await Promise.all([tx.get(profileRef), tx.get(ticketRef), tx.get(raffleRef)]);
     if (!prof.exists) throw new HttpsError('not-found', 'Profilo non trovato');
-    if (rf.exists && rf.data()?.status === 'drawn') {
+    // Solo un'urna aperta accetta biglietti: estratta o annullata e' chiusa.
+    if (rf.exists && rf.data()?.status !== 'open') {
       throw new HttpsError('failed-precondition', 'Estrazione gia\' fatta per questa giornata');
     }
     const gia = tk.exists ? ((tk.data()?.count as number) ?? 0) : 0;
@@ -2402,29 +2966,61 @@ export const buyRaffleTicket = onCall(callableOpts, async request => {
   });
 });
 
-/** Sorteggio a giornata valutata: una sola volta, poi avvisa chi ha vinto. */
+/**
+ * Sorteggio a giornata valutata: una sola volta, poi avvisa chi ha vinto.
+ *
+ * Lettura dei biglietti, estrazione e chiusura dell'urna stanno nella stessa
+ * transazione: due valutatori concorrenti non possono estrarre due volte, e
+ * un biglietto comprato nel frattempo (buyRaffleTicket legge la stessa urna)
+ * o entra nell'estrazione o viene rifiutato. Chi e' sospeso non partecipa.
+ * Senza un vincitore valido l'urna si annulla e i biglietti si rimborsano.
+ */
 async function estraiPremioGiornata(matchday: number): Promise<void> {
   const raffleRef = db.collection('raffles').doc(String(matchday));
-  const rf = await raffleRef.get();
-  if (!rf.exists || rf.data()?.status === 'drawn') return;
-  const tickets = await db.collection('raffle_tickets').where('matchday', '==', matchday).get();
-  const entries = tickets.docs.map(d => ({
-    uid: d.data().uid as string,
-    count: (d.data().count as number) ?? 0,
-  }));
-  const vincitore = estraiVincitore(entries);
-  let username: string | null = null;
-  if (vincitore) {
-    const p = await db.collection('profiles').doc(vincitore).get();
-    username = (p.data()?.username as string) ?? null;
+  const ticketsQuery = db.collection('raffle_tickets').where('matchday', '==', matchday);
+  const esito = await db.runTransaction(async tx => {
+    const rf = await tx.get(raffleRef);
+    if (!rf.exists || rf.data()?.status !== 'open') return null;
+    const tickets = await tx.get(ticketsQuery);
+    const entries = tickets.docs.map(d => ({
+      uid: d.data().uid as string,
+      count: (d.data().count as number) ?? 0,
+    }));
+    const uids = [...new Set(entries.map(e => e.uid).filter(Boolean))];
+    const profili = uids.length
+      ? await tx.getAll(...uids.map(u => db.collection('profiles').doc(u)))
+      : [];
+    const ammessi = new Map(
+      profili
+        .filter(p => p.exists && p.data()?.isActive !== false)
+        .map(p => [p.id, (p.data()?.username as string) ?? null])
+    );
+    const vincitore = estraiVincitore(entries.filter(e => ammessi.has(e.uid)));
+    if (vincitore) {
+      tx.update(raffleRef, {
+        status: 'drawn',
+        winnerUid: vincitore,
+        winnerUsername: ammessi.get(vincitore) ?? null,
+        drawnAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      tx.update(raffleRef, {
+        status: 'annullata',
+        winnerUid: null,
+        winnerUsername: null,
+        drawnAt: FieldValue.serverTimestamp(),
+      });
+    }
+    return { vincitore, partecipanti: entries.length, prize: rf.data()?.prize };
+  });
+  if (!esito) return;
+  const vincitore = esito.vincitore;
+  logger.info(`Giornata ${matchday}: estrazione, vincitore ${vincitore ?? 'nessuno'} su ${esito.partecipanti} partecipanti`);
+  if (!vincitore) {
+    await rimborsaBiglietti(matchday);
+    return;
   }
-  await raffleRef.set(
-    { status: 'drawn', winnerUid: vincitore, winnerUsername: username, drawnAt: FieldValue.serverTimestamp() },
-    { merge: true }
-  );
-  logger.info(`Giornata ${matchday}: estrazione, vincitore ${vincitore ?? 'nessuno'} su ${entries.length} partecipanti`);
-  if (!vincitore) return;
-  const premio = (rf.data()?.prize ?? {}) as { label?: string; emoji?: string | null };
+  const premio = (esito.prize ?? {}) as { label?: string; emoji?: string | null };
   await notifica([vincitore], {
     title: '🎉 Hai vinto l\'estrazione!',
     body: `${premio.emoji ?? ''} ${premio.label ?? 'Il premio'} della giornata ${matchday} e' tuo. Ti contattiamo per la consegna.`.trim(),
@@ -2433,9 +3029,74 @@ async function estraiPremioGiornata(matchday: number): Promise<void> {
   }, 'social');
 }
 
+/**
+ * Estrazione annullata: ogni biglietto torna al suo proprietario. Un
+ * biglietto alla volta, in transazione, segnandolo come rimborsato: se la
+ * funzione si interrompe a meta' si riprende da dove era senza pagare due
+ * volte (vedi settleMatchdays).
+ */
+async function rimborsaBiglietti(matchday: number): Promise<void> {
+  const tickets = await db.collection('raffle_tickets').where('matchday', '==', matchday).get();
+  for (const t of tickets.docs) {
+    await db.runTransaction(async tx => {
+      const fresh = await tx.get(t.ref);
+      const d = fresh.data();
+      if (!d || d.refunded === true) return;
+      const count = (d.count as number) ?? 0;
+      const uid = d.uid as string;
+      const profilo = uid ? await tx.get(db.collection('profiles').doc(uid)) : null;
+      if (count > 0 && profilo?.exists) {
+        await adjustCoins(uid, count * RAFFLE.ticketCost, `raffle_refund_g${matchday}`, tx, false);
+      }
+      tx.update(t.ref, { refunded: true, updatedAt: FieldValue.serverTimestamp() });
+    });
+  }
+  await db.collection('raffles').doc(String(matchday)).update({
+    refundedAt: FieldValue.serverTimestamp(),
+  });
+  logger.info(`Giornata ${matchday}: estrazione annullata, ${tickets.size} biglietti rimborsati`);
+}
+
+/** Leghe con agenzia richiesta che uno stesso creatore puo' avere ferme insieme. */
+const MAX_LEGHE_IN_ATTESA = 3;
+
+/** Esito di un ingresso in lega: ripetere la richiesta non e' un errore. */
+async function entraInLega(
+  ref: DocumentReference,
+  uid: string,
+  opts: { soloPubblica: boolean }
+): Promise<{ giaMembro: boolean }> {
+  return db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError('not-found', 'Lega non trovata');
+    const league = snap.data() as {
+      isPrivate?: boolean;
+      memberIds?: string[];
+      maxMembers?: number;
+    };
+    const members = Array.isArray(league.memberIds) ? league.memberIds : [];
+    // Idempotente: un doppio tocco sul link, o la rete che ripete la
+    // chiamata, trova l'utente gia' dentro e non deve dare errore.
+    if (members.includes(uid)) return { giaMembro: true };
+    if (opts.soloPubblica && league.isPrivate) {
+      throw new HttpsError('permission-denied', 'Lega privata');
+    }
+    if (members.length >= Number(league.maxMembers ?? 0)) {
+      throw new HttpsError('resource-exhausted', 'Lega al completo');
+    }
+    tx.update(ref, {
+      memberIds: [...members, uid],
+      memberCount: members.length + 1,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return { giaMembro: false };
+  });
+}
+
 export const manageLeague = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireUtenteAttivo(uid);
   await enforceRateLimit(uid, 'manageLeague', 10, 60_000);
   const action = request.data?.action as string;
   logger.info('manageLeague', { uid, action });
@@ -2458,8 +3119,28 @@ export const manageLeague = onCall(callableOpts, async request => {
     if (!Number.isInteger(requestedMax) || requestedMax < 2 || requestedMax > 100) {
       throw new HttpsError('invalid-argument', 'Numero massimo partecipanti non valido');
     }
+    // Creare leghe e' raro: un tetto proprio, oltre a quello generico della
+    // callable, evita che uno script riempia la collezione.
+    await enforceRateLimit(uid, 'manageLeague_create', 5, 3_600_000);
     const profile = await db.collection('profiles').doc(uid).get();
     if (!profile.exists) throw new HttpsError('not-found', 'Profilo non trovato');
+
+    // Ogni richiesta di agenzia finisce sul tavolo dell'amministratore: non
+    // piu' di MAX_LEGHE_IN_ATTESA ferme alla volta per lo stesso creatore.
+    if (agenziaRichiesta) {
+      const inAttesa = await db
+        .collection('leagues')
+        .where('ownerId', '==', uid)
+        .where('stato', '==', 'in_attesa')
+        .limit(MAX_LEGHE_IN_ATTESA)
+        .get();
+      if (inAttesa.size >= MAX_LEGHE_IN_ATTESA) {
+        throw new HttpsError(
+          'resource-exhausted',
+          `Hai gia' ${MAX_LEGHE_IN_ATTESA} leghe in attesa dell'agenzia: aspetta che vengano attivate`
+        );
+      }
+    }
 
     let inviteCode = '';
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -2490,6 +3171,9 @@ export const manageLeague = onCall(callableOpts, async request => {
       agenziaRichiesta: agenziaRichiesta || null,
       bookmaker: null,
       stato: agenziaRichiesta ? 'in_attesa' : 'attiva',
+      // Una sola notifica all'amministratore per lega: il campo fa da
+      // prenotazione, cosi' nessun altro percorso la rimanda.
+      adminNotificatoAt: agenziaRichiesta ? FieldValue.serverTimestamp() : null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -2506,6 +3190,7 @@ export const manageLeague = onCall(callableOpts, async request => {
             title: '🏆 Nuova lega da attivare',
             body: `${profile.data()?.username ?? 'Un utente'} ha creato "${name}" e chiede il palinsesto ${agenziaRichiesta}.`,
             path: '/admin',
+            tag: `lega-attesa-${ref.id}`,
           },
           'social'
         ).catch(err => logger.warn('notifica lega in attesa non inviata', err));
@@ -2514,7 +3199,7 @@ export const manageLeague = onCall(callableOpts, async request => {
     return { ok: true, leagueId: ref.id, stato: agenziaRichiesta ? 'in_attesa' : 'attiva' };
   }
 
-  if (action === 'joinByCode') {
+  if (action === 'joinByCode' || action === 'anteprimaInvito') {
     const inviteCode =
       typeof request.data?.inviteCode === 'string'
         ? request.data.inviteCode.trim().toUpperCase()
@@ -2529,24 +3214,32 @@ export const manageLeague = onCall(callableOpts, async request => {
       .get();
     if (found.empty) throw new HttpsError('not-found', 'Codice invito non valido');
     const ref = found.docs[0].ref;
-    await db.runTransaction(async tx => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new HttpsError('not-found', 'Lega non trovata');
-      const league = snap.data() as { memberIds?: string[]; maxMembers?: number };
-      const members = Array.isArray(league.memberIds) ? league.memberIds : [];
-      if (members.includes(uid)) {
-        throw new HttpsError('failed-precondition', 'Sei già membro di questa lega');
-      }
-      if (members.length >= Number(league.maxMembers ?? 0)) {
-        throw new HttpsError('resource-exhausted', 'Lega al completo');
-      }
-      tx.update(ref, {
-        memberIds: [...members, uid],
-        memberCount: members.length + 1,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    });
-    return { ok: true, leagueId: ref.id };
+
+    if (action === 'anteprimaInvito') {
+      // Chi apre un link d'invito vede dove sta entrando prima di entrare:
+      // una lega privata non e' leggibile dalle regole finche' non se ne fa
+      // parte, quindi i pochi dati da mostrare li da' il server.
+      const lega = found.docs[0].data() as {
+        name?: string;
+        ownerName?: string;
+        memberIds?: string[];
+        memberCount?: number;
+        maxMembers?: number;
+      };
+      const membri = Array.isArray(lega.memberIds) ? lega.memberIds : [];
+      return {
+        ok: true,
+        leagueId: ref.id,
+        name: lega.name ?? '',
+        ownerName: lega.ownerName ?? '',
+        memberCount: Number(lega.memberCount ?? membri.length),
+        maxMembers: Number(lega.maxMembers ?? 0),
+        giaMembro: membri.includes(uid),
+      };
+    }
+
+    const { giaMembro } = await entraInLega(ref, uid, { soloPubblica: false });
+    return { ok: true, leagueId: ref.id, giaMembro };
   }
 
   const leagueId = typeof request.data?.leagueId === 'string' ? request.data.leagueId : '';
@@ -2556,29 +3249,8 @@ export const manageLeague = onCall(callableOpts, async request => {
   const ref = db.collection('leagues').doc(leagueId);
 
   if (action === 'joinPublic') {
-    await db.runTransaction(async tx => {
-      const snap = await tx.get(ref);
-      if (!snap.exists) throw new HttpsError('not-found', 'Lega non trovata');
-      const league = snap.data() as {
-        isPrivate?: boolean;
-        memberIds?: string[];
-        maxMembers?: number;
-      };
-      if (league.isPrivate) throw new HttpsError('permission-denied', 'Lega privata');
-      const members = Array.isArray(league.memberIds) ? league.memberIds : [];
-      if (members.includes(uid)) {
-        throw new HttpsError('failed-precondition', 'Sei già membro di questa lega');
-      }
-      if (members.length >= Number(league.maxMembers ?? 0)) {
-        throw new HttpsError('resource-exhausted', 'Lega al completo');
-      }
-      tx.update(ref, {
-        memberIds: [...members, uid],
-        memberCount: members.length + 1,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    });
-    return { ok: true, leagueId };
+    const { giaMembro } = await entraInLega(ref, uid, { soloPubblica: true });
+    return { ok: true, leagueId, giaMembro };
   }
 
   if (action === 'leave') {
@@ -2738,6 +3410,20 @@ export const adminLeghe = onCall(
     const nomeLega = (snap.data()?.name as string) ?? 'la tua lega';
     const proprietario = snap.data()?.ownerId as string | undefined;
 
+    // Assegnare o rifiutare vale solo per una lega ancora in attesa: su una
+    // lega gia' attiva cambierebbe l'agenzia a partita in corso, con schedine
+    // gia' giocate sulle quote dell'altra. Il controllo sta nella stessa
+    // transazione della scrittura, cosi' due amministratori insieme non
+    // passano entrambi.
+    const attivaLega = (campi: Record<string, unknown>) =>
+      db.runTransaction(async tx => {
+        const attuale = await tx.get(ref);
+        if (attuale.data()?.stato !== 'in_attesa') {
+          throw new HttpsError('failed-precondition', 'La lega non è in attesa di attivazione');
+        }
+        tx.update(ref, { ...campi, stato: 'attiva', updatedAt: FieldValue.serverTimestamp() });
+      });
+
     if (action === 'assegna') {
       const agenzia = typeof request.data?.bookmaker === 'string' ? request.data.bookmaker : '';
       const disponibili = await bookmakerDisponibili(ODDS_API_KEY.value());
@@ -2747,14 +3433,11 @@ export const adminLeghe = onCall(
           `Agenzia non disponibile sul piano. Disponibili: ${disponibili.join(', ')}`
         );
       }
-      await ref.update({
-        bookmaker: agenzia,
-        stato: 'attiva',
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      await attivaLega({ bookmaker: agenzia });
       // Le quote dell'agenzia appena assegnata non ci sono ancora sulla
       // giornata aperta: la sincronizzazione le aggiunge senza toccare quelle
-      // gia' pubblicate.
+      // gia' pubblicate. Finche' non arrivano la lega non ha partite
+      // giocabili (vedi quotePerCircuito), non gioca su un'altra agenzia.
       await syncMatchdayInternal().catch(err =>
         logger.warn('quote della nuova agenzia non scaricate subito', err)
       );
@@ -2773,11 +3456,7 @@ export const adminLeghe = onCall(
     }
 
     if (action === 'rifiuta') {
-      await ref.update({
-        bookmaker: null,
-        stato: 'attiva',
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      await attivaLega({ bookmaker: null });
       if (proprietario) {
         await notifica(
           [proprietario],
@@ -2804,11 +3483,23 @@ export const onLeagueWritten = onDocumentWritten(
     const before = (event.data?.before?.data()?.memberIds ?? []) as string[];
     const after = (event.data?.after?.data()?.memberIds ?? []) as string[];
     const added = after.filter(uid => !before.includes(uid));
+    const leagueId = event.params.leagueId;
+    // Il contatore conta leghe distinte: uscire e rientrare nella stessa lega,
+    // o un trigger consegnato due volte, non devono farlo salire ancora.
+    // `leaguesJoinedIds` tiene traccia di quelle gia' contate.
     for (const uid of added) {
+      const profileRef = db.collection('profiles').doc(uid);
       await db
-        .collection('profiles')
-        .doc(uid)
-        .set({ leaguesJoined: FieldValue.increment(1) }, { merge: true })
+        .runTransaction(async tx => {
+          const snap = await tx.get(profileRef);
+          if (!snap.exists) return;
+          const contate = (snap.data()?.leaguesJoinedIds ?? []) as string[];
+          if (contate.includes(leagueId)) return;
+          tx.update(profileRef, {
+            leaguesJoinedIds: FieldValue.arrayUnion(leagueId),
+            leaguesJoined: FieldValue.increment(1),
+          });
+        })
         .catch(err => logger.warn(`leaguesJoined update failed for ${uid}`, err));
     }
   }
@@ -2819,6 +3510,7 @@ export const onLeagueWritten = onDocumentWritten(
 export const claimMission = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireUtenteAttivo(uid);
 
   const missionId = request.data?.missionId as string;
   const mission = MISSIONS.find(m => m.id === missionId);
@@ -2895,8 +3587,10 @@ export const exportMyData = onCall(callableOpts, async request => {
  * infine l'utenza di autenticazione.
  *
  * Scelte deliberate:
- * - le leghe di cui l'utente è proprietario vengono eliminate: senza owner
- *   resterebbero orfane e non più amministrabili;
+ * - le leghe di cui l'utente è proprietario passano al membro entrato per
+ *   primo fra quelli rimasti: cancellarle toglierebbe la lega (e la sua
+ *   classifica) a tutti gli altri. Se non resta nessuno, la lega si cancella
+ *   con la sua classifica;
  * - i duelli vengono cancellati integralmente perché contengono lo username
  *   di entrambi i giocatori;
  * - l'utenza Auth è rimossa per ultima: se qualcosa fallisce prima, l'utente
@@ -2923,32 +3617,143 @@ export const deleteAccount = onCall(callableOpts, async request => {
     return docs.length;
   };
 
-  const [schedineSnap, walletSnap, duelsP1, duelsP2, ownedLeagues, memberLeagues] =
-    await Promise.all([
-      db.collection('schedine').where('userId', '==', uid).get(),
-      db.collection('wallet_transactions').where('userId', '==', uid).get(),
-      db.collection('penalty_duels').where('p1.uid', '==', uid).get(),
-      db.collection('penalty_duels').where('p2.uid', '==', uid).get(),
-      db.collection('leagues').where('ownerId', '==', uid).get(),
-      db.collection('leagues').where('memberIds', 'array-contains', uid).get(),
-    ]);
+  const [
+    schedineSnap, archivioSnap, walletSnap, duelsP1, duelsP2, ownedLeagues, memberLeagues,
+    pushSnap, ticketsSnap, rateSnap, usernamesSnap, cooldownSnap, profileSnap,
+  ] = await Promise.all([
+    db.collection('schedine').where('userId', '==', uid).get(),
+    db.collection('schedine_archivio').where('userId', '==', uid).get(),
+    db.collection('wallet_transactions').where('userId', '==', uid).get(),
+    db.collection('penalty_duels').where('p1.uid', '==', uid).get(),
+    db.collection('penalty_duels').where('p2.uid', '==', uid).get(),
+    db.collection('leagues').where('ownerId', '==', uid).get(),
+    db.collection('leagues').where('memberIds', 'array-contains', uid).get(),
+    db.collection('push_tokens').where('uid', '==', uid).get(),
+    db.collection('raffle_tickets').where('uid', '==', uid).get(),
+    // Gli id dei limiti sono `${uid}_${azione}`: si prendono per prefisso.
+    db
+      .collection('rate_limits')
+      .where(FieldPath.documentId(), '>=', `${uid}_`)
+      .where(FieldPath.documentId(), '<', `${uid}_`)
+      .get(),
+    db.collection('usernames').where('uid', '==', uid).get(),
+    // Le sfide sono per coppia (`uidA_uidB`, ordinati) e non hanno un campo
+    // con l'uid: si scorrono i soli id.
+    db.collection('sfide_cooldowns').select().get(),
+    db.collection('profiles').doc(uid).get(),
+  ]);
+  const cooldownMiei = cooldownSnap.docs.filter(
+    d => d.id.startsWith(`${uid}_`) || d.id.endsWith(`_${uid}`)
+  );
+
+  // Riga di classifica in ogni lega toccata: quelle di cui fa parte, quelle
+  // gia' lasciate (leaguesJoinedIds) e, se l'indice c'e', tutte le altre.
+  const standingRefs = new Map<string, DocumentReference>();
+  const legheToccate = new Set<string>([
+    ...memberLeagues.docs.map(d => d.id),
+    ...ownedLeagues.docs.map(d => d.id),
+    ...((profileSnap.data()?.leaguesJoinedIds ?? []) as string[]),
+  ]);
+  for (const id of legheToccate) {
+    const ref = db.collection('leagues').doc(id).collection('standings').doc(uid);
+    standingRefs.set(ref.path, ref);
+  }
+  try {
+    const altre = await db.collectionGroup('standings').where('userId', '==', uid).get();
+    for (const d of altre.docs) standingRefs.set(d.ref.path, d.ref);
+  } catch (err) {
+    logger.warn('deleteAccount: ricerca standings per collection group non riuscita', err);
+  }
+
+  const deleteRefs = async (refs: DocumentReference[]): Promise<number> => {
+    for (let i = 0; i < refs.length; i += 400) {
+      const batch = db.batch();
+      for (const r of refs.slice(i, i + 400)) batch.delete(r);
+      await batch.commit();
+    }
+    return refs.length;
+  };
 
   const removed = {
     schedine: await deleteAll(schedineSnap.docs),
+    schedineArchivio: await deleteAll(archivioSnap.docs),
     walletTransactions: await deleteAll(walletSnap.docs),
     penaltyDuels: await deleteAll([...duelsP1.docs, ...duelsP2.docs]),
-    ownedLeagues: await deleteAll(ownedLeagues.docs),
+    pushTokens: await deleteAll(pushSnap.docs),
+    raffleTickets: await deleteAll(ticketsSnap.docs),
+    sfideCooldowns: await deleteAll(cooldownMiei),
+    usernames: await deleteAll(usernamesSnap.docs),
+    standings: await deleteRefs([...standingRefs.values()]),
+    quiz: await deleteRefs([
+      db.collection('quiz_sessions').doc(uid),
+      db.collection('quiz_seen').doc(uid),
+      db.collection('minigame_sessions').doc(`${uid}_memoria`),
+      db.collection('minigame_sessions').doc(`${uid}_rigori`),
+    ]),
+    leagueTransferred: 0,
+    leagueDeleted: 0,
+    leagueLeft: 0,
   };
 
-  // Uscita dalle leghe altrui: si rimuove il membro, la lega resta agli altri.
-  const ownedIds = new Set(ownedLeagues.docs.map(d => d.id));
-  for (const league of memberLeagues.docs) {
-    if (ownedIds.has(league.id)) continue;
-    await league.ref.update({
-      memberIds: FieldValue.arrayRemove(uid),
-      memberCount: FieldValue.increment(-1),
+  // Casella notifiche: il documento e la sottocollezione `items`.
+  await db.recursiveDelete(db.collection('notifications').doc(uid));
+
+  // Leghe: da quelle altrui si esce; quelle proprie passano al membro entrato
+  // per primo, o spariscono se non resta nessuno.
+  const leghe = new Map<string, DocumentReference>();
+  for (const d of [...ownedLeagues.docs, ...memberLeagues.docs]) leghe.set(d.id, d.ref);
+  for (const ref of leghe.values()) {
+    const esito = await db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return 'assente' as const;
+      const lega = snap.data() as { ownerId?: string; memberIds?: string[] };
+      const rimasti = (Array.isArray(lega.memberIds) ? lega.memberIds : []).filter(m => m !== uid);
+      if (lega.ownerId !== uid) {
+        tx.update(ref, {
+          memberIds: rimasti,
+          memberCount: rimasti.length,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        return 'uscito' as const;
+      }
+      if (rimasti.length === 0) return 'da_cancellare' as const;
+      const erede = rimasti[0];
+      const eredeSnap = await tx.get(db.collection('profiles').doc(erede));
+      tx.update(ref, {
+        ownerId: erede,
+        ownerName: (eredeSnap.data()?.username as string) ?? 'player',
+        memberIds: rimasti,
+        memberCount: rimasti.length,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return 'ceduta' as const;
     });
+    if (esito === 'uscito') removed.leagueLeft += 1;
+    if (esito === 'ceduta') {
+      removed.leagueTransferred += 1;
+      const dopo = (await ref.get()).data();
+      const erede = dopo?.ownerId as string | undefined;
+      if (erede) {
+        await notifica(
+          [erede],
+          {
+            title: '👑 Ora la lega è tua',
+            body: `Chi aveva creato "${(dopo?.name as string) ?? 'la lega'}" ha chiuso l'account: la gestisci tu.`,
+            path: `/leghe/${ref.id}`,
+          },
+          'social'
+        ).catch(() => undefined);
+      }
+    }
+    if (esito === 'da_cancellare') {
+      await db.recursiveDelete(ref);
+      removed.leagueDeleted += 1;
+    }
   }
+
+  // Per ultimi i limiti di frequenza: fino a qui proteggono anche questa
+  // stessa chiamata da ripetizioni a raffica.
+  await deleteAll(rateSnap.docs);
 
   await db.collection('profiles').doc(uid).delete();
 
@@ -2996,7 +3801,12 @@ export const adminManageCompetitions = onCall(callableOpts, async request => {
     const snap = await configRef.get();
     const active = (snap.exists ? (snap.data()?.active as string[]) : null) ?? DEFAULT_ACTIVE_COMPETITIONS;
     return {
-      competitions: COMPETITIONS.map(c => ({ ...c, active: active.includes(c.code) })),
+      competitions: COMPETITIONS.map(c => ({
+        ...c,
+        active: active.includes(c.code),
+        // Senza slug del fornitore il campionato non ha quote: non si attiva.
+        quotabile: !!slugFornitore(c.code),
+      })),
     };
   }
 
@@ -3008,6 +3818,15 @@ export const adminManageCompetitions = onCall(callableOpts, async request => {
     const snap = await configRef.get();
     const active = (snap.exists ? (snap.data()?.active as string[]) : null) ?? [...DEFAULT_ACTIVE_COMPETITIONS];
     const isActive = active.includes(code);
+    // Un campionato che il fornitore non quota porterebbe in giornata solo
+    // partite senza quote, cioe' ingiocabili: non si attiva. Disattivarlo
+    // resta sempre possibile.
+    if (!isActive && !slugFornitore(code)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Campionato senza quote del fornitore: non si può attivare'
+      );
+    }
     const updated = isActive ? active.filter(c => c !== code) : [...active, code];
     await configRef.set({ active: updated, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     return { ok: true, active: !isActive };
@@ -3024,65 +3843,46 @@ export const adminForceSettle = onCall(callableOpts, async request => {
   const matchdayNumber = request.data?.matchdayNumber as number;
   if (!matchdayNumber) throw new HttpsError('invalid-argument', 'matchdayNumber richiesto');
 
-  const mdSnap = await db.collection('matchdays').doc(String(matchdayNumber)).get();
-  if (!mdSnap.exists) throw new HttpsError('not-found', 'Giornata non trovata');
-  const md = mdSnap.data() as MatchdayDoc;
-  if (md.settled) throw new HttpsError('failed-precondition', 'Giornata già settleata');
-
-  const results = await fetchResults(
-    md.matches.map(m => ({ id: m.id, scheduledAt: m.scheduledAt.toDate(), competition: m.competition }))
-  );
-
-  const updatedMatches = md.matches.map(m => {
-    const r = results.get(m.id);
-    if (!r) return m;
-    const outcome = r.homeGoals > r.awayGoals ? '1' as const : r.awayGoals > r.homeGoals ? '2' as const : 'X' as const;
-    return {
-      ...m,
-      status: r.status,
-      result: {
-        homeGoals: r.homeGoals,
-        awayGoals: r.awayGoals,
-        outcome,
-        // Senza i gol del primo tempo i mercati 1T non sono valutabili e
-        // verrebbero annullati: la stessa giornata varrebbe punteggi diversi
-        // a seconda che la valuti lo scheduler o l'admin.
-        ...(r.htHomeGoals != null
-          ? { htHomeGoals: r.htHomeGoals, htAwayGoals: r.htAwayGoals }
-          : {}),
-      },
-    };
-  });
-  await mdSnap.ref.update({ matches: updatedMatches, updatedAt: FieldValue.serverTimestamp() });
-
-  // Lo scheduler salta le giornate con partite ancora in corso; qui il
-  // controllo mancava del tutto. Valutare adesso congelerebbe come sbagliati
-  // i pronostici su partite non ancora giocate, e `settled: true` rende la
-  // cosa irreversibile. Resta possibile forzare, ma va chiesto esplicitamente.
-  const nonConcluse = updatedMatches.filter(m => m.status !== 'finished' || !m.result);
-  if (nonConcluse.length > 0 && request.data?.force !== true) {
-    throw new HttpsError(
-      'failed-precondition',
-      `${nonConcluse.length} partite non concluse (${nonConcluse
-        .map(m => m.id)
-        .join(', ')}). Ripeti con force: true per valutare comunque.`
-    );
-  }
-  if (nonConcluse.length > 0) {
-    logger.warn('adminForceSettle: settlement forzato su partite non concluse', {
+  const ref = db.collection('matchdays').doc(String(matchdayNumber));
+  const forza = request.data?.force === true;
+  if (forza) {
+    logger.warn('adminForceSettle: valutazione forzata, le partite non finite saranno annullate', {
       uid,
       matchday: matchdayNumber,
-      partite: nonConcluse.map(m => m.id),
     });
   }
 
-  // Reuse the same settlement logic as the scheduled function (transactions + profile updates + prizes)
-  const valutate = await settleSchedine(matchdayNumber, updatedMatches as unknown as StoredMatch[]);
-
-  // Mark matchday as settled
-  await mdSnap.ref.update({ settled: true, updatedAt: FieldValue.serverTimestamp() });
-
-  return { ok: true, matchday: matchdayNumber, settled: valutate };
+  // Stessa strada dello scheduler: risultati veri da ESPN (mai un risultato
+  // scritto per una partita non finita), claim contro le valutazioni
+  // concorrenti, chiusura solo a schedine tutte valutate, estrazione e avvisi.
+  // Con `force` le partite non finite vengono annullate invece di aspettarle:
+  // i pronostici sopra valgono zero, non "sbagliati" ne' "indovinati".
+  const esito = await valutaGiornata(ref, forza);
+  switch (esito.esito) {
+    case 'assente':
+      throw new HttpsError('not-found', 'Giornata non trovata');
+    case 'gia_valutata':
+      throw new HttpsError('failed-precondition', 'Giornata già valutata');
+    case 'prima_della_deadline':
+      throw new HttpsError('failed-precondition', 'La giornata non è ancora chiusa: deadline non passata');
+    case 'in_attesa': {
+      const partite = esito.inAttesa ?? [];
+      throw new HttpsError(
+        'failed-precondition',
+        `${partite.length} partite non concluse o senza parziale del primo tempo (${partite.join(', ')}). ` +
+          'Ripeti con force: true per valutare comunque: i pronostici su queste partite saranno annullati.'
+      );
+    }
+    case 'in_corso':
+      throw new HttpsError('aborted', 'Valutazione già in corso: riprova tra qualche minuto');
+    case 'incompleta':
+      throw new HttpsError(
+        'internal',
+        `Valutate ${esito.valutate ?? 0} schedine, alcune no: la giornata resta aperta e si riprova al prossimo giro`
+      );
+    case 'valutata':
+      return { ok: true, matchday: matchdayNumber, settled: esito.valutate ?? 0 };
+  }
 });
 
 /** CRUD sponsor (admin). */
@@ -3439,6 +4239,19 @@ export const adminToggleBan = onCall(callableOpts, async request => {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
+  // Il ban vale anche per l'accesso: l'account Firebase viene disattivato (e
+  // riattivato allo sblocco), cosi' non si ottengono nuovi token. Le callable
+  // restano comunque protette da requireUtenteAttivo per i token gia' emessi.
+  try {
+    await getAuth().updateUser(targetUid, { disabled: currentActive });
+    if (currentActive) await getAuth().revokeRefreshTokens(targetUid);
+  } catch (e) {
+    logger.error('adminToggleBan: account di accesso non aggiornato', {
+      targetUid,
+      motivo: (e as Error).message,
+    });
+  }
+
   return { ok: true, isActive: !currentActive };
 });
 
@@ -3458,12 +4271,10 @@ interface PenaltyDuelDoc {
   mode: DuelMode;
   round: number;
   attacker: 1 | 2;
-  /** Zona scelta: dove tira l'attaccante, dove si tuffa il portiere. */
-  p1Choice: PenaltyZone | null;
-  p2Choice: PenaltyZone | null;
-  /** Potenza del tiro (0-100) di chi attacca; null per chi para. */
-  p1Power?: number | null;
-  p2Power?: number | null;
+  // Le scelte del round in corso NON stanno qui: il documento lo leggono
+  // entrambi i giocatori, e chi para vedrebbe dove sta per tirare l'altro.
+  // Restano in `penalty_duel_moves/{duelId}` (solo server) fino alla
+  // risoluzione; qui arriva soltanto `lastRound`, a round chiuso.
   phase: 'waiting' | 'playing' | 'finished';
   startedAt: number;
   deadlineAt: number;
@@ -3486,20 +4297,48 @@ interface PenaltyDuelDoc {
   } | null;
 }
 
+/** Mosse del round in corso, lette e scritte solo dal server. */
+interface MossePendentiDoc {
+  round: number;
+  p1: MossaDuello | null;
+  p2: MossaDuello | null;
+}
+
+/**
+ * Campi delle scelte che i duelli iniziati prima del 25/09/2026 tenevano sul
+ * documento pubblico: si tolgono alla prima risoluzione di un round.
+ */
+const CAMPI_SCELTA_LEGACY = {
+  p1Choice: FieldValue.delete(),
+  p2Choice: FieldValue.delete(),
+  p1Power: FieldValue.delete(),
+  p2Power: FieldValue.delete(),
+};
+
 function duelCode(): string {
-  return Array.from({ length: 6 }, () =>
-    'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[randomInt(34)]
-  ).join('');
+  return generaCodiceDuello();
 }
 
 /** Mossa a caso per chi non ha scelto in tempo: tiro affrettato o tuffo cieco. */
-function mossaCasuale(attacca: boolean): { zone: PenaltyZone; power: number } {
+function mossaCasuale(attacca: boolean): MossaDuello {
   return { zone: securePick(PENALTY_ZONES), power: attacca ? DUEL_TIMEOUT_POWER : 0 };
+}
+
+/**
+ * Mossa del bot: sceglie zona e potenza a modo suo, ma la mossa passa dalle
+ * stesse regole di quella di un giocatore (componiRound + resolveDuelShot,
+ * potenza vincolata a 0-100, zero per chi para).
+ */
+function mossaBot(attacca: boolean): MossaDuello {
+  if (!attacca) return { zone: botDuelKeeper(), power: 0 };
+  const tiro = botDuelShot();
+  return { zone: tiro.zone, power: tiro.power };
 }
 
 export const managePenaltyDuel = onCall(callableOpts, async request => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Devi essere autenticato');
+  await requireUtenteAttivo(uid);
   await enforceRateLimit(uid, 'managePenaltyDuel', 15, 60_000);
 
   const action = request.data?.action as string;
@@ -3526,8 +4365,6 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
       mode: 'human',
       round: 1,
       attacker: 1,
-      p1Choice: null,
-      p2Choice: null,
       phase: 'waiting',
       startedAt: now,
       deadlineAt: now + 30000,
@@ -3585,8 +4422,6 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
       mode,
       round: 1,
       attacker: starting,
-      p1Choice: null,
-      p2Choice: null,
       phase: 'playing',
       startedAt: now,
       deadlineAt: now + DUEL_ROUND_MS,
@@ -3616,9 +4451,15 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
         ? Math.max(0, Math.min(100, Math.round(rawPower)))
         : null;
 
+    if (typeof duelId !== 'string' || duelId.includes('/')) {
+      throw new HttpsError('invalid-argument', 'duelId non valido');
+    }
+
     return db.runTransaction(async tx => {
       const duelRef = duelsRef.doc(duelId);
+      const movesRef = db.collection('penalty_duel_moves').doc(duelId);
       const duelSnap = await tx.get(duelRef);
+      const movesSnap = await tx.get(movesRef);
       if (!duelSnap.exists) throw new HttpsError('not-found', 'Partita non trovata');
       const duel = duelSnap.data() as PenaltyDuelDoc;
 
@@ -3636,55 +4477,48 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
       const now = Date.now();
       const deadlinePassed = now >= duel.deadlineAt;
 
+      // Mosse gia' registrate in questo round (documento solo server). Quelle
+      // di un round precedente non contano.
+      const pendenti = movesSnap.data() as MossePendentiDoc | undefined;
+      const delRound = pendenti?.round === duel.round ? pendenti : undefined;
+
       // La scelta di chi chiama: quella già registrata vince; altrimenti la
       // sua; senza nulla (o a tempo scaduto) una a caso.
-      let myChoice = isP1 ? duel.p1Choice : duel.p2Choice;
-      let myPower = (isP1 ? duel.p1Power : duel.p2Power) ?? null;
-      if (!myChoice) {
-        if (target && !timeout) {
-          myChoice = target;
-          myPower = iAmAttacker ? (power ?? DUEL_DEFAULT_POWER) : 0;
-        } else {
-          const m = mossaCasuale(iAmAttacker);
-          myChoice = m.zone;
-          myPower = m.power;
-        }
+      let mia: MossaDuello | null = (isP1 ? delRound?.p1 : delRound?.p2) ?? null;
+      if (!mia) {
+        mia =
+          target && !timeout
+            ? { zone: target, power: iAmAttacker ? (power ?? DUEL_DEFAULT_POWER) : 0 }
+            : mossaCasuale(iAmAttacker);
       }
 
-      let p1Choice = isP1 ? myChoice : duel.p1Choice;
-      let p2Choice = isP1 ? duel.p2Choice : myChoice;
-      const p1Power = isP1 ? myPower : (duel.p1Power ?? null);
-      let p2Power = isP1 ? (duel.p2Power ?? null) : myPower;
+      const mossaP1: MossaDuello | null = isP1 ? mia : (delRound?.p1 ?? null);
+      let mossaP2: MossaDuello | null = isP1 ? (delRound?.p2 ?? null) : mia;
 
-      // Il bot (sempre p2) risponde subito.
-      if (isBotGame && p2Choice === null) {
-        if (duel.attacker === 2) {
-          const tiro = botDuelShot();
-          p2Choice = tiro.zone;
-          p2Power = tiro.power;
-        } else {
-          p2Choice = botDuelKeeper();
-          p2Power = 0;
-        }
-      }
+      // Il bot (sempre p2) risponde subito, con le stesse regole di un giocatore.
+      if (isBotGame && mossaP2 === null) mossaP2 = mossaBot(duel.attacker === 2);
 
-      const bothChosen = p1Choice !== null && p2Choice !== null;
+      const bothChosen = mossaP1 !== null && mossaP2 !== null;
       const canResolve = bothChosen || deadlinePassed;
 
       if (!canResolve) {
-        tx.update(duelRef, { p1Choice, p2Choice, p1Power, p2Power });
+        const daSalvare: MossePendentiDoc = { round: duel.round, p1: mossaP1, p2: mossaP2 };
+        tx.set(movesRef, daSalvare);
         return { ok: true, resolved: false };
       }
 
       // Chi non ha scelto entro il tempo tira affrettato o si tuffa a caso.
-      const attackerIs1 = duel.attacker === 1;
-      const shotZone = (attackerIs1 ? p1Choice : p2Choice) ?? mossaCasuale(true).zone;
-      const shotPower = (attackerIs1 ? p1Power : p2Power) ?? DUEL_TIMEOUT_POWER;
-      const keeperZone = (attackerIs1 ? p2Choice : p1Choice) ?? mossaCasuale(false).zone;
-      const esito = resolveDuelShot(shotZone, shotPower, keeperZone);
+      const round = componiRound(duel.attacker, mossaP1, mossaP2, mossaCasuale);
+      const shotZone = round.shot;
+      const keeperZone = round.keeper;
+      const esito = resolveDuelShot(shotZone, round.power, keeperZone);
       const goal = esito.goal;
-      p1Choice = attackerIs1 ? shotZone : keeperZone;
-      p2Choice = attackerIs1 ? keeperZone : shotZone;
+      const { p1Choice, p2Choice } = round;
+      // Round chiuso: le mosse pendenti non servono piu'. La cancellazione va
+      // fatta dopo tutte le letture della transazione (profili dei vincitori).
+      const cancellaMosse = () => {
+        if (movesSnap.exists) tx.delete(movesRef);
+      };
 
       let p1Score = duel.p1.score;
       let p2Score = duel.p2.score;
@@ -3752,6 +4586,7 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
         const profiliBeneficiari = await Promise.all(
           beneficiari.map(b => tx.get(db.collection('profiles').doc(b.uid)))
         );
+        cancellaMosse();
 
         let rewardAccreditato = 0;
         // Il client mostra `duel.reward` dal documento, e solo a chi ha vinto o
@@ -3783,6 +4618,7 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
         });
 
         tx.update(duelRef, {
+          ...CAMPI_SCELTA_LEGACY,
           p1: { ...duel.p1, score: p1Score },
           p2: { ...duel.p2, score: p2Score },
           phase: 'finished',
@@ -3808,15 +4644,13 @@ export const managePenaltyDuel = onCall(callableOpts, async request => {
       const nextStart = now;
       const nextDeadline = now + DUEL_ROUND_MS;
 
+      cancellaMosse();
       tx.update(duelRef, {
+        ...CAMPI_SCELTA_LEGACY,
         p1: { ...duel.p1, score: p1Score },
         p2: { ...duel.p2, score: p2Score },
         round: nextRound,
         attacker: nextAttacker,
-        p1Choice: null,
-        p2Choice: null,
-        p1Power: null,
-        p2Power: null,
         phase: 'playing',
         startedAt: nextStart,
         deadlineAt: nextDeadline,
@@ -3882,6 +4716,8 @@ export const cleanupPenaltyDuels = onSchedule(
           abandoned: true,
           reward: 0,
         });
+        // Mosse rimaste in sospeso nel round mai risolto.
+        batch.delete(db.collection('penalty_duel_moves').doc(ref.id));
       }
       await batch.commit();
     }

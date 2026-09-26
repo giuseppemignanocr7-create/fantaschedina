@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { reportError } from '@/lib/monitoring';
+import { isChunkLoadError, ricaricaUnaVolta } from '@/lib/chunkReload';
 
 interface Props {
   children: ReactNode;
@@ -17,6 +18,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
+    // Pagina di una versione precedente dell'app: basta ricaricare (una volta).
+    if (isChunkLoadError(error) && ricaricaUnaVolta()) return;
     reportError(error, { componentStack: info.componentStack });
   }
 

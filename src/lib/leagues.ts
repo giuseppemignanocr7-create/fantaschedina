@@ -13,7 +13,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { getRankingsFn, manageLeagueFn, type RankingRow } from './gameApi';
+import { manageLeagueFn } from './gameApi';
 
 export interface LeagueDoc {
   id: string;
@@ -33,13 +33,6 @@ export interface LeagueDoc {
   /** `in_attesa` finche' l'admin non assegna l'agenzia richiesta. */
   stato?: 'in_attesa' | 'attiva';
   createdAt: Timestamp | null;
-}
-
-export interface LeagueStanding {
-  rank: number;
-  userId: string;
-  username: string;
-  totalPoints: number;
 }
 
 export async function createLeague(
@@ -95,6 +88,30 @@ export async function joinLeagueByCode(
   await manageLeagueFn('joinByCode', { inviteCode });
 }
 
+/**
+ * Chi crea una lega vede le schedine dei membri appena inviate (callable
+ * getSchedineLega, funzione voluta): chi entra deve saperlo prima.
+ */
+export const AVVISO_GIOCATE_VISIBILI = 'Il creatore della lega vedrà le tue giocate appena le invii.';
+
+/** Cio' che chi apre un link d'invito vede prima di decidere se entrare. */
+export interface AnteprimaInvito {
+  leagueId: string;
+  name: string;
+  ownerName: string;
+  memberCount: number;
+  maxMembers: number;
+  giaMembro: boolean;
+}
+
+/**
+ * Dati essenziali della lega di un codice invito. Le regole non lasciano
+ * leggere una lega privata a chi non ne fa parte: li fornisce il server.
+ */
+export async function anteprimaInvito(inviteCode: string): Promise<AnteprimaInvito> {
+  return manageLeagueFn<AnteprimaInvito>('anteprimaInvito', { inviteCode });
+}
+
 export async function joinLeague(uid: string, leagueId: string): Promise<void> {
   void uid;
   await manageLeagueFn('joinPublic', { leagueId });
@@ -107,21 +124,4 @@ export async function leaveLeague(uid: string, leagueId: string): Promise<void> 
 
 export async function deleteLeague(leagueId: string): Promise<void> {
   await manageLeagueFn('delete', { leagueId });
-}
-
-/**
- * Classifica di lega dai punti reali dei membri.
- *
- * Il calcolo è del server (callable `getRankings` con `leagueId`): prima
- * questa funzione scaricava l'intero elenco dei profili del gioco per poi
- * tenerne i pochi della lega.
- */
-export async function getLeagueStandings(league: LeagueDoc): Promise<LeagueStanding[]> {
-  const { rankings } = await getRankingsFn(league.id);
-  return rankings.map((r: RankingRow) => ({
-    rank: r.rank,
-    userId: r.participantId,
-    username: r.username,
-    totalPoints: r.totalPoints,
-  }));
 }

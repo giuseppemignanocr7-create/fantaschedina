@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Eye, EyeOff, ArrowRight, Trophy, Users, Target, AlertCircle } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { burstConfetti, sideCannons } from '@/lib/juice';
-import { DEFAULT_TOURNAMENT_CONFIG } from '@/lib/scoring';
 
 type AuthMode = 'login' | 'register';
 
@@ -111,27 +110,19 @@ export function LoginPage() {
     setIsLoading(true);
     
     try {
-      if (mode === 'login') {
-        const { error } = await signIn(formData.email, formData.password);
-        if (error) {
-          setAuthError(error.message === 'Invalid login credentials' 
-            ? 'Credenziali non valide' 
-            : error.message);
-          setIsLoading(false);
-          return;
-        }
-      } else {
-        const { error } = await signUp(formData.email, formData.password, formData.username);
-        if (error) {
-          setAuthError(error.message === 'User already registered'
-            ? 'Email già registrata'
-            : error.message);
-          setIsLoading(false);
-          return;
-        }
+      // I messaggi arrivano gia' in italiano da useFirebaseAuth (mapFirebaseError).
+      const { error } =
+        mode === 'login'
+          ? await signIn(formData.email, formData.password)
+          : await signUp(formData.email, formData.password, formData.username);
+      if (error) {
+        setAuthError(error.message);
+        setIsLoading(false);
+        return;
       }
       
-      setSuccessMessage(mode === 'login' ? 'Accesso effettuato!' : 'Registrazione completata! Controlla la tua email.');
+      // Nessuna email di conferma parte alla registrazione: non si dice di controllarla.
+      setSuccessMessage(mode === 'login' ? 'Accesso effettuato!' : 'Registrazione completata!');
       if (mode === 'register') sideCannons();
       else burstConfetti();
       setTimeout(() => {
@@ -154,7 +145,7 @@ export function LoginPage() {
   };
 
   const features = [
-    { icon: Trophy, text: `${DEFAULT_TOURNAMENT_CONFIG.firstPlacePrize + DEFAULT_TOURNAMENT_CONFIG.firstHalfPrize}€ di premi in palio` },
+    { icon: Trophy, text: 'Premi di giornata per il podio' },
     { icon: Users, text: 'Sfida i tuoi amici' },
     { icon: Target, text: 'Se uno vince, vincono tutti' },
   ];
@@ -289,8 +280,8 @@ export function LoginPage() {
                     type="text"
                     value={formData.username}
                     onChange={handleInputChange('username')}
-                    placeholder="Il tuo nome in campo"
-                    className={`night-input pl-12 bg-night-surface ${errors.username ? 'border-red-500 focus:ring-red-500/50' : ''}`}
+                    placeholder="Es. Bomber_10"
+                    className={`night-input pl-12 bg-night-surface placeholder:text-slate-400 ${errors.username ? 'border-red-500 focus:ring-red-500/50' : ''}`}
                   />
                 </div>
                 {errors.username && (
@@ -311,8 +302,9 @@ export function LoginPage() {
                   type="email"
                   value={formData.email}
                   onChange={handleInputChange('email')}
-                  placeholder="nome@esempio.com"
-                  className={`night-input pl-12 bg-night-surface ${errors.email ? 'border-red-500 focus:ring-red-500/50' : ''}`}
+                  placeholder="La tua email"
+                  autoComplete="email"
+                  className={`night-input pl-12 bg-night-surface placeholder:text-slate-400 ${errors.email ? 'border-red-500 focus:ring-red-500/50' : ''}`}
                 />
               </div>
               {errors.email && (
@@ -369,18 +361,6 @@ export function LoginPage() {
                 {errors.confirmPassword && (
                   <p className="text-red-400 text-xs mt-1 font-medium">{errors.confirmPassword}</p>
                 )}
-              </div>
-            )}
-            
-            {/* Forgot Password (login only) */}
-            {mode === 'login' && (
-              <div className="text-right">
-                <button
-                  type="button"
-                  className="text-xs text-primary-400 hover:text-primary-300 transition-colors font-medium"
-                >
-                  Recupera password
-                </button>
               </div>
             )}
             

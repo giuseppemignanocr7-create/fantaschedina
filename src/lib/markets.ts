@@ -7,7 +7,49 @@
 // modifica.
 // ============================================
 
-import type { BetType } from '@/types';
+import type { BetType, Match } from '@/types';
+import type { MatchOdds } from '@/data/mockData';
+
+/**
+ * Solo le quote delle partite non ancora iniziate: sono quelle che il server
+ * conta per decidere quanti pronostici servono (vedi pickRichieste).
+ * `now` = 0 (orologio non ancora letto) tiene tutte le partite in programma.
+ */
+export function quoteAncoraAperte(
+  matches: Pick<Match, 'id' | 'status' | 'scheduledAt'>[] | undefined,
+  odds: Record<string, MatchOdds>,
+  now: number
+): Record<string, MatchOdds> {
+  const aperte: Record<string, MatchOdds> = {};
+  for (const m of matches ?? []) {
+    if (m.status !== 'scheduled') continue;
+    if (new Date(m.scheduledAt).getTime() <= now) continue;
+    if (odds[m.id]) aperte[m.id] = odds[m.id];
+  }
+  return aperte;
+}
+
+/**
+ * Quota sotto la quale il server rifiuta la giocata. Specchio di
+ * `TOURNAMENT.penaltyOddsMin` in functions/src/config.ts: vanno cambiate insieme.
+ */
+export const QUOTA_MINIMA = 1.25;
+
+/**
+ * Quota del bookmaker per un esito, se si puo' giocare: null quando il mercato
+ * o l'esito non sono quotati, o quando la quota e' sotto il minimo ammesso.
+ * Mai una quota calcolata o di ripiego.
+ */
+export function quotaGiocabile(
+  odds: MatchOdds | undefined,
+  betType: string,
+  outcome: string
+): number | null {
+  const mercato = (odds as Record<string, Record<string, number> | undefined> | undefined)?.[betType];
+  const quota = mercato?.[outcome];
+  if (typeof quota !== 'number' || !Number.isFinite(quota)) return null;
+  return quota >= QUOTA_MINIMA - 1e-9 ? quota : null;
+}
 
 /** Nome breve del mercato, quello che sta in un chip. */
 export const BET_TYPE_SHORT: Record<string, string> = {

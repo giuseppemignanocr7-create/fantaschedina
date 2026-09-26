@@ -162,6 +162,32 @@ export async function seedDuello(stato: {
   return ref.id;
 }
 
+/**
+ * Sessione di memoria o rigori aperta `etaMs` fa, come l'avrebbe creata
+ * `memoria_start` / `rigori_start`: i test non possono aspettare la durata
+ * vera di una partita. Restituisce il `sessionId` da mandare con il risultato.
+ */
+export async function seedSessioneMinigioco(
+  uid: string,
+  gioco: 'memoria' | 'rigori',
+  etaMs = 5 * 60 * 1000
+): Promise<string> {
+  const sessionId = `sess_${uid}_${gioco}_${Date.now()}`;
+  await db.collection('minigame_sessions').doc(`${uid}_${gioco}`).set({
+    uid,
+    game: gioco,
+    sessionId,
+    startedAtMs: Date.now() - etaMs,
+  });
+  return sessionId;
+}
+
+/** Mosse del round in corso di un duello (documento solo server). */
+export async function readMosseDuello(duelId: string): Promise<Record<string, unknown> | null> {
+  const snap = await db.collection('penalty_duel_moves').doc(duelId).get();
+  return snap.exists ? (snap.data() as Record<string, unknown>) : null;
+}
+
 export async function readDuello(duelId: string): Promise<Record<string, unknown> | null> {
   const snap = await db.collection('penalty_duels').doc(duelId).get();
   return snap.exists ? (snap.data() as Record<string, unknown>) : null;
@@ -284,6 +310,7 @@ export async function wipe(): Promise<void> {
     'profiles', 'schedine', 'schedine_archivio', 'matchdays',
     'wallet_transactions', 'rate_limits', 'prizes', 'penalty_duels',
     'leagues', 'season_resets', 'sfide_cooldowns', 'weekly_prizes',
+    'raffles', 'raffle_tickets',
   ]) {
     await db.recursiveDelete(db.collection(name));
   }

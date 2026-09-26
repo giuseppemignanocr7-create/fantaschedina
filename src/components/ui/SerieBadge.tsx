@@ -50,7 +50,7 @@ export function SerieCard({ streakDate, streakDays, className }: Props) {
           )}
         />
         {s.giorni > 0 && (
-          <span className="absolute -bottom-1 -right-1 text-[9px] font-black bg-orange-600 text-white rounded-full w-4 h-4 flex items-center justify-center">
+          <span className="absolute -bottom-1 -right-1 text-[10px] font-black bg-orange-600 text-white rounded-full w-4 h-4 flex items-center justify-center">
             {s.giorni}
           </span>
         )}

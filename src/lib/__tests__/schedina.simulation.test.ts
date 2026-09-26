@@ -133,7 +133,7 @@ describe('Simulazione 200 schedine casuali (2000 pronostici) — confronto con o
     const r = evaluateSchedina(sim.schedina, sim.matches);
 
     // Oracle indipendente: i punti sono la somma delle quote indovinate
-    // (una persa non contribuisce, una void contribuisce 0: neutro).
+    // (una persa non contribuisce, una void vale 0 e non conta come esatta).
     let expectedCombo = 0;
     let expectedCorrect = 0;
     let penaltyBets = 0;
@@ -142,8 +142,8 @@ describe('Simulazione 200 schedine casuali (2000 pronostici) — confronto con o
       let pts: number;
       let correct: boolean;
       if (evalRes === null) {
-        pts = 0; // void: contributo neutro in una somma
-        correct = true;
+        pts = 0; // void: zero punti, e non aiuta a raggiungere i bonus
+        correct = false;
       } else {
         pts = oracleBetPoints(pred.odds, evalRes);
         correct = evalRes;

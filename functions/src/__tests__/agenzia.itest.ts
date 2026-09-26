@@ -47,6 +47,14 @@ async function leggiLega(id: string) {
   };
 }
 
+/** Quote predefinite della giornata seminata, per ricopiarle su un'agenzia. */
+async function leggiQuote() {
+  const md = (await db.collection('matchdays').doc('1').get()).data() as {
+    odds: Record<string, unknown>;
+  };
+  return { odds: md.odds };
+}
+
 describe('lega con agenzia richiesta', () => {
   beforeEach(async () => {
     await wipe();
@@ -131,8 +139,63 @@ describe('lega con agenzia richiesta', () => {
     expect(lega.stato).toBe('attiva');
     expect(lega.bookmaker).toBe('Eurobet IT');
 
-    // Ora la schedina di lega si puo' inviare.
+    // Finche' il palinsesto dell'agenzia non c'e', la lega non gioca: niente
+    // ripiego sulle quote dell'agenzia predefinita.
+    await expect(
+      submitSchedina.run(req(capo, { predictions: tenPredictions(), leagueId }) as never)
+    ).rejects.toThrow(/Nessuna partita quotata|Partita senza quote/i);
+
+    // Arrivate le quote dell'agenzia, la schedina di lega si puo' inviare.
+    const { odds } = await leggiQuote();
+    await db.collection('matchdays').doc('1').update({ oddsPerBookmaker: { 'Eurobet IT': odds } });
     await submitSchedina.run(req(capo, { predictions: tenPredictions(), leagueId }) as never);
+  });
+
+  it('una partita che l agenzia della lega non quota non si gioca in quella lega', async () => {
+    const capo = uid('buco');
+    const admin = uid('admin4');
+    await seedProfile(capo, 1000);
+    await seedProfile(admin, 0, { role: 'admin' });
+    const { leagueId } = (await manageLeague.run(
+      req(capo, {
+        action: 'create', name: 'Buco', description: '', isPrivate: true,
+        maxMembers: 10, agenziaRichiesta: 'eurobet',
+      })
+    )) as { leagueId: string };
+    await adminLeghe.run(
+      req(admin, { action: 'assegna', leagueId, bookmaker: 'Eurobet IT' }) as never
+    );
+
+    // L'agenzia quota tutte le partite tranne m3: la predefinita ce l'ha, ma
+    // in questa lega non vale.
+    const { odds } = await leggiQuote();
+    const senzaM3 = { ...odds };
+    delete senzaM3.m3;
+    await db.collection('matchdays').doc('1').update({ oddsPerBookmaker: { 'Eurobet IT': senzaM3 } });
+
+    await expect(
+      submitSchedina.run(req(capo, { predictions: tenPredictions(), leagueId }) as never)
+    ).rejects.toThrow(/Nessuna partita quotata|Partita senza quote/i);
+  });
+
+  it('non si riassegna l agenzia di una lega gia attiva', async () => {
+    const capo = uid('gia');
+    const admin = uid('admin5');
+    await seedProfile(capo, 1000);
+    await seedProfile(admin, 0, { role: 'admin' });
+    const { leagueId } = (await manageLeague.run(
+      req(capo, { action: 'create', name: 'Gia attiva', description: '', isPrivate: true, maxMembers: 10 })
+    )) as { leagueId: string };
+
+    await expect(
+      adminLeghe.run(req(admin, { action: 'assegna', leagueId, bookmaker: 'Eurobet IT' }) as never)
+    ).rejects.toThrow(/non è in attesa/i);
+    await expect(
+      adminLeghe.run(req(admin, { action: 'rifiuta', leagueId }) as never)
+    ).rejects.toThrow(/non è in attesa/i);
+
+    const lega = await leggiLega(leagueId);
+    expect(lega.bookmaker ?? null).toBeNull();
   });
 
   it('non si puo assegnare un agenzia fuori dal piano', async () => {

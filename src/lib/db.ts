@@ -8,7 +8,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  setDoc,
   updateDoc,
   query,
   where,
@@ -17,6 +16,7 @@ import {
   serverTimestamp,
   onSnapshot,
   Timestamp,
+  writeBatch,
   type DocumentData,
   type QueryDocumentSnapshot,
   type Unsubscribe,
@@ -35,6 +35,13 @@ import type {
 import type { MatchOdds } from '@/data/mockData';
 import { computeWeeklyRanking } from './rankings';
 import { getPublicProfilesFn, getRankingsFn, type PublicProfileData } from './gameApi';
+import {
+  USERNAME_REGOLA,
+  chiaveUsername,
+  conSuffisso,
+  normalizzaUsername,
+  usernameValido,
+} from './username';
 import type { WeeklyRanking } from '@/types';
 
 // ============================================
@@ -42,6 +49,7 @@ import type { WeeklyRanking } from '@/types';
 // ============================================
 const COL = {
   profiles: 'profiles',
+  usernames: 'usernames',
   matchdays: 'matchdays',
   schedine: 'schedine',
 } as const;
@@ -96,7 +104,7 @@ export async function ensureProfile(
     updatedAt: ReturnType<typeof serverTimestamp>;
   } = {
     id: uid,
-    username,
+    username: normalizzaUsername(username),
     email,
     avatarUrl: null,
     totalPoints: 0,
@@ -118,22 +126,78 @@ export async function ensureProfile(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
-  try {
-    await setDoc(ref, profile);
-  } catch (e) {
-    // Alla registrazione questa funzione parte due volte: una da `signUp` e
-    // una dal listener `onAuthStateChanged`, che ha già letto "profilo
-    // assente". La seconda scrive su un documento nel frattempo creato, e
-    // Firestore la valuta come update: le rules la respingono (giustamente,
-    // consentono di toccare solo username/avatarUrl). Il profilo però c'è:
-    // va riletto, non trattato come errore — altrimenti finisce a Sentry e
-    // l'utente resta senza profilo caricato fino al reload.
-    const esistente = await getDoc(ref);
-    if (esistente.exists()) return esistente.data() as ProfileDoc;
-    throw e;
+  // Il profilo nasce insieme alla prenotazione del suo username (collezione
+  // `usernames`): le rules accettano l'uno solo con l'altra, e la
+  // prenotazione non si puo' creare se il nome e' gia' preso. Se lo e', si
+  // riprova con un suffisso numerico: il nome si cambia poi dal profilo.
+  let ultimoErrore: unknown = null;
+  for (let tentativo = 0; tentativo < 5; tentativo++) {
+    const nome =
+      tentativo === 0
+        ? profile.username
+        : conSuffisso(profile.username, 1000 + Math.floor(Math.random() * 9000));
+    try {
+      const batch = writeBatch(db);
+      batch.set(ref, { ...profile, username: nome });
+      batch.set(doc(db, COL.usernames, chiaveUsername(nome)), {
+        uid,
+        createdAt: serverTimestamp(),
+      });
+      await batch.commit();
+      const created = await getDoc(ref);
+      return created.data() as ProfileDoc;
+    } catch (e) {
+      // Alla registrazione questa funzione parte due volte: una da `signUp` e
+      // una dal listener `onAuthStateChanged`, che ha già letto "profilo
+      // assente". La seconda scrive su un documento nel frattempo creato, e
+      // Firestore la valuta come update: le rules la respingono (giustamente,
+      // consentono di toccare solo username/avatarUrl). Il profilo però c'è:
+      // va riletto, non trattato come errore — altrimenti finisce a Sentry e
+      // l'utente resta senza profilo caricato fino al reload.
+      const esistente = await getDoc(ref);
+      if (esistente.exists()) return esistente.data() as ProfileDoc;
+      // Profilo assente: il rifiuto viene dal nome gia' prenotato da altri.
+      ultimoErrore = e;
+      if ((e as { code?: string }).code !== 'permission-denied') break;
+    }
   }
-  const created = await getDoc(ref);
-  return created.data() as ProfileDoc;
+  throw ultimoErrore;
+}
+
+/**
+ * Cambia lo username: aggiorna il profilo e sposta la prenotazione in
+ * `usernames` nella stessa scrittura atomica, cosi' due persone non possono
+ * prendere lo stesso nome (nemmeno cambiando solo le maiuscole).
+ */
+export async function cambiaUsername(uid: string, attuale: string, nuovo: string): Promise<void> {
+  if (!usernameValido(nuovo)) throw new Error(`Username non valido. ${USERNAME_REGOLA}`);
+  const nuovaRef = doc(db, COL.usernames, chiaveUsername(nuovo));
+  const prenotazione = await getDoc(nuovaRef);
+  if (prenotazione.exists() && prenotazione.data()?.uid !== uid) {
+    throw new Error('Username già in uso: scegline un altro');
+  }
+  const batch = writeBatch(db);
+  batch.update(doc(db, COL.profiles, uid), { username: nuovo, updatedAt: serverTimestamp() });
+  if (!prenotazione.exists()) {
+    batch.set(nuovaRef, { uid, createdAt: serverTimestamp() });
+  }
+  // La prenotazione del vecchio nome si libera, se era nostra.
+  if (usernameValido(attuale) && chiaveUsername(attuale) !== chiaveUsername(nuovo)) {
+    const vecchiaRef = doc(db, COL.usernames, chiaveUsername(attuale));
+    const vecchia = await getDoc(vecchiaRef);
+    if (vecchia.exists() && vecchia.data()?.uid === uid) batch.delete(vecchiaRef);
+  }
+  // Fra il controllo e la scrittura qualcun altro puo' aver preso il nome:
+  // le rules respingono il batch.
+  const esito = await batch.commit().then(
+    () => null,
+    (e: unknown) => e
+  );
+  if (esito === null) return;
+  if ((esito as { code?: string }).code === 'permission-denied') {
+    throw new Error('Username già in uso: scegline un altro');
+  }
+  throw esito;
 }
 
 export async function getProfile(uid: string): Promise<ProfileDoc | null> {
@@ -200,6 +264,8 @@ export interface MatchdayDoc {
   odds: Record<string, MatchOdds>;
   /** Quote per agenzia, per le leghe che ne hanno una propria. */
   oddsPerBookmaker?: Record<string, Record<string, MatchOdds>>;
+  /** Partite quotate (mercato esito) per agenzia, scritto dal server. */
+  quotateConteggio?: Record<string, number>;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
   settled: boolean;
@@ -240,22 +306,45 @@ export function subscribeMatchday(
   );
 }
 
+/** Agenzia delle quote generali. Specchio di BOOKMAKER_PREDEFINITO in functions/src/realOdds.ts. */
+export const BOOKMAKER_PREDEFINITO = 'Goldbet IT';
+
+export interface MatchdayCircuito {
+  matchday: Matchday;
+  /** Quote con cui si gioca in questo circuito (vuote se non ce ne sono). */
+  odds: Record<string, MatchOdds>;
+  /**
+   * La lega ha un'agenzia propria che non ha ancora pubblicato il palinsesto.
+   * Non si ripiega sulle quote del generale: il server valuta la schedina di
+   * lega con quelle dell'agenzia, quindi mostrarne altre sarebbe un inganno.
+   */
+  agenziaSenzaQuote: boolean;
+}
+
 /**
- * Quote della giornata. Con `bookmaker` si chiedono quelle di quell'agenzia
- * (le usano le leghe che ne hanno una propria); senza, quelle predefinite del
- * circuito generale. Se l'agenzia non ha il suo palinsesto si ripiega sulle
- * predefinite, che sono comunque quelle con cui il server valutera' la
- * schedina: mostrarne altre sarebbe peggio che mostrare queste.
+ * Giornata e quote del circuito in una sola lettura. Con `bookmaker` (la lega
+ * ha un'agenzia assegnata) valgono solo le quote di quell'agenzia; senza,
+ * quelle predefinite del circuito generale.
  */
-export async function getMatchdayOdds(
+export async function getMatchdayCircuito(
   number: number,
-  bookmaker?: string | null
-): Promise<Record<string, MatchOdds> | null> {
+  bookmaker: string | null
+): Promise<MatchdayCircuito | null> {
   const snap = await getDoc(doc(db, COL.matchdays, String(number)));
   if (!snap.exists()) return null;
   const dati = snap.data() as MatchdayDoc;
-  if (bookmaker) return dati.oddsPerBookmaker?.[bookmaker] ?? dati.odds;
-  return dati.odds;
+  const matchday = matchdayDocToMatchday(dati);
+  if (bookmaker) {
+    // L'agenzia predefinita e' quella delle quote generali: per lei `odds` e'
+    // lo stesso palinsesto. Per le altre nessun ripiego.
+    const quote =
+      bookmaker === BOOKMAKER_PREDEFINITO
+        ? dati.oddsPerBookmaker?.[bookmaker] ?? dati.odds
+        : dati.oddsPerBookmaker?.[bookmaker];
+    const vuote = !quote || Object.keys(quote).length === 0;
+    return { matchday, odds: vuote ? {} : quote, agenziaSenzaQuote: vuote };
+  }
+  return { matchday, odds: dati.odds ?? {}, agenziaSenzaQuote: false };
 }
 
 /**

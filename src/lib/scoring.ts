@@ -98,18 +98,33 @@ export function calculatePenaltyPoints(
 }
 
 /**
+ * Bonus raggiunto con `corretti` esatti su `richieste` pronostici: 'pieno' se
+ * sono tutti esatti, 'quasi' se ne manca uno e i richiesti sono almeno 9.
+ * Allineata a livelloBonus di functions/src/scoring.ts.
+ */
+export function livelloBonus(corretti: number, richieste: number): 'pieno' | 'quasi' | null {
+  if (richieste <= 0) return null;
+  if (corretti >= richieste) return 'pieno';
+  if (richieste >= 9 && corretti === richieste - 1) return 'quasi';
+  return null;
+}
+
+/**
  * Bonus in punti pieni per esiti corretti, aggiunto in fondo al totale.
- * - 9 esiti corretti su 10: +5
- * - 10 esiti corretti su 10: +10
+ * - tutti i richiesti meno uno (9 su 10): +5
+ * - tutti i richiesti (10 su 10): +10
+ * I pronostici annullati non contano come esatti.
  */
 export function calculateBonusPoints(
   correctPredictions: number,
-  config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG
+  config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG,
+  richieste = 10
 ): number {
-  if (correctPredictions >= 10) {
+  const livello = livelloBonus(correctPredictions, richieste);
+  if (livello === 'pieno') {
     return config.bonus10Points;
   }
-  if (correctPredictions === 9) {
+  if (livello === 'quasi') {
     return config.bonus9Points;
   }
   return 0;
@@ -125,7 +140,8 @@ export function calculateBonusPoints(
  */
 export function calculateSchedinaScore(
   predictions: PredictionResult[],
-  config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG
+  config: TournamentConfig = DEFAULT_TOURNAMENT_CONFIG,
+  richieste = 10
 ): ScoreCalculation {
   const correctPredictions = predictions.filter(p => p.isCorrect).length;
 
@@ -142,7 +158,7 @@ export function calculateSchedinaScore(
   // Conta giocate cappate (quota oltre il tetto oddsCap)
   const cappedBets = predictions.filter(p => p.odds > config.oddsCap).length;
 
-  const bonusPoints = calculateBonusPoints(correctPredictions, config);
+  const bonusPoints = calculateBonusPoints(correctPredictions, config, richieste);
   const penaltyMultiplier = calculatePenaltyPoints(penaltyRangeBets, config);
 
   // La penalità agisce sulla composizione della schedina (quote basse) e si
@@ -215,7 +231,9 @@ export function evaluateBet(
 
 /**
  * Valuta i risultati di una schedina confrontandola con i risultati delle partite.
- * Mercati non valutabili (void) = 0 punti, ma contano come corretti.
+ * Pronostici annullati (partita senza risultato o mercato non valutabile) =
+ * 0 punti e non corretti: non aiutano a raggiungere i bonus. I bonus si
+ * calcolano sui pronostici che la schedina ha, come fa il server.
  */
 export function evaluateSchedina(
   schedina: Schedina,
@@ -229,8 +247,8 @@ export function evaluateSchedina(
     }
     const evalResult = evaluateBet(pred.betType, pred.outcome, match.result);
     if (evalResult === null) {
-      // Void: contributo neutro. Nella somma il neutro è 0, non 1.
-      return { ...pred, isCorrect: true, pointsEarned: 0 };
+      // Annullato: zero punti e non esatto, come sul server.
+      return { ...pred, isCorrect: false, pointsEarned: 0 };
     }
     const pointsEarned = calculateBetPoints(pred.odds, evalResult, config);
     
@@ -241,7 +259,7 @@ export function evaluateSchedina(
     };
   });
 
-  const scoreCalc = calculateSchedinaScore(predictionResults, config);
+  const scoreCalc = calculateSchedinaScore(predictionResults, config, predictionResults.length);
 
   return {
     id: schedina.id,

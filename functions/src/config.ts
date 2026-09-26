@@ -4,6 +4,8 @@
 // Tenere allineata a src/lib/economy.ts del client.
 // ============================================
 
+import type { MatchOdds } from './odds';
+
 export const TOURNAMENT = {
   minValidOdds: 1.3,
   oddsCap: 5.0,
@@ -50,6 +52,15 @@ export const DEFAULT_ACTIVE_COMPETITIONS: string[] = ['ita.1'];
 // per comporre la propria schedina.
 export const MAX_PICKS_PER_SCHEDINA = 10;
 
+/**
+ * Pronostici richiesti: dieci, o meno se l'agenzia ha quotato meno partite.
+ * Conta le partite con l'esito finale quotato. Mirror in src/lib/pickRichieste.ts.
+ */
+export function pickRichieste(quotate: Record<string, MatchOdds> | undefined): number {
+  const n = Object.values(quotate ?? {}).filter(o => !!o?.esito).length;
+  return Math.min(MAX_PICKS_PER_SCHEDINA, n);
+}
+
 
 // --- GETTONI ---
 export const COINS = {
@@ -69,6 +80,9 @@ export const COINS = {
   sfidaBaseReward: 5, // premio base per vittoria
   sfidaMaxReward: 30, // premio massimo
   sfidaCooldownDays: 7, // una sfida per coppia per settimana
+  // Il cooldown vale per coppia: con tanti avversari diversi, senza tetto le
+  // sfide diventano una fonte di gettoni illimitata. Allineato ai duelli.
+  sfideTettoGiornaliero: 50,
   // Memoria Calcio
   memoriaPerLevel: 5, // gettoni per livello completato
   memoriaTimeBonus: 1, // gettoni per 5 secondi rimanenti

@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Play,
   Calendar,
@@ -10,7 +11,10 @@ import { cn, formatTime } from '@/lib/utils';
 import { useAppStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { useLiveMatchday } from '@/hooks/useLiveMatchday';
-import { calculateBetPoints, calculateSchedinaScore } from '@/lib/scoring';
+import { puntiPotenziali } from '@/lib/anteprimaPunti';
+import { pickRichieste } from '@/lib/pickRichieste';
+import { quoteAncoraAperte } from '@/lib/markets';
+import { getLeague } from '@/lib/leagues';
 import { LiveTracker, CountdownTimer, SkeletonList } from '@/components/ui';
 
 export function LivePage() {
@@ -20,6 +24,8 @@ export function LivePage() {
     currentUser,
     rankings,
     liveScores,
+    matchOdds,
+    currentLeagueId,
     isLoadingOdds,
     isLoadingRankings,
     loadRankings,
@@ -29,6 +35,8 @@ export function LivePage() {
       currentUser: s.currentUser,
       rankings: s.rankings,
       liveScores: s.liveScores,
+      matchOdds: s.matchOdds,
+      currentLeagueId: s.currentLeagueId,
       isLoadingOdds: s.isLoadingOdds,
       isLoadingRankings: s.isLoadingRankings,
       loadRankings: s.loadRankings,
@@ -40,16 +48,48 @@ export function LivePage() {
     if (rankings.length === 0) loadRankings();
   }, [rankings.length, loadRankings]);
 
+  // La schedina seguita qui e' quella del circuito aperto in Pronostici:
+  // generale o di una lega. Si dice quale, altrimenti non si capisce.
+  const [nomeLega, setNomeLega] = useState<{ id: string; nome: string } | null>(null);
+  useEffect(() => {
+    if (!currentLeagueId) return;
+    let vivo = true;
+    getLeague(currentLeagueId)
+      .then(l => {
+        if (vivo && l) setNomeLega({ id: l.id, nome: l.name });
+      })
+      .catch(e => console.warn('[Live] lega:', e));
+    return () => {
+      vivo = false;
+    };
+  }, [currentLeagueId]);
+  const circuito = !currentLeagueId
+    ? 'Classifica generale'
+    : nomeLega?.id === currentLeagueId
+      ? `Lega ${nomeLega.nome}`
+      : 'Lega';
+
+  // Orologio nello stato: serve a distinguere "la schedina chiude tra" da
+  // "la prossima partita inizia tra", senza leggere l'ora durante il render.
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const predictions = useMemo(() => currentSchedina?.predictions || [], [currentSchedina?.predictions]);
-  const potentialScore = useMemo(() => {
-    if (predictions.length === 0) return 0;
-    const previewResults = predictions.map(p => ({
-      ...p,
-      isCorrect: true,
-      pointsEarned: calculateBetPoints(p.odds, true),
-    }));
-    return calculateSchedinaScore(previewResults).finalPoints;
-  }, [predictions]);
+  // Una schedina inviata resta della sua misura; altrimenti, come il server,
+  // contano solo le partite quotate non ancora iniziate.
+  const richieste =
+    currentSchedina?.isLocked && predictions.length > 0
+      ? predictions.length
+      : pickRichieste(quoteAncoraAperte(currentMatchday?.matches, matchOdds, now));
+  const potentialScore = useMemo(
+    () => puntiPotenziali(predictions, currentSchedina?.powerups, richieste),
+    [predictions, currentSchedina?.powerups, richieste]
+  );
   if (!currentMatchday) {
     if (isLoadingOdds) {
       return (
@@ -73,6 +113,11 @@ export function LivePage() {
   const allFinished =
     currentMatchday.matches.length > 0 &&
     currentMatchday.matches.every(m => m.status === 'finished');
+  const deadlineMs = new Date(currentMatchday.deadline).getTime();
+  const schedinaAperta = now > 0 && now < deadlineMs;
+  const prossimaPartita = currentMatchday.matches
+    .filter(m => m.status === 'scheduled' && new Date(m.scheduledAt).getTime() > now)
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
 
   return (
     <div className="min-h-screen py-6 sm:py-8">
@@ -97,14 +142,24 @@ export function LivePage() {
           <h1 className="text-2xl sm:text-3xl font-display font-bold mb-2">
             Giornata {currentMatchday.number} - In Diretta
           </h1>
-          
-          {/* Countdown */}
-          {!hasLiveMatches && (
+          <p className="text-sm text-slate-500">
+            Stai seguendo la schedina di: <span className="font-bold text-slate-700">{circuito}</span>
+          </p>
+
+          {/* Conto alla rovescia: prima la chiusura della schedina, poi il calcio d'inizio */}
+          {schedinaAperta ? (
             <div className="flex items-center gap-4 text-slate-500 mt-3">
-              <span className="text-sm">Prossima partita tra:</span>
+              <span className="text-sm">La schedina si chiude tra:</span>
               <CountdownTimer deadline={currentMatchday.deadline} />
             </div>
-          )}
+          ) : !hasLiveMatches && prossimaPartita ? (
+            <div className="flex items-center gap-4 text-slate-500 mt-3">
+              <span className="text-sm">
+                Prossima partita ({prossimaPartita.homeTeam.shortName}–{prossimaPartita.awayTeam.shortName}) tra:
+              </span>
+              <CountdownTimer deadline={prossimaPartita.scheduledAt} />
+            </div>
+          ) : null}
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
@@ -148,9 +203,9 @@ export function LivePage() {
                   Non hai ancora compilato la schedina per questa giornata.
                   Compilala ora per seguire i tuoi risultati live!
                 </p>
-                <a href="/schedina" className="btn-primary inline-flex items-center gap-2">
+                <Link to="/pronostici" className="btn-primary inline-flex items-center gap-2">
                   Vai alla Schedina
-                </a>
+                </Link>
               </div>
             )}
 
@@ -240,7 +295,7 @@ export function LivePage() {
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-500">Pronostici:</span>
                       <span className="font-bold">
-                        {predictions.length}/{currentMatchday.matches.length}
+                        {predictions.length}/{richieste || predictions.length}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">

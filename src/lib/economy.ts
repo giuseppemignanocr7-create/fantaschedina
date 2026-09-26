@@ -22,6 +22,7 @@ export const COINS = {
   sfidaBaseReward: 5,
   sfidaMaxReward: 30,
   sfidaCooldownDays: 7,
+  sfideTettoGiornaliero: 50,
   // Memoria Calcio
   memoriaPerLevel: 5,
   memoriaTimeBonus: 1,
@@ -66,14 +67,14 @@ export const POWERUPS: Record<PowerUpId, PowerUpInfo> = {
     name: 'Scudo',
     emoji: '🛡️',
     cost: 150,
-    description: 'Annulla le penalità delle quote basse per questa giornata',
+    description: 'Annulla la penalità delle quote tra 1.25 e 1.29 (−10% dei punti ogni tre giocate)',
   },
   insurance: {
     id: 'insurance',
     name: 'Assicurazione',
     emoji: '⭐',
     cost: 120,
-    description: 'Con 8/10 corretti ricevi comunque il bonus del 9/10 (×1.2)',
+    description: 'Con due soli pronostici sbagliati prendi comunque il bonus di +5 punti di chi ne sbaglia uno',
   },
   lastminute: {
     id: 'lastminute',

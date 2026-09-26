@@ -61,6 +61,12 @@ describe('calculateBonusPoints', () => {
   it('8 corretti → nessun bonus', () => {
     expect(calculateBonusPoints(8)).toBe(0);
   });
+  it('schedina corta: +10 con tutti i richiesti, +5 solo se i richiesti sono almeno 9', () => {
+    expect(calculateBonusPoints(8, undefined, 8)).toBe(10);
+    expect(calculateBonusPoints(7, undefined, 8)).toBe(0);
+    expect(calculateBonusPoints(8, undefined, 9)).toBe(5);
+    expect(calculateBonusPoints(0, undefined, 0)).toBe(0);
+  });
 });
 
 // ---------- evaluateBet (multi-mercato) ----------
@@ -178,14 +184,28 @@ describe('evaluateSchedina', () => {
     expect(r.penaltyPoints).toBeCloseTo(Math.round((base * 0.9 - base) * 100) / 100, 2);
   });
 
-  it('mercato 1T senza dato HT → void = contributo neutro (0 punti)', () => {
+  it('mercato 1T senza dato HT → annullato: 0 punti e non esatto', () => {
     const matches = [makeMatch('m1', 2, 1)];
     const predictions: Prediction[] = [
       { matchId: 'm1', betType: 'esito_1t', outcome: '1', odds: 2.5 },
     ];
     const r = evaluateSchedina(makeSchedina(predictions), matches);
     expect(r.predictions[0].pointsEarned).toBe(0);
-    expect(r.predictions[0].isCorrect).toBe(true);
+    expect(r.predictions[0].isCorrect).toBe(false);
+    expect(r.bonusPoints).toBe(0);
+  });
+
+  it('9 esatti + 1 annullato → +5, non +10 (un annullato non aiuta)', () => {
+    const matches = Array.from({ length: 10 }, (_, i) => makeMatch(`m${i}`, 2, 0));
+    const predictions: Prediction[] = matches.map((m, i) => ({
+      matchId: m.id,
+      betType: i === 0 ? 'esito_1t' : 'esito',
+      outcome: '1',
+      odds: 2.0,
+    }));
+    const r = evaluateSchedina(makeSchedina(predictions), matches);
+    expect(r.correctPredictions).toBe(9);
+    expect(r.bonusPoints).toBe(5);
   });
 
   it('0 corretti su 10 → punteggio 0', () => {

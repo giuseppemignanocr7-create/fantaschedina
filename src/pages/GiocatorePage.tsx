@@ -258,14 +258,14 @@ export function GiocatorePage() {
                     className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-100 transition-colors"
                   >
                     <div className="w-10 h-10 rounded-xl bg-surface border border-slate-200 flex flex-col items-center justify-center flex-shrink-0">
-                      <span className="text-[9px] text-slate-500 uppercase">G</span>
+                      <span className="text-[10px] text-slate-500 uppercase">G</span>
                       <span className="text-sm font-black text-slate-900 leading-none">
                         {s.matchdayNumber}
                       </span>
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-slate-900">
-                        {s.correctPredictions}/10 esatti
+                        {s.correctPredictions}/{s.predictions?.length || 10} esatti
                       </p>
                       {s.bonusPoints > 0 && (
                         <p className="text-[10px] text-green-600 flex items-center gap-1">

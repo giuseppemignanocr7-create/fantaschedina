@@ -62,7 +62,7 @@ function NavLink({ to, label, icon: Icon, badge, onClick }: { to: string; label:
       />
       {label}
       {badge && (
-        <span className="ml-auto rounded border border-white/10 bg-white/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-white/45">
+        <span className="ml-auto rounded border border-white/10 bg-white/10 px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-white/45">
           {badge}
         </span>
       )}
@@ -126,11 +126,11 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                   {currentUser?.username ?? 'Ospite'}
                 </span>
                 {currentUser && (
-                  <span className="text-[8px] font-black bg-primary-500/20 text-primary-400 px-1.5 py-0.5 rounded border border-primary-500/30 uppercase tracking-wide flex-shrink-0">PRO</span>
+                  <span className="text-[10px] font-black bg-primary-500/20 text-primary-400 px-1.5 py-0.5 rounded border border-primary-500/30 uppercase tracking-wide flex-shrink-0">PRO</span>
                 )}
               </div>
               <p className="text-[10px] text-white/40">
-                {currentUser ? `${currentUser.paidWeeks} settimane pagate` : 'Non autenticato'}
+                {currentUser ? `${currentUser.coins} gettoni` : 'Non autenticato'}
               </p>
             </div>
           </div>
@@ -138,11 +138,11 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           {/* Stats */}
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 text-center">
-              <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest mb-1">PUNTI TOTALI</p>
+              <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">PUNTI TOTALI</p>
               <p className="font-black text-primary-400 text-[20px] leading-none">{userPoints.toFixed(1)}</p>
             </div>
             <div className="bg-white/5 border border-white/10 rounded-xl p-2.5 text-center">
-              <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest mb-1">POSIZIONE</p>
+              <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">POSIZIONE</p>
               <p className="font-black text-white text-[22px] leading-none">#{userRank}</p>
             </div>
           </div>
