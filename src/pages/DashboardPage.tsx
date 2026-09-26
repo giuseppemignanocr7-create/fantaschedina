@@ -105,7 +105,7 @@ const featureTiles = [
 ];
 
 const quickActions = [
-  { label: 'Rigori PvP', icon: CircleDot, to: '/minigiochi/rigori' },
+  { label: 'Rigori PvP', icon: CircleDot, to: '/minigiochi/rigori-duello' },
   { label: 'Quiz Calcio', icon: HelpCircle, to: '/minigiochi/quiz' },
   { label: 'Ruota', icon: RefreshCw, to: '/minigiochi/ruota' },
   { label: 'Sfide', icon: Swords, to: '/minigiochi' },
@@ -117,7 +117,7 @@ const quickActions = [
 const earnCards = [
   { name: '🧠 QUIZ', tagline: 'FINO A 30 🪙 AL GIORNO', cta: 'GIOCA', c1: '#3f9de8', c2: '#1c76c4', to: '/minigiochi/quiz' },
   { name: '🎡 RUOTA', tagline: 'JACKPOT DA 100 🪙', cta: 'GIRA', c1: '#f5ac36', c2: '#df8a0d', to: '/minigiochi/ruota' },
-  { name: '⚽ RIGORI', tagline: 'FINO A 50 🪙 A DUELLO', cta: 'TIRA', c1: '#3fc37e', c2: '#159a55', to: '/minigiochi/rigori' },
+  { name: '⚽ RIGORI', tagline: 'FINO A 50 🪙 A DUELLO', cta: 'TIRA', c1: '#3fc37e', c2: '#159a55', to: '/minigiochi/rigori-duello' },
   { name: '🎯 MISSIONI', tagline: 'FINO A 500 🪙 EXTRA', cta: 'SCOPRI', c1: '#ec4f9b', c2: '#cf2077', to: '/missioni' },
 ];
 

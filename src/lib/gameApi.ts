@@ -143,32 +143,13 @@ export interface RigoriShot {
 }
 
 /**
- * Sessione di gioco aperta dal server (memoria, rigori): il risultato si
- * manda insieme al suo `sessionId`, vale una volta sola e solo se la partita
- * e' durata un tempo plausibile.
+ * Sessione di gioco aperta dal server (memoria): il risultato si manda
+ * insieme al suo `sessionId`, vale una volta sola e solo se la partita e'
+ * durata un tempo plausibile.
  */
 export interface SessioneMinigioco {
   sessionId: string;
   serverTime: number;
-}
-
-export async function startRigori(): Promise<SessioneMinigioco> {
-  const fn = httpsCallable<{ action: string }, SessioneMinigioco>(functions, 'playMinigame');
-  const res = await fn({ action: 'rigori_start' });
-  return res.data;
-}
-
-export async function playRigori(sessionId: string, shots: PenaltyShotInput[]): Promise<{
-  results: RigoriShot[];
-  goals: number;
-  reward: number;
-}> {
-  const fn = httpsCallable<
-    { action: string; sessionId: string; shots: PenaltyShotInput[] },
-    { results: RigoriShot[]; goals: number; reward: number }
-  >(functions, 'playMinigame');
-  const res = await fn({ action: 'rigori_play', sessionId, shots });
-  return res.data;
 }
 
 // --- MEMORIA CALCIO ---
