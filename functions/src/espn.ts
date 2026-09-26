@@ -130,13 +130,40 @@ export interface EspnResult {
   scheduledAt?: Date;
 }
 
+/**
+ * Giorni singoli (YYYYMMDD) di un intervallo `YYYYMMDD-YYYYMMDD`, al massimo
+ * `massimo`. Lo scoreboard calcio di ESPN risponde 400 all'intervallo
+ * (verificato il 26/09/2026 su ita.1): i giorni vanno chiesti uno per uno.
+ */
+export function giorniIntervallo(intervallo: string, massimo = 15): string[] {
+  const [a, b = a] = intervallo.split('-');
+  const data = (s: string) => Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8));
+  const inizio = data(a);
+  const fine = data(b);
+  if (!Number.isFinite(inizio) || !Number.isFinite(fine) || fine < inizio) return [a];
+  const giorni: string[] = [];
+  for (let t = inizio; t <= fine && giorni.length < massimo; t += 24 * 60 * 60 * 1000) {
+    giorni.push(giornoEspn(new Date(t)));
+  }
+  return giorni;
+}
+
 async function fetchScoreboard(slug: string, dateStr?: string): Promise<ESPNScoreboard | null> {
-  // Con un intervallo di piu' giorni gli eventi sono molti di piu' che in un
-  // giorno solo: il limite deve starci largo.
-  const url = dateStr
-    ? `${ESPN_BASE(slug)}/scoreboard?dates=${dateStr}&limit=200`
-    : `${ESPN_BASE(slug)}/scoreboard?limit=50`;
-  return fetchJson<ESPNScoreboard>(url, { label: `espn:${slug}` });
+  if (!dateStr) {
+    return fetchJson<ESPNScoreboard>(`${ESPN_BASE(slug)}/scoreboard?limit=50`, { label: `espn:${slug}` });
+  }
+  // Un giorno per richiesta, in parallelo, e gli eventi si uniscono: un giorno
+  // che non risponde non fa perdere gli altri.
+  const giorni = await Promise.all(
+    giorniIntervallo(dateStr).map(g =>
+      fetchJson<ESPNScoreboard>(`${ESPN_BASE(slug)}/scoreboard?dates=${g}&limit=100`, {
+        label: `espn:${slug}`,
+      })
+    )
+  );
+  const letti = giorni.filter((g): g is ESPNScoreboard => !!g);
+  if (letti.length === 0) return null;
+  return { leagues: letti[0].leagues ?? [], events: letti.flatMap(g => g.events ?? []) };
 }
 
 function teamOf(c: ESPNCompetitor) {

@@ -2,7 +2,7 @@
 // Fino al 21/09/2026 non arrivava mai: quelle giocate valevano zero punti e
 // contavano come indovinate, cioe' il bonus 10/10 regalato a chi le giocava.
 import { describe, it, expect } from 'vitest';
-import { golPrimoTempo, intervalloDate, statoEspn } from '../../../functions/src/espn';
+import { giorniIntervallo, golPrimoTempo, intervalloDate, statoEspn } from '../../../functions/src/espn';
 
 describe('statoEspn', () => {
   it('traduce gli stati regolari', () => {
@@ -47,6 +47,23 @@ describe('intervalloDate', () => {
   it('senza date non c e intervallo', () => {
     expect(intervalloDate([])).toBeNull();
     expect(intervalloDate([new Date('n/d')])).toBeNull();
+  });
+});
+
+// ESPN risponde 400 a dates=AAAAMMGG-AAAAMMGG sul calcio (26/09/2026): senza
+// questa scomposizione la sincronizzazione non trovava piu' la giornata e la
+// valutazione non leggeva piu' i risultati.
+describe('giorniIntervallo', () => {
+  it('scompone l intervallo in giorni singoli, anche a cavallo del mese', () => {
+    expect(giorniIntervallo('20260930-20261002')).toEqual(['20260930', '20261001', '20261002']);
+  });
+
+  it('un giorno solo resta un giorno solo', () => {
+    expect(giorniIntervallo('20261010')).toEqual(['20261010']);
+  });
+
+  it('non chiede piu del massimo di giorni', () => {
+    expect(giorniIntervallo('20261001-20261231', 5)).toHaveLength(5);
   });
 });
 
