@@ -72,9 +72,7 @@ export const COINS = {
   // Minigiochi
   quizPerCorrect: 3, // max 10 domande → 30 gettoni
   quizMaxQuestions: 10,
-  rigoriPerGoal: 2, // max 5 tiri → 10 gettoni (gocce!)
-  rigoriMaxShots: 5,
-  rigoriDailyCap: 25, // max gettoni cumulabili al giorno da rigori
+  rigoriMaxShots: 5, // tiri per parte nelle sfide
   wheelPrizes: [5, 10, 10, 15, 20, 30, 50, 100] as number[], // pesi uniformi su 8 spicchi
   // Sfide 1vs1
   sfidaBaseReward: 5, // premio base per vittoria

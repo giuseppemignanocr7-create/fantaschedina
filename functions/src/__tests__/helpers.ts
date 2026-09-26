@@ -164,12 +164,12 @@ export async function seedDuello(stato: {
 
 /**
  * Sessione di memoria o rigori aperta `etaMs` fa, come l'avrebbe creata
- * `memoria_start` / `rigori_start`: i test non possono aspettare la durata
+ * `memoria_start`: i test non possono aspettare la durata
  * vera di una partita. Restituisce il `sessionId` da mandare con il risultato.
  */
 export async function seedSessioneMinigioco(
   uid: string,
-  gioco: 'memoria' | 'rigori',
+  gioco: 'memoria',
   etaMs = 5 * 60 * 1000
 ): Promise<string> {
   const sessionId = `sess_${uid}_${gioco}_${Date.now()}`;

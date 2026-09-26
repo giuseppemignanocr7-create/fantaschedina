@@ -24,9 +24,6 @@ describe('COINS — parametri economici sani', () => {
   it('quiz: guadagno massimo coerente', () => {
     expect(COINS.quizPerCorrect * COINS.quizMaxQuestions).toBe(30);
   });
-  it('rigori: guadagno massimo coerente', () => {
-    expect(COINS.rigoriPerGoal * COINS.rigoriMaxShots).toBe(10);
-  });
 });
 
 describe('POWERUPS — catalogo valido', () => {

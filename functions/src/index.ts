@@ -76,7 +76,6 @@ import {
   quizScaduto,
   QUIZ_DURATA_MAX_MS,
   SESSIONE_MINIGIOCO_MAX_MS,
-  RIGORI_MINIMO_MS_PER_TIRO,
   type MossaDuello,
 } from './minigiochi';
 import {
@@ -2105,7 +2104,7 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
 
   // Claim daily reward with once-per-day enforcement
   async function claimDailyReward(
-    game: 'ruota' | 'rigori',
+    game: 'ruota',
     reward: number,
     reason: string
   ): Promise<void> {
@@ -2136,7 +2135,7 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
     });
   }
 
-  // Award coins with daily cap (generic, used by rigori and memoria)
+  // Award coins with daily cap (memoria)
   async function awardCappedCoins(
     reward: number,
     cap: number,
@@ -2220,51 +2219,15 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
     });
   }
 
-  // Award rigori coins with daily cap (no once-per-day limit)
-  async function awardRigoriCoins(
-    reward: number,
-    reason: string
-  ): Promise<void> {
-    await db.runTransaction(async tx => {
-      const profile = await tx.get(profileRef);
-      if (!profile.exists) throw new HttpsError('not-found', 'Profilo non trovato');
-      const rigoriToday = profile.data()?.rigoriCoinsToday ?? 0;
-      const rigoriDate = profile.data()?.rigoriDate as string | undefined;
-      const currentCap = rigoriDate === today ? rigoriToday : 0;
-      const cappedReward = Math.min(reward, COINS.rigoriDailyCap - currentCap);
-      const updates: Record<string, unknown> = {
-        rigoriDate: today,
-        rigoriCoinsToday: currentCap + Math.max(0, cappedReward),
-        updatedAt: FieldValue.serverTimestamp(),
-      };
-      if (cappedReward > 0) {
-        updates.coins = FieldValue.increment(cappedReward);
-        updates.coinsEarned = FieldValue.increment(cappedReward);
-      }
-      tx.update(profileRef, updates);
-      if (cappedReward > 0) {
-        tx.set(
-          db.collection('wallet_transactions').doc(`${uid}_rigori_${today}_${Date.now()}`),
-          {
-            userId: uid,
-            amount: cappedReward,
-            reason,
-            createdAt: FieldValue.serverTimestamp(),
-          }
-        );
-      }
-    });
-  }
-
-  // Sessioni di memoria e rigori: il server segna quando la partita comincia,
+  // Sessioni di memoria: il server segna quando la partita comincia,
   // cosi' alla fine sa quanto e' durata davvero invece di fidarsi del client.
   // Una per gioco e per utente (collezione non leggibile dai client, vedi
   // firestore.rules): avviarne una nuova annulla la precedente.
-  const sessioneRef = (gioco: 'memoria' | 'rigori') =>
+  const sessioneRef = (gioco: 'memoria') =>
     db.collection('minigame_sessions').doc(`${uid}_${gioco}`);
 
   async function avviaSessione(
-    gioco: 'memoria' | 'rigori'
+    gioco: 'memoria'
   ): Promise<{ sessionId: string; serverTime: number }> {
     // Id automatico di Firestore: casuale e non indovinabile.
     const sessionId = db.collection('minigame_sessions').doc().id;
@@ -2284,7 +2247,7 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
    * millisecondi era aperta. Vale una volta sola: la transazione la cancella,
    * quindi due invii dello stesso risultato non pagano due volte.
    */
-  async function consumaSessione(gioco: 'memoria' | 'rigori', minimoMs: number): Promise<number> {
+  async function consumaSessione(gioco: 'memoria', minimoMs: number): Promise<number> {
     const sessionId = request.data?.sessionId;
     if (typeof sessionId !== 'string' || sessionId.length === 0) {
       throw new HttpsError('invalid-argument', 'Sessione di gioco mancante: ricomincia la partita');
@@ -2526,28 +2489,6 @@ export const playMinigame = onCall(callableOpts, async (request): Promise<Record
       const reward = prizes[idx];
       await claimDailyReward('ruota', reward, 'minigame_ruota');
       return { segmentIndex: idx, reward };
-    }
-
-    // --- RIGORI (no daily limit, daily coin cap) ---
-    case 'rigori_start':
-      return avviaSessione('rigori');
-    case 'rigori_play': {
-      const shots = (request.data?.shots ?? []) as { zone: unknown; power: unknown }[];
-      if (
-        !Array.isArray(shots) ||
-        shots.length !== COINS.rigoriMaxShots ||
-        shots.some(s => !isValidZone(s?.zone) || !Number.isFinite(s?.power))
-      ) {
-        throw new HttpsError('invalid-argument', `Tiri non validi (${COINS.rigoriMaxShots} tiri con zona e potenza)`);
-      }
-      // Tiri validi solo dentro una partita avviata dal server e durata il
-      // tempo di tirarli davvero; l'esito di ogni tiro lo estrae il server.
-      await consumaSessione('rigori', COINS.rigoriMaxShots * RIGORI_MINIMO_MS_PER_TIRO);
-      const results = shots.map(s => resolveShot(s.zone as Parameters<typeof resolveShot>[0], s.power as number));
-      const goals = results.filter(r => r.goal).length;
-      const reward = goals * COINS.rigoriPerGoal;
-      await awardRigoriCoins(reward, 'minigame_rigori');
-      return { results, goals, reward };
     }
 
     // --- SFIDE 1VS1 ---

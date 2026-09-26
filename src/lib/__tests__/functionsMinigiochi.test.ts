@@ -44,13 +44,14 @@ describe('premioConTetto', () => {
 
 describe('contaPerLaSerie', () => {
   it('conta solo le partite concluse', () => {
-    for (const a of ['quiz_submit', 'wheel_spin', 'rigori_play', 'sfida_play', 'memoria_play']) {
+    for (const a of ['quiz_submit', 'wheel_spin', 'sfida_play', 'memoria_play']) {
       expect(contaPerLaSerie(a)).toBe(true);
     }
   });
 
   it('REGRESSIONE: aprire un gioco non vale come giornata giocata', () => {
-    for (const a of ['quiz_start', 'sfida_start', 'memoria_start', 'rigori_start', 'boh', '']) {
+    // rigori_play: il gioco in singolo e' stato tolto, non vale piu' nulla.
+    for (const a of ['quiz_start', 'sfida_start', 'memoria_start', 'rigori_start', 'rigori_play', 'boh', '']) {
       expect(contaPerLaSerie(a)).toBe(false);
     }
   });

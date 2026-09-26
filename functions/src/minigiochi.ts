@@ -34,7 +34,6 @@ export function premioConTetto(premio: number, tetto: number, giaOggi: number): 
 const AZIONI_PARTITA_COMPLETA = new Set([
   'quiz_submit',
   'wheel_spin',
-  'rigori_play',
   'sfida_play',
   'memoria_play',
 ]);
@@ -100,7 +99,7 @@ export function componiRound(
   };
 }
 
-// ---------- Sessioni di gioco (memoria, rigori) ----------
+// ---------- Sessioni di gioco (memoria) ----------
 
 export type EsitoDurata = 'ok' | 'troppo_presto' | 'scaduta';
 
@@ -111,11 +110,8 @@ export function verificaDurata(trascorsoMs: number, minimoMs: number, massimoMs:
   return 'ok';
 }
 
-/** Una partita a memoria o ai rigori non dura piu' di cosi'. */
+/** Una partita a memoria non dura piu' di cosi'. */
 export const SESSIONE_MINIGIOCO_MAX_MS = 10 * 60 * 1000;
-
-/** Rigori: mira e barra di potenza non si fanno in meno di un secondo a tiro. */
-export const RIGORI_MINIMO_MS_PER_TIRO = 1000;
 
 /**
  * Memoria: secondi minimi per chiudere ogni livello, uno per coppia (4, 6 e 8

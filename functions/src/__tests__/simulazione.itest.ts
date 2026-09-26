@@ -221,13 +221,9 @@ beforeAll(async () => {
       );
     }
     if (i % 3 === 1) {
-      const sessionId = await seedSessioneMinigioco(uid, 'rigori');
+      const sessionId = await seedSessioneMinigioco(uid, 'memoria');
       await playMinigame.run(
-        req(uid, {
-          action: 'rigori_play',
-          sessionId,
-          shots: Array.from({ length: COINS.rigoriMaxShots }, () => ({ zone: 'TL', power: 70 })),
-        })
+        req(uid, { action: 'memoria_play', sessionId, levelsCompleted: 1, timeRemaining: 5 })
       );
     }
     if (i % 3 === 2) {
@@ -764,7 +760,6 @@ describe('invarianti dopo il settlement', () => {
     for (const d of profili.docs) {
       const p = d.data();
       expect((p.memoriaCoinsToday ?? 0) as number).toBeLessThanOrEqual(COINS.memoriaDailyCap);
-      expect((p.rigoriCoinsToday ?? 0) as number).toBeLessThanOrEqual(COINS.rigoriDailyCap);
       expect((p.duelCoinsToday ?? 0) as number).toBeLessThanOrEqual(COINS.duelDailyCap);
     }
   });

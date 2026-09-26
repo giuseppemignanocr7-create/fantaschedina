@@ -189,85 +189,35 @@ describe('sessioni di memoria e rigori', () => {
   it('una sessione aperta da troppo tempo e\' scaduta', async () => {
     const uid = freshUid('vecchia');
     await seedProfile(uid, 0);
-    const sessionId = await seedSessioneMinigioco(uid, 'rigori', 60 * 60 * 1000);
+    const sessionId = await seedSessioneMinigioco(uid, 'memoria', 60 * 60 * 1000);
 
     await expect(
-      playMinigame.run(
-        req(uid, {
-          action: 'rigori_play',
-          sessionId,
-          shots: Array.from({ length: COINS.rigoriMaxShots }, () => ({ zone: 'TL', power: 80 })),
-        })
-      )
+      playMinigame.run(req(uid, { action: 'memoria_play', sessionId, levelsCompleted: 1, timeRemaining: 0 }))
     ).rejects.toMatchObject({ code: 'deadline-exceeded' });
     expect(await coinsOf(uid)).toBe(0);
   });
-
-  it('rigori: cinque tiri in mezzo secondo non valgono', async () => {
-    const uid = freshUid('rigorilampo');
-    await seedProfile(uid, 0);
-    const sessionId = await seedSessioneMinigioco(uid, 'rigori', 500);
-
-    await expect(
-      playMinigame.run(
-        req(uid, {
-          action: 'rigori_play',
-          sessionId,
-          shots: Array.from({ length: COINS.rigoriMaxShots }, () => ({ zone: 'TL', power: 80 })),
-        })
-      )
-    ).rejects.toMatchObject({ code: 'failed-precondition' });
-  });
 });
 
-describe('rigori_play — tiri dichiarati dal client', () => {
+describe('rigori in singolo — tolti', () => {
   beforeEach(async () => {
     await wipe();
   });
 
-  function tiri(power: unknown) {
-    return Array.from({ length: COINS.rigoriMaxShots }, () => ({ zone: 'TL', power }));
-  }
-
-  it('accetta cinque tiri validi e paga entro il tetto', async () => {
-    const uid = freshUid('tiratore');
+  // Il gioco non aveva piu' una pagina (portava al duello): le azioni non
+  // devono piu' pagare nulla.
+  it.each(['rigori_start', 'rigori_play'])('%s non esiste piu\'', async action => {
+    const uid = freshUid('rigoritolti');
     await seedProfile(uid, 0);
-    const sessionId = await seedSessioneMinigioco(uid, 'rigori');
-
-    const res = (await playMinigame.run(
-      req(uid, { action: 'rigori_play', sessionId, shots: tiri(80) })
-    )) as { goals: number; reward: number };
-
-    expect(res.goals).toBeGreaterThanOrEqual(0);
-    expect(res.goals).toBeLessThanOrEqual(COINS.rigoriMaxShots);
-    expect(res.reward).toBe(res.goals * COINS.rigoriPerGoal);
-    expect(await coinsOf(uid)).toBe(res.reward);
-  });
-
-  it.each([
-    ['NaN', NaN],
-    ['stringa', 'fortissimo'],
-    ['null', null],
-  ])('rifiuta una potenza %s', async (_label, power) => {
-    const uid = freshUid('potenzafinta');
-    await seedProfile(uid, 0);
-    const sessionId = await seedSessioneMinigioco(uid, 'rigori');
-
     await expect(
-      playMinigame.run(req(uid, { action: 'rigori_play', sessionId, shots: tiri(power) }))
+      playMinigame.run(
+        req(uid, {
+          action,
+          sessionId: 'x',
+          shots: Array.from({ length: COINS.rigoriMaxShots }, () => ({ zone: 'TL', power: 80 })),
+        })
+      )
     ).rejects.toMatchObject({ code: 'invalid-argument' });
-
     expect(await coinsOf(uid)).toBe(0);
-  });
-
-  it('rifiuta un numero di tiri diverso da quello previsto', async () => {
-    const uid = freshUid('troppitiri');
-    await seedProfile(uid, 0);
-    const sessionId = await seedSessioneMinigioco(uid, 'rigori');
-
-    await expect(
-      playMinigame.run(req(uid, { action: 'rigori_play', sessionId, shots: [{ zone: 'TL', power: 50 }] }))
-    ).rejects.toMatchObject({ code: 'invalid-argument' });
   });
 });
 
@@ -518,7 +468,7 @@ describe('serie giornaliera', () => {
     const uid = freshUid('serie_apertura');
     await seedProfile(uid, 0, { streakDate: null, streakDays: 0 });
 
-    for (const action of ['memoria_start', 'rigori_start']) {
+    for (const action of ['memoria_start']) {
       const res = (await playMinigame.run(req(uid, { action }))) as { serie?: unknown };
       expect(res.serie).toBeUndefined();
     }
